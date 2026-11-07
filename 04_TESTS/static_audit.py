@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 root = Path(__file__).resolve().parents[1]
 app = root / '02_APP'
 html = (app / 'ui/index.html').read_text()
-js = (app / 'ui/app.js').read_text()
+js = (app / 'ui/app.js').read_text() + '\n' + (app / 'ui/modules.js').read_text()
 rust = (app / 'src-tauri/src/main.rs').read_text()
 config = json.loads((app / 'src-tauri/tauri.conf.json').read_text())
 capabilities = json.loads((app / 'src-tauri/capabilities/default.json').read_text())
@@ -27,7 +27,8 @@ referenced_ids = set(re.findall(r"\$\('#([^']+)'\)", js))
 assert referenced_ids.issubset(set(ids)), f'Missing elements: {referenced_ids - set(ids)}'
 commands = set(re.findall(r'\#\[tauri::command\]\s*fn\s+(\w+)', rust))
 frontend_calls = set(re.findall(r"(?:mutation|invoke)\('([a-z_]+)'", js))
-assert frontend_calls.issubset(commands), f'Missing Rust command(s): {frontend_calls - commands}'
+extra_commands = set(re.findall(r'\#\[tauri::command\]\s*pub fn\s+(\w+)', (app / 'src-tauri/src/extra.rs').read_text()))
+assert frontend_calls.issubset(commands | extra_commands), f'Missing Rust command(s): {frontend_calls - (commands | extra_commands)}'
 assert config['productName'] == 'WFS Notch'
 assert config['version'] == '0.4.0'
 assert config['identifier'] == 'id.wfs.notch'
