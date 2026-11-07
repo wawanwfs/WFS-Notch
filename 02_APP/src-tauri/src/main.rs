@@ -9,9 +9,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use sysinfo::System;
+mod calendar_ics;
 mod extra;
 mod parity;
-mod calendar_ics;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
 use tauri::{Manager, State};
 
