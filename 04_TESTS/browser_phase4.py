@@ -25,6 +25,14 @@ with sync_playwright() as pw:
     logo = base64.b64encode((UI / "assets/wfs-notch-mark.svg").read_bytes()).decode()
     html = html.replace('src="assets/wfs-notch-mark.svg"', 'src="data:image/svg+xml;base64,' + logo + '"')
     page.set_content(html)
+    page.evaluate("""() => {
+      const storage = {};
+      Object.defineProperty(window, 'localStorage', { configurable: true, value: {
+        getItem: key => storage[key] ?? null,
+        setItem: (key, value) => { storage[key] = String(value); },
+        removeItem: key => { delete storage[key]; },
+      }});
+    }""")
     page.add_style_tag(content=(UI / "styles.css").read_text())
     page.add_script_tag(content=(UI / "app.js").read_text())
     page.add_script_tag(content=(UI / "modules.js").read_text())
