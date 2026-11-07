@@ -145,14 +145,20 @@ struct AppData {
 
 impl AppData {
     fn sanitize(&mut self) {
-        self.habits.retain(|habit| !habit.title.trim().is_empty() && habit.title.chars().count() <= 120);
+        self.habits
+            .retain(|habit| !habit.title.trim().is_empty() && habit.title.chars().count() <= 120);
         self.habits.truncate(200);
-        self.quick_links.retain(|link| !link.label.trim().is_empty() && link.label.chars().count() <= 120
-            && (link.url.starts_with("https://") || link.url.starts_with("http://"))
-            && link.url.len() <= 2048);
+        self.quick_links.retain(|link| {
+            !link.label.trim().is_empty()
+                && link.label.chars().count() <= 120
+                && (link.url.starts_with("https://") || link.url.starts_with("http://"))
+                && link.url.len() <= 2048
+        });
         self.quick_links.truncate(100);
         for habit in &mut self.habits {
-            habit.completed_dates.retain(|date| date.len() == 10 && date.bytes().all(|c| c.is_ascii_digit() || c == b'-'));
+            habit.completed_dates.retain(|date| {
+                date.len() == 10 && date.bytes().all(|c| c.is_ascii_digit() || c == b'-')
+            });
             habit.completed_dates.sort();
             habit.completed_dates.dedup();
             if habit.completed_dates.len() > 3660 {
@@ -694,7 +700,9 @@ fn set_expanded(window: tauri::Window, expanded: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn close_app(app: tauri::AppHandle) { app.exit(0); }
+fn close_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
 
 fn main() {
     tauri::Builder::default()
@@ -708,7 +716,8 @@ fn main() {
                 .text("show", "Show WFS Notch")
                 .text("quit", "Exit WFS Notch")
                 .build()?;
-            let tray_icon = app.default_window_icon()
+            let tray_icon = app
+                .default_window_icon()
                 .ok_or_else(|| std::io::Error::other("No embedded WFS Notch icon"))?
                 .clone();
             TrayIconBuilder::new()
