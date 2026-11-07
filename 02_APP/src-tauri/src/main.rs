@@ -11,6 +11,7 @@ use std::{
 use sysinfo::System;
 mod extra;
 mod parity;
+mod calendar_ics;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
 use tauri::{Manager, State};
 
@@ -777,6 +778,8 @@ fn main() {
             add_event,
             update_event,
             remove_event,
+            calendar_ics::import_ics,
+            calendar_ics::export_ics,
             create_backup,
             list_backups,
             restore_backup,
