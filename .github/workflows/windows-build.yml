@@ -52,12 +52,16 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: JavaScript syntax
         run: node --check 02_APP/ui/app.js
+      - name: Phase 4 JavaScript syntax
+        run: node --check 02_APP/ui/modules.js
       - name: Structural and metadata audit
         run: python 04_TESTS/static_audit.py
       - name: Phase 2 browser regression
         run: python 04_TESTS/browser_smoke.py
       - name: Phase 3 browser integration
         run: python 04_TESTS/browser_phase3.py
+      - name: Phase 4 functional UI integration
+        run: python 04_TESTS/browser_phase4.py
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
