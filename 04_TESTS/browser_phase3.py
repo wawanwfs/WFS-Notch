@@ -16,7 +16,7 @@ with sync_playwright() as pw:
     exceptions = []
     page.on('pageerror', lambda error: exceptions.append(str(error)))
     page.on('dialog', lambda dialog: dialog.accept())
-    html = (UI / 'index.html').read_text().replace('<link rel="stylesheet" href="styles.css">', '').replace('<script src="app.js" defer></script>', '')
+    html = (UI / 'index.html').read_text().replace('<link rel="stylesheet" href="styles.css">', '').replace('<script src="app.js" defer></script>', '').replace('<script src="modules.js" defer></script>', '')
     logo = base64.b64encode((UI / 'assets' / 'wfs-notch-mark.svg').read_bytes()).decode()
     html = html.replace('src="assets/wfs-notch-mark.svg"', f'src="data:image/svg+xml;base64,{logo}"')
     page.set_content(html)

@@ -27,6 +27,10 @@
         <button data-tab="calendar" class="tab">Calendar</button>
         <button data-tab="timer" class="tab">Focus timer</button>
         <button data-tab="system" class="tab">System</button>
+        <button data-tab="habits" class="tab">Habits</button>
+        <button data-tab="dock" class="tab">Dock</button>
+        <button data-tab="media" class="tab">Media</button>
+        <button data-tab="tools" class="tab">Tools</button>
         <button data-tab="settings" class="tab">Settings</button>
       </nav>
       <main>
@@ -38,6 +42,7 @@
             <div class="mini-card focus-card"><span class="mini-label">FOCUS SESSION</span><b id="focus-status">25:00</b><button class="text-button" id="go-timer">Open timer →</button></div>
           </div>
           <div class="home-upcoming"><span class="mini-label">NEXT CALENDAR EVENT</span><span id="next-event">No upcoming events</span><button class="text-button" id="go-calendar" type="button">View calendar →</button></div>
+          <div class="phase4-home">Habits completed today <b id="home-habit-progress">0 / 0</b> · Pinned links <b id="home-link-count">0</b></div>
           <div class="footnote">Local-first · Rust backend · Original WFS Notch design</div>
         </section>
         <section class="panel" id="panel-todos">
@@ -74,15 +79,68 @@
           <div class="section-heading"><div><h2>Focus timer</h2><p>Own your next session.</p></div><span class="section-pill">POMODORO</span></div>
           <div class="timer-layout"><div class="timer-ring"><div class="timer-ring-inner"><strong id="timer-display">25:00</strong><span id="timer-label">READY WHEN YOU ARE</span></div></div><div class="timer-controls"><p>SESSION LENGTH</p><div class="preset-row"><button data-minutes="15">15m</button><button data-minutes="25" class="selected">25m</button><button data-minutes="45">45m</button><button data-minutes="60">60m</button></div><button id="timer-start" class="primary large">Start focus</button><button id="timer-reset" class="secondary large">Reset</button></div></div>
         </section>
+
+        <section class="panel" id="panel-habits">
+          <div class="section-heading"><div><h2>Habit tracker</h2><p>Build daily consistency, one check-in at a time.</p></div><span class="section-pill" id="habit-count">0 TODAY</span></div>
+          <form id="habit-form" class="input-row"><input id="habit-title" maxlength="120" placeholder="New habit, e.g. Read for 20 minutes" aria-label="New habit" required><button class="primary" type="submit">Add habit</button></form>
+          <p class="event-hint">Check-ins are saved locally. The daily date follows your PC's timezone; no account required.</p>
+          <div class="module-list" id="habit-list" aria-live="polite"></div>
+        </section>
+        <section class="panel" id="panel-dock">
+          <div class="section-heading"><div><h2>Dock &amp; quick launch</h2><p>Launch Windows essentials and pin your favorite websites.</p></div><span class="section-pill">WINDOWS</span></div>
+          <div class="launch-grid" id="builtin-list">
+            <button type="button" data-launch="explorer">📁 Files</button>
+            <button type="button" data-launch="calculator">🧮 Calculator</button>
+            <button type="button" data-launch="notepad">📝 Notepad</button>
+            <button type="button" data-launch="paint">🎨 Paint</button>
+            <button type="button" data-launch="settings">⚙ Settings</button>
+          </div>
+          <form id="quicklink-form" class="link-form">
+            <input id="quicklink-label" required maxlength="120" placeholder="Website name" aria-label="Website name">
+            <input id="quicklink-url" type="url" maxlength="2048" required placeholder="https://example.com" aria-label="Website URL">
+            <button class="primary" type="submit">Pin link</button>
+          </form>
+          <div class="module-list" id="quicklink-list"></div>
+          <p class="event-hint">Native buttons require Windows; pinned links open in your default browser. URLs must be http(s), without embedded passwords.</p>
+        </section>
+        <section class="panel" id="panel-media">
+          <div class="section-heading"><div><h2>Media remote</h2><p>Windows global media and volume controls.</p></div><span class="section-pill">NATIVE KEYS</span></div>
+          <div class="media-pad">
+            <button type="button" data-media="previous" aria-label="Previous track">⏮</button>
+            <button type="button" data-media="play_pause" class="media-primary" aria-label="Play or pause">⏯</button>
+            <button type="button" data-media="next" aria-label="Next track">⏭</button>
+            <button type="button" data-media="stop" aria-label="Stop">⏹</button>
+          </div>
+          <div class="volume-pad">
+            <button type="button" data-media="volume_down">− Volume</button>
+            <button type="button" data-media="mute">Mute / unmute</button>
+            <button type="button" data-media="volume_up">+ Volume</button>
+          </div>
+          <p class="event-hint">Controls the active Windows media session by sending standard media keys. Track title, album art, lyrics and playlists are not available yet. Playback depends on your media application.</p>
+        </section>
+        <section class="panel" id="panel-tools">
+          <div class="section-heading"><div><h2>Quick tools</h2><p>Small utilities built into the notch.</p></div><span class="section-pill">OFFLINE</span></div>
+          <div class="tools-grid">
+            <div class="tool-card"><b>Stopwatch</b><div class="stopwatch-display" id="stopwatch-display">00:00.0</div><div class="tool-actions"><button class="primary" id="stopwatch-toggle">Start</button><button class="secondary" id="stopwatch-lap">Lap</button><button class="secondary" id="stopwatch-reset">Reset</button></div><div class="tool-laps" id="stopwatch-laps"></div></div>
+            <div class="tool-card"><b>Secure password generator</b><p>Generated locally using the OS cryptographic random source.</p><div class="tool-actions"><button class="primary" id="password-generate">Generate</button><button class="secondary" id="password-copy">Copy</button></div><output id="password-output" class="tool-output" aria-live="polite">Click Generate</output></div>
+            <div class="tool-card"><b>Quick math</b><p>Simple arithmetic. No network, no eval().</p><form id="math-form" class="tool-actions"><input id="math-input" aria-label="Math expression" placeholder="120 * 1.15" required><button class="primary" type="submit">=</button></form><output id="math-output" class="tool-output">Result</output></div>
+            <div class="tool-card"><b>Command palette</b><p>Jump to modules quickly with Ctrl+K (while WFS Notch is focused).</p><button id="palette-open" class="secondary" type="button">Open palette</button></div>
+          </div>
+        </section>
+        <div id="command-palette" class="palette-overlay" hidden role="dialog" aria-modal="true" aria-label="Command palette">
+          <div class="palette-dialog"><input id="palette-search" placeholder="Jump to a module..." aria-label="Search modules"><div id="palette-results"></div><button id="palette-close" class="text-button" type="button">Close · Esc</button></div>
+        </div>
         <section class="panel" id="panel-settings">
           <div class="section-heading"><div><h2>Appearance</h2><p>Personalize your command center.</p></div><span class="section-pill">LOCAL</span></div>
           <div class="settings-row"><div><b>Accent color</b><small>Choose a highlight for your workspace</small></div><div class="swatches"><button class="swatch" data-color="#d6b77a" style="--swatch:#d6b77a" aria-label="Champagne"></button><button class="swatch" data-color="#73c9e5" style="--swatch:#73c9e5" aria-label="Ice"></button><button class="swatch" data-color="#ae91f2" style="--swatch:#ae91f2" aria-label="Lavender"></button><button class="swatch" data-color="#8bd7ab" style="--swatch:#8bd7ab" aria-label="Mint"></button></div></div>
           <div class="settings-row"><div><b>Hover to open</b><small>Expand the notch when the pointer enters</small></div><label class="toggle-label"><input id="hover-toggle" type="checkbox"><span>Enabled</span></label></div>
           <div class="settings-row"><div><b>Keep panel open</b><small>Prevent automatic collapsing when your pointer leaves</small></div><label class="toggle-label"><input id="pin-toggle" type="checkbox"><span>Pinned</span></label></div>
+          <div class="settings-row"><div><b>Start with Windows</b><small>Optional HKCU autostart; no admin access required</small></div><label class="toggle-label"><input id="autostart-toggle" type="checkbox"><span>Enabled</span></label></div>
+          <div class="settings-row"><div><b>System tray</b><small>Close to hide; restore or quit from the Windows tray icon</small></div><span class="section-pill">AVAILABLE</span></div>
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.3.0 · PREVIEW</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.4.0 · PREVIEW</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>
@@ -91,5 +149,6 @@
   </div>
   <div id="toast" aria-live="polite" role="status"></div>
   <script src="app.js" defer></script>
+  <script src="modules.js" defer></script>
 </body>
 </html>

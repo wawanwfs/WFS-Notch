@@ -6,7 +6,7 @@ const nativeInvoke = window.__TAURI__?.core?.invoke;
 const previewKey = 'wfs-notch-browser-preview-v2';
 const previewBackupsKey = 'wfs-notch-browser-backups-v3';
 const defaults = () => ({
-  todos: [], notes: [], events: [],
+  todos: [], notes: [], events: [], habits: [], quick_links: [],
   settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
 });
@@ -48,6 +48,8 @@ function previewInvoke(command, args = {}) {
   state.settings = { ...defaults().settings, ...state.settings };
   state.focus = { ...defaults().focus, ...state.focus };
   state.events = Array.isArray(state.events) ? state.events : [];
+  state.habits = Array.isArray(state.habits) ? state.habits : [];
+  state.quick_links = Array.isArray(state.quick_links) ? state.quick_links : [];
   if (command === 'list_backups') return Promise.resolve(JSON.parse(localStorage.getItem(previewBackupsKey) || '[]').map(item => item.info));
   if (command === 'create_backup') {
     const backups = JSON.parse(localStorage.getItem(previewBackupsKey) || '[]');
@@ -64,6 +66,10 @@ function previewInvoke(command, args = {}) {
     state = JSON.parse(JSON.stringify(backup.snapshot));
     localStorage.setItem(previewKey, JSON.stringify(state));
     return Promise.resolve(state);
+  }
+  if (command === 'get_autostart') return Promise.resolve(false);
+  if (command === 'launch_builtin' || command === 'media_key' || command === 'open_quick_link' || command === 'set_autostart') {
+    throw new Error('This Windows integration requires the installed desktop application');
   }
   if (command === 'get_system_snapshot') return Promise.resolve(null); // Never manufacture telemetry in browser preview.
   const nextId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -120,6 +126,33 @@ function previewInvoke(command, args = {}) {
     case 'remove_event': {
       if (!state.events.some(item => item.id === args.id)) throw new Error('Event not found');
       state.events = state.events.filter(item => item.id !== args.id); break;
+    }
+    case 'add_habit': {
+      const title = String(args.title || '').trim();
+      if (!title || title.length > 120) throw new Error('Invalid habit name');
+      state.habits.push({id: nextId(), title, completed_dates: [], created_ms: Date.now()}); break;
+    }
+    case 'toggle_habit_day': {
+      const habit = state.habits.find(item => item.id === args.id);
+      if (!habit || !/^\d{4}-\d{2}-\d{2}$/.test(args.day)) throw new Error('Invalid habit/date');
+      const i = habit.completed_dates.indexOf(args.day);
+      if (i < 0) habit.completed_dates.push(args.day); else habit.completed_dates.splice(i, 1);
+      break;
+    }
+    case 'remove_habit': {
+      if (!state.habits.some(item => item.id === args.id)) throw new Error('Habit not found');
+      state.habits = state.habits.filter(item => item.id !== args.id); break;
+    }
+    case 'add_quick_link': {
+      const label = String(args.label || '').trim(), raw = String(args.url || '');
+      let parsed;
+      try { parsed = new URL(raw); } catch { throw new Error('Invalid quick link URL'); }
+      if (!label || label.length > 120 || !['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password || raw.length > 2048) throw new Error('Invalid quick link');
+      state.quick_links.push({id: nextId(), label, url: parsed.href, created_ms: Date.now()}); break;
+    }
+    case 'remove_quick_link': {
+      if (!state.quick_links.some(item => item.id === args.id)) throw new Error('Quick link not found');
+      state.quick_links = state.quick_links.filter(item => item.id !== args.id); break;
     }
     case 'set_accent': state.settings.accent = args.accent; break;
     case 'set_hover_to_open': state.settings.hover_to_open = args.enabled; break;
@@ -448,6 +481,7 @@ function render() {
   renderNotes();
   renderCalendar();
   renderTimer();
+  if (typeof renderExtras === 'function') renderExtras();
 }
 
 async function flushNote() {
@@ -603,6 +637,7 @@ function bind() {
 
 async function start() {
   bind();
+  if (typeof initExtras === 'function') initExtras();
   if (!nativeInvoke) {
     document.body.classList.add('preview');
     $('#environment').textContent = 'BROWSER PREVIEW · MOCK STORAGE';
@@ -613,6 +648,8 @@ async function start() {
   data.settings = { ...defaults().settings, ...data.settings };
   data.focus = { ...defaults().focus, ...data.focus };
   data.events = Array.isArray(data.events) ? data.events : [];
+  data.habits = Array.isArray(data.habits) ? data.habits : [];
+  data.quick_links = Array.isArray(data.quick_links) ? data.quick_links : [];
   $('#event-time').value = asLocalInput(Date.now() + 15 * 60000);
   if (!nativeInvoke || data.settings.pin_open) await setExpanded(true);
   render();

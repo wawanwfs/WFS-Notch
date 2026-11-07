@@ -38,3 +38,47 @@ body.preview .notch{position:relative;width:720px;height:430px;border-radius:22p
 @media(max-width:650px){.event-form{grid-template-columns:1fr 1fr}.home-upcoming{flex-wrap:wrap}}
 
 .event-edit-actions{height:10px;margin:0 0 2px}.event-edit-actions .text-button{font-size:10px}.event-edit-actions button[hidden]{display:none}body.preview #toast{bottom:auto;top:510px;right:calc(50% - 380px)}
+
+
+/* Phase 4 — expanded modules, without external assets or UI frameworks */
+.phase4-home{font-size:11px;color:#a4a6af;padding:9px 12px;margin-top:10px;background:#1b1c24;border:1px solid #33343d;border-radius:10px}
+.phase4-home b{color:var(--accent);font-variant-numeric:tabular-nums;margin:0 9px 0 2px}
+.module-list{overflow-y:auto;max-height:178px;scrollbar-width:thin}
+.module-item{display:flex;align-items:center;gap:12px;border:1px solid #353640;background:#1b1c23;border-radius:11px;padding:11px 12px;margin:7px 0}
+.module-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.module-info b,.link-open{font-weight:700;font-size:12px;color:#eee}
+.module-info small,.link-subtitle{font-size:10px;color:#868997;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.habit-check{border-radius:8px;border:1px solid #59505b;background:#202129;color:var(--accent);height:31px;width:31px;font-size:19px}
+.module-item.done .habit-check{background:var(--accent);color:#151316}
+.module-item .remove-task{border:0;background:transparent;color:#d8a3a5}
+.link-open{background:transparent;border:0;padding:0;text-align:left;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.link-open:hover{color:var(--accent)}
+.launch-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin-bottom:15px}
+.launch-grid button{background:#22242c;border:1px solid #3b3d46;color:#e4e5ea;font-size:11px;padding:12px 4px;border-radius:11px}
+.launch-grid button:hover{border-color:var(--accent)}
+.link-form{display:grid;grid-template-columns:1fr 1.7fr auto;gap:8px}
+.link-form input{min-width:0;font-size:11px;padding:10px}
+.media-pad{display:flex;align-items:center;justify-content:center;gap:14px;margin:20px auto}
+.media-pad button{width:64px;height:62px;background:#25252d;color:#fff;border:1px solid #41414a;border-radius:18px;font-size:25px}
+.media-pad .media-primary{background:var(--accent);color:#191517;border-color:var(--accent)}
+.volume-pad{display:flex;justify-content:center;gap:10px}
+.volume-pad button{font-size:12px;padding:11px 18px;background:#22242a;border:1px solid #3a3b46;color:#e5e5e8;border-radius:10px}
+.tools-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding-bottom:8px}
+.tool-card{border:1px solid #363740;background:linear-gradient(150deg,#202129,#16171d);border-radius:13px;padding:13px;min-width:0}
+.tool-card>b{font-size:12px;display:block}
+.tool-card>p{font-size:10px;color:#9597a3;line-height:1.45}
+.stopwatch-display{font-size:28px;font-weight:350;color:var(--accent);margin:14px 0;font-variant-numeric:tabular-nums}
+.tool-actions{display:flex;gap:6px;margin-top:10px}
+.tool-actions button{padding:8px;font-size:10px;white-space:nowrap}
+.tool-actions input{min-width:0;width:100%;padding:8px;font-size:11px}
+.tool-laps{max-height:44px;overflow-y:auto;display:flex;gap:8px;margin-top:6px;color:#9da0a9}
+.tool-output{display:block;font-size:11px;color:#e8d5af;overflow-wrap:anywhere;padding:9px 0;min-height:25px}
+.palette-overlay{position:absolute;z-index:20;inset:0;background:rgba(0,0,0,.78);padding:58px 80px;display:flex;align-items:flex-start;justify-content:center}
+.palette-overlay[hidden]{display:none}
+.palette-dialog{width:100%;max-width:520px;background:#1c1d23;border:1px solid #5a4d37;border-radius:16px;padding:16px;box-shadow:0 16px 70px rgba(0,0,0,.7)}
+.palette-dialog input{width:100%;margin-bottom:10px}
+#palette-results{max-height:270px;overflow-y:auto}
+.palette-option{display:block;width:100%;border:0;border-radius:8px;background:transparent;color:#e3e3e9;text-align:left;padding:10px 12px;font-size:12px}
+.palette-option:hover,.palette-option:focus-visible{background:#3d3530;color:var(--accent)}
+#palette-close{margin-top:14px}
+@media(max-width:660px){.launch-grid{grid-template-columns:repeat(3,1fr)}.link-form{grid-template-columns:1fr 1fr}.link-form button{grid-column:span 2}.tools-grid{grid-template-columns:1fr}}

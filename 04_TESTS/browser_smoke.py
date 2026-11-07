@@ -24,7 +24,7 @@ with sync_playwright() as playwright:
     page = context.new_page()
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
-    html = (UI / 'index.html').read_text().replace('<script src="app.js" defer></script>', '')
+    html = (UI / 'index.html').read_text().replace('<script src="app.js" defer></script>', '').replace('<script src="modules.js" defer></script>', '')
     html = html.replace('<link rel="stylesheet" href="styles.css">', '')
     encoded_logo = base64.b64encode((UI / 'assets' / 'wfs-notch-mark.svg').read_bytes()).decode('ascii')
     html = html.replace('src="assets/wfs-notch-mark.svg"', f'src="data:image/svg+xml;base64,{encoded_logo}"')

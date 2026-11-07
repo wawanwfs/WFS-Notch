@@ -1,6 +1,6 @@
 [package]
 name = "wfs-notch"
-version = "0.3.0"
+version = "0.4.0"
 description = "WFS Notch — original Windows interactive notch implementation"
 authors = ["WFS"]
 edition = "2021"
@@ -9,8 +9,9 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+url = "2"
 
 sysinfo = "=0.33.1"
