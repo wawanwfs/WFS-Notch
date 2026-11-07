@@ -66,6 +66,10 @@ jobs:
         run: python 04_TESTS/browser_phase4.py
       - name: Phase 5 REA parity browser regression
         run: python 04_TESTS/browser_parity.py
+      - name: Calendar month and Notes search regression
+        run: python 04_TESTS/browser_calendar_plus.py
+      - name: Calendar UI JavaScript syntax
+        run: node --check 02_APP/ui/calendar_plus.js
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
