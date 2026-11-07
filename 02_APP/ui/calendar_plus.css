@@ -1,0 +1,20 @@
+/* Feature parity tranche: calendar month grid, ICS interchange and live note search. */
+.note-search-row { margin: 8px 0 12px; }
+.note-search-row input { width: 100%; padding: 9px 12px; border-radius: 11px; }
+.calendar-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0 8px; }
+.calendar-toolbar strong { min-width: 140px; font-size: .95rem; letter-spacing: .02em; }
+.calendar-toolbar button { min-height: 32px; }
+.calendar-weekdays, .calendar-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.calendar-weekdays { text-align: center; font-size: .70rem; opacity: .70; margin-bottom: 5px; }
+.calendar-month-grid { margin-bottom: 15px; }
+.calendar-blank { min-height: 42px; }
+.calendar-day { border-radius: 10px; min-height: 42px; padding: 4px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.06); color: inherit; position: relative; font: inherit; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+.calendar-day:hover, .calendar-day:focus-visible { background: rgba(214,183,122,.13); outline-offset: 2px; }
+.calendar-day.today { border-color: var(--accent, #d6b77a); }
+.calendar-day.selected { box-shadow: inset 0 0 0 2px var(--accent, #d6b77a); }
+.calendar-day.has-event small { font-size: .65rem; background: var(--accent, #d6b77a); color: #121318; padding: 1px 5px; border-radius: 99px; font-weight: 700; }
+.ics-box { border: 1px solid rgba(214,183,122,.24); border-radius: 13px; padding: 9px 12px; margin: 10px 0; }
+.ics-box summary { cursor: pointer; font-weight: 600; }
+.ics-box textarea { box-sizing: border-box; display: block; width: 100%; min-height: 85px; resize: vertical; margin: 9px 0; border-radius: 8px; padding: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+.ics-box small { color: #c8c8d2; display: block; padding: 5px 0; }
+@media (max-width: 560px) { .calendar-day { min-height: 34px; font-size: .77rem; } .calendar-day.has-event small { padding: 0 3px; } .calendar-toolbar { gap: 6px; } .calendar-blank { min-height: 34px; } }
