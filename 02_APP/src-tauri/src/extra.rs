@@ -28,8 +28,12 @@ fn validate_title(input: &str) -> Result<String, String> {
 
 fn validate_day(value: &str) -> Result<(), String> {
     let parts: Vec<_> = value.split('-').collect();
-    if parts.len() != 3 || parts[0].len() != 4 || parts[1].len() != 2 || parts[2].len() != 2 ||
-        !value.bytes().all(|c| c.is_ascii_digit() || c == b'-') {
+    if parts.len() != 3
+        || parts[0].len() != 4
+        || parts[1].len() != 2
+        || parts[2].len() != 2
+        || !value.bytes().all(|c| c.is_ascii_digit() || c == b'-')
+    {
         return Err("Date must use YYYY-MM-DD".into());
     }
     let year: u32 = parts[0].parse().map_err(|_| "Invalid year")?;
@@ -39,7 +43,20 @@ fn validate_day(value: &str) -> Result<(), String> {
         return Err("Date is outside supported range".into());
     }
     let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
-    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     if day == 0 || day > month_days[month - 1] {
         return Err("Invalid calendar date".into());
     }
@@ -52,10 +69,11 @@ fn validate_url(input: &str) -> Result<String, String> {
         return Err("URL must be under 2048 characters without whitespace".into());
     }
     let parsed = url::Url::parse(raw).map_err(|_| "Enter a complete http(s) URL")?;
-    if !matches!(parsed.scheme(), "http" | "https") ||
-        parsed.host_str().is_none() ||
-        !parsed.username().is_empty() ||
-        parsed.password().is_some() {
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
         return Err("Only http(s) links without embedded credentials are allowed".into());
     }
     Ok(parsed.to_string())
@@ -65,19 +83,32 @@ fn validate_url(input: &str) -> Result<String, String> {
 pub fn add_habit(store: State<'_, Mutex<Store>>, title: String) -> Result<AppData, String> {
     let title = validate_title(&title)?;
     with_store(store, |data| {
-        if data.habits.len() >= 200 { return Err("Maximum 200 habits".into()); }
+        if data.habits.len() >= 200 {
+            return Err("Maximum 200 habits".into());
+        }
         data.habits.push(Habit {
-            id: new_id(), title, completed_dates: Vec::new(), created_ms: now_ms()
+            id: new_id(),
+            title,
+            completed_dates: Vec::new(),
+            created_ms: now_ms(),
         });
         Ok(())
     })
 }
 
 #[tauri::command]
-pub fn toggle_habit_day(store: State<'_, Mutex<Store>>, id: String, day: String) -> Result<AppData, String> {
+pub fn toggle_habit_day(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    day: String,
+) -> Result<AppData, String> {
     validate_day(&day)?;
     with_store(store, |data| {
-        let habit = data.habits.iter_mut().find(|habit| habit.id == id).ok_or("Habit not found")?;
+        let habit = data
+            .habits
+            .iter_mut()
+            .find(|habit| habit.id == id)
+            .ok_or("Habit not found")?;
         if let Some(index) = habit.completed_dates.iter().position(|item| item == &day) {
             habit.completed_dates.remove(index);
         } else {
@@ -97,18 +128,31 @@ pub fn remove_habit(store: State<'_, Mutex<Store>>, id: String) -> Result<AppDat
     with_store(store, |data| {
         let before = data.habits.len();
         data.habits.retain(|item| item.id != id);
-        if before == data.habits.len() { return Err("Habit not found".into()); }
+        if before == data.habits.len() {
+            return Err("Habit not found".into());
+        }
         Ok(())
     })
 }
 
 #[tauri::command]
-pub fn add_quick_link(store: State<'_, Mutex<Store>>, label: String, url: String) -> Result<AppData, String> {
+pub fn add_quick_link(
+    store: State<'_, Mutex<Store>>,
+    label: String,
+    url: String,
+) -> Result<AppData, String> {
     let label = validate_title(&label)?;
     let url = validate_url(&url)?;
     with_store(store, |data| {
-        if data.quick_links.len() >= 100 { return Err("Maximum 100 quick links".into()); }
-        data.quick_links.push(QuickLink { id: new_id(), label, url, created_ms: now_ms() });
+        if data.quick_links.len() >= 100 {
+            return Err("Maximum 100 quick links".into());
+        }
+        data.quick_links.push(QuickLink {
+            id: new_id(),
+            label,
+            url,
+            created_ms: now_ms(),
+        });
         Ok(())
     })
 }
@@ -118,7 +162,9 @@ pub fn remove_quick_link(store: State<'_, Mutex<Store>>, id: String) -> Result<A
     with_store(store, |data| {
         let before = data.quick_links.len();
         data.quick_links.retain(|item| item.id != id);
-        if before == data.quick_links.len() { return Err("Quick link not found".into()); }
+        if before == data.quick_links.len() {
+            return Err("Quick link not found".into());
+        }
         Ok(())
     })
 }
@@ -127,17 +173,29 @@ pub fn remove_quick_link(store: State<'_, Mutex<Store>>, id: String) -> Result<A
 pub fn open_quick_link(store: State<'_, Mutex<Store>>, id: String) -> Result<(), String> {
     let link = {
         let locked = store.lock().map_err(|_| "Storage lock poisoned")?;
-        locked.data.quick_links.iter().find(|link| link.id == id)
-            .ok_or("Quick link not found")?.url.clone()
+        locked
+            .data
+            .quick_links
+            .iter()
+            .find(|link| link.id == id)
+            .ok_or("Quick link not found")?
+            .url
+            .clone()
     };
     let safe_url = validate_url(&link)?;
     #[cfg(windows)]
     {
-        Command::new("explorer.exe").arg(&safe_url).spawn().map_err(|e| e.to_string())?;
+        Command::new("explorer.exe")
+            .arg(&safe_url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
     #[cfg(not(windows))]
-    { let _ = safe_url; Err("Quick launch is available only on Windows".into()) }
+    {
+        let _ = safe_url;
+        Err("Quick launch is available only on Windows".into())
+    }
 }
 
 /// Fixed allowlist: never execute arbitrary user-supplied commands or shell expressions.
@@ -154,12 +212,17 @@ pub fn launch_builtin(app_name: String) -> Result<(), String> {
             _ => return Err("Unknown built-in Windows app".into()),
         };
         let mut cmd = Command::new(program);
-        if let Some(arg) = arg { cmd.arg(arg); }
+        if let Some(arg) = arg {
+            cmd.arg(arg);
+        }
         cmd.spawn().map_err(|e| e.to_string())?;
         Ok(())
     }
     #[cfg(not(windows))]
-    { let _ = app_name; Err("Quick launch is available only on Windows".into()) }
+    {
+        let _ = app_name;
+        Err("Quick launch is available only on Windows".into())
+    }
 }
 
 /// Sends standard Windows global media/volume virtual keys. It does not read track metadata.
@@ -189,7 +252,10 @@ pub fn media_key(action: String) -> Result<(), String> {
         Ok(())
     }
     #[cfg(not(windows))]
-    { let _ = code; Err("Media keys are available only on Windows".into()) }
+    {
+        let _ = code;
+        Err("Media keys are available only on Windows".into())
+    }
 }
 
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
@@ -198,13 +264,19 @@ const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 pub fn get_autostart() -> Result<bool, String> {
     #[cfg(windows)]
     {
-        let output = Command::new("reg").args(["query", RUN_KEY, "/v", "WFSNotch"])
-            .output().map_err(|e| e.to_string())?;
-        if !output.status.success() { return Ok(false); }
+        let output = Command::new("reg")
+            .args(["query", RUN_KEY, "/v", "WFSNotch"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Ok(false);
+        }
         Ok(String::from_utf8_lossy(&output.stdout).contains("WFSNotch"))
     }
     #[cfg(not(windows))]
-    { Err("Autostart is available only on Windows".into()) }
+    {
+        Err("Autostart is available only on Windows".into())
+    }
 }
 
 #[tauri::command]
@@ -215,13 +287,29 @@ pub fn set_autostart(enabled: bool) -> Result<bool, String> {
             let executable = std::env::current_exe().map_err(|e| e.to_string())?;
             let quoted_path = format!("\"{}\"", executable.display());
             Command::new("reg")
-                .args(["add", RUN_KEY, "/v", "WFSNotch", "/t", "REG_SZ", "/d", &quoted_path, "/f"])
+                .args([
+                    "add",
+                    RUN_KEY,
+                    "/v",
+                    "WFSNotch",
+                    "/t",
+                    "REG_SZ",
+                    "/d",
+                    &quoted_path,
+                    "/f",
+                ])
                 .output()
         } else {
-            Command::new("reg").args(["delete", RUN_KEY, "/v", "WFSNotch", "/f"]).output()
-        }.map_err(|e| e.to_string())?;
+            Command::new("reg")
+                .args(["delete", RUN_KEY, "/v", "WFSNotch", "/f"])
+                .output()
+        }
+        .map_err(|e| e.to_string())?;
         if !output.status.success() && enabled {
-            return Err(format!("Windows Run registry update failed: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(format!(
+                "Windows Run registry update failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
         if !output.status.success() && !enabled && get_autostart()? {
             return Err("Failed to disable Windows autostart".into());
@@ -229,7 +317,10 @@ pub fn set_autostart(enabled: bool) -> Result<bool, String> {
         get_autostart()
     }
     #[cfg(not(windows))]
-    { let _ = enabled; Err("Autostart is available only on Windows".into()) }
+    {
+        let _ = enabled;
+        Err("Autostart is available only on Windows".into())
+    }
 }
 
 #[cfg(test)]
