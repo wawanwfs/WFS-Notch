@@ -35,7 +35,7 @@ with sync_playwright() as pw:
         removeItem: k => { delete data[k]; }
       }});
     }""")
-    for name in ["styles.css", "calendar_plus.css", "system_details.css"]:
+    for name in ["styles.css", "calendar_plus.css", "system_details.css", "media_sessions.css"]:
         page.add_style_tag(content=(UI / name).read_text(encoding="utf-8"))
     for name in ["app.js", "modules.js", "parity.js", "calendar_plus.js", "system_details.js"]:
         page.add_script_tag(content=(UI / name).read_text(encoding="utf-8"))
