@@ -11,7 +11,7 @@ app = root / '02_APP'
 html = (app / 'ui/index.html').read_text()
 js = '\n'.join((app / 'ui' / filename).read_text() for filename in ('app.js', 'modules.js', 'parity.js', 'calendar_plus.js', 'system_details.js', 'media_sessions.js'))
 rust = (app / 'src-tauri/src/main.rs').read_text()
-all_rust = '\n'.join((app / 'src-tauri/src' / filename).read_text() for filename in ('main.rs', 'extra.rs', 'parity.rs', 'calendar_ics.rs', 'system_details.rs'))
+all_rust = '\n'.join((app / 'src-tauri/src' / filename).read_text() for filename in ('main.rs', 'extra.rs', 'parity.rs', 'calendar_ics.rs', 'system_details.rs', 'media_sessions.rs'))
 config = json.loads((app / 'src-tauri/tauri.conf.json').read_text())
 capabilities = json.loads((app / 'src-tauri/capabilities/default.json').read_text())
 
