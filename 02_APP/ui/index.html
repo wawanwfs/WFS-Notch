@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="calendar_plus.css">
   <link rel="stylesheet" href="system_details.css">
+  <link rel="stylesheet" href="media_sessions.css">
 </head>
 <body>
   <div id="notch" class="notch" aria-label="WFS Notch">
@@ -173,6 +174,15 @@
         </section>
         <section class="panel" id="panel-media">
           <div class="section-heading"><div><h2>Media remote</h2><p>Windows global media and volume controls.</p></div><span class="section-pill">NATIVE KEYS</span></div>
+          <div id="now-playing" class="now-playing" role="status" aria-live="polite">
+            <div class="now-playing-overline">CURRENT WINDOWS MEDIA SESSION</div>
+            <strong id="media-track-title">No session detected</strong>
+            <div id="media-track-artist">Open the native desktop app to inspect active media.</div>
+            <small id="media-track-source">Track metadata stays on this device</small>
+            <div class="media-progress"><span id="media-progress-bar"></span></div>
+            <div class="media-time"><span id="media-position">—</span><span id="media-playback-state">Unavailable</span><span id="media-duration">—</span></div>
+            <button type="button" class="text-button" id="media-refresh">Refresh track</button>
+          </div>
           <div class="media-pad">
             <button type="button" data-media="previous" aria-label="Previous track">⏮</button>
             <button type="button" data-media="play_pause" class="media-primary" aria-label="Play or pause">⏯</button>
@@ -184,7 +194,7 @@
             <button type="button" data-media="mute">Mute / unmute</button>
             <button type="button" data-media="volume_up">+ Volume</button>
           </div>
-          <p class="event-hint">Controls the active Windows media session by sending standard media keys. Track title, album art, lyrics and playlists are not available yet. Playback depends on your media application.</p>
+          <p class="event-hint">Track title, artist, album, session and position are read from Windows GSMTC only while this panel is open. Album art, synchronized lyrics and playlists are not implemented yet. Media buttons send standard Windows media keys and playback depends on your media app.</p>
         </section>
         <section class="panel" id="panel-tools">
           <div class="section-heading"><div><h2>Quick tools</h2><p>Small utilities built into the notch.</p></div><span class="section-pill">OFFLINE</span></div>
@@ -221,5 +231,6 @@
   <script src="parity.js" defer></script>
   <script src="calendar_plus.js" defer></script>
   <script src="system_details.js" defer></script>
+  <script src="media_sessions.js" defer></script>
 </body>
 </html>
