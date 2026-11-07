@@ -1,4 +1,4 @@
-# WFS Notch — Phase 7 / v0.7.0 (development)
+# WFS Notch — Phase 8 / v0.8.0 (development)
 
 **GitHub CI / publisher instructions:** [README_GITHUB.md](README_GITHUB.md). GitHub Actions builds Windows x64 installers; CI results are available in the repository Actions tab. Successful CI is not a native Windows user-interaction parity test.
 
@@ -6,6 +6,10 @@
 
 **Status:** v0.6.0 source is under CI and feature review. Rust/Windows compilation and browser regressions must be checked on this commit. The installer is unsigned and the product is NOT a 100% Poni replacement or production-certified.\n
 WFS Notch is an original implementation built with a Rust + Tauri 2 backend and an HTML/CSS/JavaScript WebView front end. It does not redistribute or modify the supplied Poni binaries. It targets Windows 10/11 x64.
+
+## Phase 8 — Windows now-playing metadata
+
+The Windows-only Rust `GlobalSystemMediaTransportControlsSessionManager` integration reads the **current** OS media session title, artist, album name, playback status and timeline while the user opens Media. Windows media keys continue to operate through the existing explicit buttons. Browser preview cannot access or simulate media metadata. No microphone recording, file scanning or internet access is used. WinRT media APIs may be unavailable on unsupported Windows builds, in service sessions, or without a player that exposes the OS media session. Album artwork, synced lyrics, playlist controls and multi-session selection remain future work. Native Windows music-player testing is required before declaring parity.
 
 ## Phase 7 — native disk/network monitoring
 
