@@ -37,7 +37,7 @@ with sync_playwright() as pw:
     }""")
     for name in ["styles.css", "calendar_plus.css", "system_details.css", "media_sessions.css"]:
         page.add_style_tag(content=(UI / name).read_text(encoding="utf-8"))
-    for name in ["app.js", "modules.js", "parity.js", "calendar_plus.js", "system_details.js"]:
+    for name in ["app.js", "modules.js", "parity.js", "calendar_plus.js", "system_details.js", "media_sessions.js"]:
         page.add_script_tag(content=(UI / name).read_text(encoding="utf-8"))
     page.locator("#expanded").wait_for(state="visible")
 
