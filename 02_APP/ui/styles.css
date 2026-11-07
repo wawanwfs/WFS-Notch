@@ -82,3 +82,23 @@ body.preview .notch{position:relative;width:720px;height:430px;border-radius:22p
 .palette-option:hover,.palette-option:focus-visible{background:#3d3530;color:var(--accent)}
 #palette-close{margin-top:14px}
 @media(max-width:660px){.launch-grid{grid-template-columns:repeat(3,1fr)}.link-form{grid-template-columns:1fr 1fr}.link-form button{grid-column:span 2}.tools-grid{grid-template-columns:1fr}}
+
+/* Phase 5: evidence-driven parity modules, no copied Poni assets. */
+.health-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.health-grid .system-card{padding:14px}.health-grid .system-card b{font-size:28px;margin:9px 0}
+.health-grid .system-card button{font-size:10px;white-space:nowrap;padding:9px}
+.day-progress-track{height:17px;border-radius:99px;border:1px solid #46404a;background:#24232b;overflow:hidden;margin:19px 0}
+.day-progress-track span{display:block;height:100%;width:0;background:linear-gradient(90deg,#927f59,var(--accent));transition:width .2s}
+.progress-caption{display:flex;justify-content:space-between;align-items:end;color:#9fa1ad;font-size:12px}
+.progress-caption strong{font-size:36px;color:#eee;font-weight:400}
+.day-summary{display:flex;justify-content:space-between;color:#adb0bb;font-size:12px;margin-bottom:13px}
+.countdown-face{text-align:center;color:var(--accent);font-size:58px;font-weight:300;font-variant-numeric:tabular-nums;margin:13px 0}
+.countdown-form{display:flex;align-items:center;gap:9px;margin:10px 0 18px;color:#a4a5af;font-size:12px}
+.countdown-form input{width:85px;padding:10px}.countdown-form button{white-space:nowrap}
+.weather-current{border:1px solid #343740;background:#202128;border-radius:12px;padding:20px;color:#e7e4df;font-size:14px;min-height:70px}
+.weather-days{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.weather-day{display:flex;flex-direction:column;gap:6px;min-width:110px;padding:11px;background:#25252e;border:1px solid #393941;border-radius:10px;color:#dcdde1;font-size:11px}
+.weather-day small{color:#aba6a4}
+.flashcards-select{width:100%;padding:10px;border-radius:10px;background:#202127;color:#eee;border:1px solid #3a3b45}
+.flashcard-face{display:grid;place-items:center;text-align:center;min-height:126px;padding:20px;border:1px solid #554a3c;background:linear-gradient(140deg,#28242a,#1e1e26);border-radius:14px;margin-top:13px;color:#e3d1ac;font-size:18px;overflow-wrap:anywhere}
+@media(max-width:640px){.health-grid{grid-template-columns:1fr}.day-summary{flex-direction:column;gap:8px}.countdown-form{flex-wrap:wrap}}
