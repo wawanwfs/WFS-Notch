@@ -12,6 +12,7 @@ use sysinfo::System;
 mod calendar_ics;
 mod extra;
 mod parity;
+mod system_details;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
 use tauri::{Manager, State};
 
@@ -784,6 +785,7 @@ fn main() {
             list_backups,
             restore_backup,
             get_system_snapshot,
+            system_details::get_system_details,
             set_accent,
             set_hover_to_open,
             set_pin_open,

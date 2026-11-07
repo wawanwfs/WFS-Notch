@@ -1,0 +1,12 @@
+/* Native read-only Windows disk/network details */
+.system-detail-columns { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:14px; margin-top:16px; }
+.system-detail-columns section { min-width:0; border-radius:13px; padding:13px; border:1px solid rgba(255,255,255,.09); background:rgba(255,255,255,.03); }
+.system-detail-columns h3 { font-size:.82rem; font-weight:650; margin:0 0 12px; }
+.detail-row { padding:8px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+.detail-row:last-child { border-bottom:none; }
+.detail-label { display:grid; gap:4px; min-width:0; }
+.detail-label b { font-weight:600; font-size:.78rem; overflow-wrap:anywhere; }
+.detail-label small { color:#aab0bc; font-size:.68rem; overflow-wrap:anywhere; }
+.detail-meter { height:5px; background:rgba(255,255,255,.10); border-radius:6px; margin-top:8px; overflow:hidden; }
+.detail-meter span { display:block; height:100%; background:var(--accent,#d6b77a); border-radius:6px; }
+@media (max-width:650px) { .system-detail-columns { grid-template-columns:1fr; } }

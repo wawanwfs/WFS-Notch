@@ -35,9 +35,9 @@ with sync_playwright() as pw:
         removeItem: k => { delete data[k]; }
       }});
     }""")
-    for name in ["styles.css", "calendar_plus.css"]:
+    for name in ["styles.css", "calendar_plus.css", "system_details.css"]:
         page.add_style_tag(content=(UI / name).read_text(encoding="utf-8"))
-    for name in ["app.js", "modules.js", "parity.js", "calendar_plus.js"]:
+    for name in ["app.js", "modules.js", "parity.js", "calendar_plus.js", "system_details.js"]:
         page.add_script_tag(content=(UI / name).read_text(encoding="utf-8"))
     page.locator("#expanded").wait_for(state="visible")
 
@@ -78,6 +78,9 @@ with sync_playwright() as pw:
     page.get_by_text("ICS import requires the installed WFS Notch desktop app.").wait_for()
     assert "requires the native Windows" in page.locator("#ics-status").inner_text()
     page.screenshot(path=str(EVIDENCE / "browser-calendar-plus.png"))
+    page.get_by_role("button", name="System", exact=True).click()
+    assert "unavailable in browser preview" in page.locator("#system-disks").inner_text()
+    assert "unavailable in browser preview" in page.locator("#system-networks").inner_text()
     assert not issues, f"JavaScript errors: {issues}"
     browser.close()
 print("PASS: calendar month navigation/event badges, Notes full-text search, honest browser ICS preview")

@@ -8,6 +8,7 @@
   <title>WFS Notch</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="calendar_plus.css">
+  <link rel="stylesheet" href="system_details.css">
 </head>
 <body>
   <div id="notch" class="notch" aria-label="WFS Notch">
@@ -95,6 +96,11 @@
             <div class="system-card"><span class="mini-label">MEMORY USAGE</span><b id="system-memory">—</b><div class="meter"><span id="memory-meter"></span></div></div>
           </div>
           <p id="system-detail" class="system-detail">No reading yet.</p>
+          <div class="system-detail-columns">
+            <section><h3>Storage volumes</h3><div id="system-disks" aria-live="polite">Read-only on Windows · no preview numbers</div></section>
+            <section><h3>Network interfaces</h3><div id="system-networks" aria-live="polite">Read-only on Windows · no preview numbers</div></section>
+          </div>
+          <p class="event-hint">Disk and network totals are local OS counters, not speed tests. No Wi-Fi scanning, admin privileges or uploads.</p>
           <p class="event-hint">Refreshes every 4 seconds while this panel is open. Does not track running apps, upload telemetry, or run a background service.</p>
         </section>
         <section class="panel" id="panel-timer">
@@ -214,5 +220,6 @@
   <script src="modules.js" defer></script>
   <script src="parity.js" defer></script>
   <script src="calendar_plus.js" defer></script>
+  <script src="system_details.js" defer></script>
 </body>
 </html>
