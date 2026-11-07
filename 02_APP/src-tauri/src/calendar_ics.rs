@@ -312,9 +312,11 @@ pub fn export_ics(store: State<'_, Mutex<Store>>) -> Result<String, String> {
 pub fn import_ics(store: State<'_, Mutex<Store>>, ics_text: String) -> Result<AppData, String> {
     let incoming = parse_ics(&ics_text)?;
     with_store(store, move |data| {
+        let mut known: std::collections::HashSet<String> =
+            data.events.iter().map(|event| event.id.clone()).collect();
         let fresh: Vec<_> = incoming
             .into_iter()
-            .filter(|event| !data.events.iter().any(|existing| existing.id == event.id))
+            .filter(|event| known.insert(event.id.clone()))
             .collect();
         if data.events.len() + fresh.len() > 1000 {
             return Err("Event limit (1000) exceeded".into());
