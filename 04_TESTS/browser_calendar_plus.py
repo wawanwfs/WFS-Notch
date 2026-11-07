@@ -70,7 +70,7 @@ with sync_playwright() as pw:
     page.locator("#event-title").fill("Monthly Badge Test")
     page.locator("#event-remind").select_option("off")
     page.get_by_role("button", name="Add event").click()
-    page.get_by_text("Monthly Badge Test").wait_for()
+    page.get_by_text("Monthly Badge Test", exact=True).wait_for()
     assert page.locator(".calendar-day.has-event").count() >= 1
     assert page.locator(".calendar-day.has-event small").first.inner_text() == "1"
     page.locator(".ics-box summary").click()
