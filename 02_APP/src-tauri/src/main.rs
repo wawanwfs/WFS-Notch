@@ -8,8 +8,8 @@ use std::{
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{Manager, State};
 use sysinfo::System;
+use tauri::{Manager, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -103,7 +103,7 @@ impl FocusState {
             } else {
                 // Ceil remaining milliseconds, including after suspend/resume.
                 let remaining_ms = (end - current_ms).min(self.duration_seconds as u128 * 1000);
-                self.remaining_seconds = ((remaining_ms + 999) / 1000) as u64;
+                self.remaining_seconds = remaining_ms.div_ceil(1000) as u64;
             }
         }
     }
@@ -151,10 +151,15 @@ impl AppData {
         if ![900, 1500, 2700, 3600].contains(&self.focus.duration_seconds) {
             self.focus = FocusState::default();
         }
-        self.focus.remaining_seconds = self.focus.remaining_seconds.min(self.focus.duration_seconds);
+        self.focus.remaining_seconds = self
+            .focus
+            .remaining_seconds
+            .min(self.focus.duration_seconds);
         if self.settings.accent.len() != 7
             || !self.settings.accent.starts_with('#')
-            || !self.settings.accent[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !self.settings.accent[1..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
         {
             self.settings.accent = Settings::default().accent;
         }
@@ -233,7 +238,8 @@ impl Store {
             fs::remove_file(&temp).map_err(|error| error.to_string())?;
         }
         let mut file = File::create(&temp).map_err(|error| error.to_string())?;
-        file.write_all(&content).map_err(|error| error.to_string())?;
+        file.write_all(&content)
+            .map_err(|error| error.to_string())?;
         file.sync_all().map_err(|error| error.to_string())?;
         drop(file);
         if self.path.exists() {
@@ -310,7 +316,11 @@ fn add_todo(store: State<'_, Mutex<Store>>, title: String) -> Result<AppData, St
 #[tauri::command]
 fn toggle_todo(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
     with_store(store, |state| {
-        let todo = state.todos.iter_mut().find(|todo| todo.id == id).ok_or("Task not found")?;
+        let todo = state
+            .todos
+            .iter_mut()
+            .find(|todo| todo.id == id)
+            .ok_or("Task not found")?;
         todo.done = !todo.done;
         Ok(())
     })
@@ -352,7 +362,11 @@ fn update_note(
         return Err("Note is too long".into());
     }
     with_store(store, |state| {
-        let note = state.notes.iter_mut().find(|note| note.id == id).ok_or("Note not found")?;
+        let note = state
+            .notes
+            .iter_mut()
+            .find(|note| note.id == id)
+            .ok_or("Note not found")?;
         note.title = title;
         note.body = body;
         note.updated_ms = now_ms();
@@ -373,7 +387,12 @@ fn remove_note(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, St
 }
 
 // Calendar events are local only; no OS calendar is modified.
-fn validate_event(title: &str, description: &str, starts_at_ms: u64, remind_minutes: Option<u32>) -> Result<(), String> {
+fn validate_event(
+    title: &str,
+    description: &str,
+    starts_at_ms: u64,
+    remind_minutes: Option<u32>,
+) -> Result<(), String> {
     if title.trim().is_empty() || title.chars().count() > 200 {
         return Err("Event title must contain 1–200 characters".into());
     }
@@ -400,8 +419,12 @@ fn add_event(
     validate_event(&title, &description, starts_at_ms, remind_minutes)?;
     with_store(store, |state| {
         state.events.push(CalendarEvent {
-            id: new_id(), title: title.trim().to_owned(), starts_at_ms,
-            remind_minutes, description, created_ms: now_ms(),
+            id: new_id(),
+            title: title.trim().to_owned(),
+            starts_at_ms,
+            remind_minutes,
+            description,
+            created_ms: now_ms(),
         });
         Ok(())
     })
@@ -418,7 +441,11 @@ fn update_event(
 ) -> Result<AppData, String> {
     validate_event(&title, &description, starts_at_ms, remind_minutes)?;
     with_store(store, |state| {
-        let event = state.events.iter_mut().find(|event| event.id == id).ok_or("Event not found")?;
+        let event = state
+            .events
+            .iter_mut()
+            .find(|event| event.id == id)
+            .ok_or("Event not found")?;
         event.title = title.trim().to_owned();
         event.starts_at_ms = starts_at_ms;
         event.remind_minutes = remind_minutes;
@@ -432,7 +459,9 @@ fn remove_event(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, S
     with_store(store, |state| {
         let old = state.events.len();
         state.events.retain(|event| event.id != id);
-        if old == state.events.len() { return Err("Event not found".into()); }
+        if old == state.events.len() {
+            return Err("Event not found".into());
+        }
         Ok(())
     })
 }
@@ -442,31 +471,56 @@ fn backup_path(store: &Store, id: &str) -> Result<PathBuf, String> {
     let valid = id.starts_with("backup-")
         && id.len() <= 80
         && id.ends_with(".json")
-        && id[7..id.len()-5].bytes().all(|c| c.is_ascii_digit() || c == b'-');
-    if !valid { return Err("Invalid backup identifier".into()); }
-    Ok(store.path.parent().ok_or("Invalid data directory")?.join("backups").join(id))
+        && id[7..id.len() - 5]
+            .bytes()
+            .all(|c| c.is_ascii_digit() || c == b'-');
+    if !valid {
+        return Err("Invalid backup identifier".into());
+    }
+    Ok(store
+        .path
+        .parent()
+        .ok_or("Invalid data directory")?
+        .join("backups")
+        .join(id))
 }
 
 fn inspect_backup(path: &Path) -> Result<BackupInfo, String> {
     let snapshot = read_state(path)?;
     Ok(BackupInfo {
-        id: path.file_name().ok_or("Bad backup name")?.to_string_lossy().into_owned(),
-        created_ms: fs::metadata(path).ok().and_then(|info| info.modified().ok())
+        id: path
+            .file_name()
+            .ok_or("Bad backup name")?
+            .to_string_lossy()
+            .into_owned(),
+        created_ms: fs::metadata(path)
+            .ok()
+            .and_then(|info| info.modified().ok())
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map(|duration| duration.as_millis()).unwrap_or(0),
-        todos: snapshot.todos.len(), notes: snapshot.notes.len(), events: snapshot.events.len(),
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0),
+        todos: snapshot.todos.len(),
+        notes: snapshot.notes.len(),
+        events: snapshot.events.len(),
     })
 }
 
 #[tauri::command]
 fn create_backup(store: State<'_, Mutex<Store>>) -> Result<BackupInfo, String> {
-    let locked = store.lock().map_err(|_| "Storage lock poisoned".to_owned())?;
+    let locked = store
+        .lock()
+        .map_err(|_| "Storage lock poisoned".to_owned())?;
     let id = format!("backup-{}-{}.json", now_ms(), new_id().replace('-', ""));
     let path = backup_path(&locked, &id)?;
-    fs::create_dir_all(path.parent().ok_or("Invalid backup directory")?).map_err(|e| e.to_string())?;
+    fs::create_dir_all(path.parent().ok_or("Invalid backup directory")?)
+        .map_err(|e| e.to_string())?;
     let content = serde_json::to_vec_pretty(&locked.data).map_err(|e| e.to_string())?;
     // Do not overwrite existing backups, even if timestamps collide.
-    let mut file = File::options().write(true).create_new(true).open(&path).map_err(|e| e.to_string())?;
+    let mut file = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
     if let Err(error) = file.write_all(&content).and_then(|()| file.sync_all()) {
         drop(file);
         let _ = fs::remove_file(&path);
@@ -478,36 +532,55 @@ fn create_backup(store: State<'_, Mutex<Store>>) -> Result<BackupInfo, String> {
 
 #[tauri::command]
 fn list_backups(store: State<'_, Mutex<Store>>) -> Result<Vec<BackupInfo>, String> {
-    let locked = store.lock().map_err(|_| "Storage lock poisoned".to_owned())?;
-    let dir = locked.path.parent().ok_or("Invalid data directory")?.join("backups");
-    if !dir.exists() { return Ok(Vec::new()); }
+    let locked = store
+        .lock()
+        .map_err(|_| "Storage lock poisoned".to_owned())?;
+    let dir = locked
+        .path
+        .parent()
+        .ok_or("Invalid data directory")?
+        .join("backups");
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
     let mut backups = Vec::new();
     for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if backup_path(&locked, &name).is_ok() && entry.file_type().map_err(|e| e.to_string())?.is_file() {
+        if backup_path(&locked, &name).is_ok()
+            && entry.file_type().map_err(|e| e.to_string())?.is_file()
+        {
             // Ignore damaged backup copies rather than making the whole list unavailable.
-            if let Ok(backup) = inspect_backup(&entry.path()) { backups.push(backup); }
+            if let Ok(backup) = inspect_backup(&entry.path()) {
+                backups.push(backup);
+            }
         }
     }
-    backups.sort_by(|a, b| b.created_ms.cmp(&a.created_ms));
+    backups.sort_by_key(|backup| std::cmp::Reverse(backup.created_ms));
     backups.truncate(100);
     Ok(backups)
 }
 
 #[tauri::command]
 fn restore_backup(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
-    let mut locked = store.lock().map_err(|_| "Storage lock poisoned".to_owned())?;
+    let mut locked = store
+        .lock()
+        .map_err(|_| "Storage lock poisoned".to_owned())?;
     let path = backup_path(&locked, &id)?;
     let mut recovered = read_state(&path)?;
     recovered.sanitize();
     // Restore is transactional and retains the previous state as state.json.bak.
-    locked.transact(|state| { *state = recovered; Ok(()) })
+    locked.transact(|state| {
+        *state = recovered;
+        Ok(())
+    })
 }
 
 #[tauri::command]
 fn get_system_snapshot(system: State<'_, Mutex<System>>) -> Result<SystemSnapshot, String> {
-    let mut system = system.lock().map_err(|_| "Telemetry lock poisoned".to_owned())?;
+    let mut system = system
+        .lock()
+        .map_err(|_| "Telemetry lock poisoned".to_owned())?;
     system.refresh_cpu_usage();
     system.refresh_memory();
     Ok(SystemSnapshot {
@@ -578,11 +651,18 @@ fn focus_reset(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
 
 #[tauri::command]
 fn set_expanded(window: tauri::Window, expanded: bool) -> Result<(), String> {
-    let (width, height) = if expanded { (760.0, 470.0) } else { (240.0, 48.0) };
+    let (width, height) = if expanded {
+        (760.0, 470.0)
+    } else {
+        (240.0, 48.0)
+    };
     window
         .set_size(tauri::LogicalSize::new(width, height))
         .map_err(|error| error.to_string())?;
-    if let Some(monitor) = window.current_monitor().map_err(|error| error.to_string())? {
+    if let Some(monitor) = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+    {
         let scale = monitor.scale_factor();
         let pixel_width = (width * scale).round() as i32;
         let position_x = monitor.position().x + (monitor.size().width as i32 - pixel_width) / 2;
@@ -611,9 +691,11 @@ fn main() {
                 if let Ok(Some(monitor)) = window.current_monitor() {
                     let scale = monitor.scale_factor();
                     let width = (240.0 * scale).round() as i32;
-                    let position_x = monitor.position().x + (monitor.size().width as i32 - width) / 2;
+                    let position_x =
+                        monitor.position().x + (monitor.size().width as i32 - width) / 2;
                     let position_y = monitor.position().y + (12.0 * scale).round() as i32;
-                    let _ = window.set_position(tauri::PhysicalPosition::new(position_x, position_y));
+                    let _ =
+                        window.set_position(tauri::PhysicalPosition::new(position_x, position_y));
                 }
             }
             Ok(())
@@ -666,12 +748,17 @@ mod tests {
         let mut store = Store::open(path.clone()).unwrap();
         assert_eq!(store.data.focus.remaining_seconds, 1500);
         assert!(!store.data.settings.pin_open);
-        store.transact(|state| {
-            state.todos.push(Todo {
-                id: "1".into(), title: "Ship features".into(), done: false, created_ms: now_ms(),
-            });
-            Ok(())
-        }).unwrap();
+        store
+            .transact(|state| {
+                state.todos.push(Todo {
+                    id: "1".into(),
+                    title: "Ship features".into(),
+                    done: false,
+                    created_ms: now_ms(),
+                });
+                Ok(())
+            })
+            .unwrap();
         let reopened = Store::open(path.clone()).unwrap();
         assert_eq!(reopened.data.todos[0].title, "Ship features");
         let _ = fs::remove_file(&path);
@@ -684,7 +771,10 @@ mod tests {
         let mut store = Store::open(path).unwrap();
         let result = store.transact(|state| {
             state.todos.push(Todo {
-                id: "bad".into(), title: "Nope".into(), done: false, created_ms: now_ms(),
+                id: "bad".into(),
+                title: "Nope".into(),
+                done: false,
+                created_ms: now_ms(),
             });
             Err("simulated failure".into())
         });
@@ -725,14 +815,19 @@ mod tests {
     fn backups_preserve_calendar_and_migrate_legacy_data() {
         let path = temp_file("events");
         let mut store = Store::open(path.clone()).unwrap();
-        store.transact(|state| {
-            state.events.push(CalendarEvent {
-                id: "event-a".into(), title: "Team review".into(),
-                starts_at_ms: 1_800_000_000_000, remind_minutes: Some(15),
-                description: "Plan".into(), created_ms: now_ms(),
-            });
-            Ok(())
-        }).unwrap();
+        store
+            .transact(|state| {
+                state.events.push(CalendarEvent {
+                    id: "event-a".into(),
+                    title: "Team review".into(),
+                    starts_at_ms: 1_800_000_000_000,
+                    remind_minutes: Some(15),
+                    description: "Plan".into(),
+                    created_ms: now_ms(),
+                });
+                Ok(())
+            })
+            .unwrap();
         let reloaded = Store::open(path.clone()).unwrap();
         assert_eq!(reloaded.data.events[0].title, "Team review");
         let _ = fs::remove_file(&path);
