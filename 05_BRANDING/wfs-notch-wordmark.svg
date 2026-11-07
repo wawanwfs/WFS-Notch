@@ -1,0 +1,6 @@
+<svg width="1320" height="360" viewBox="0 0 1320 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs><linearGradient id="gold" x1="24" y1="0" x2="346" y2="348" gradientUnits="userSpaceOnUse"><stop stop-color="#F5E4C9"/><stop offset=".55" stop-color="#C6AA80"/><stop offset="1" stop-color="#B09265"/></linearGradient></defs>
+<g transform="translate(4 4) scale(.344)"><rect x="20" y="20" width="984" height="984" rx="236" fill="#101319"/><rect x="24" y="24" width="976" height="976" rx="232" stroke="#655B4D" stroke-width="8"/><path d="M342 223 Q512 315 682 223" stroke="#CFB48C" stroke-width="15" stroke-linecap="round"/><path d="M246 343 L381 710 512 465 643 710 778 343" stroke="url(#gold)" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"/><circle cx="512" cy="250" r="10" fill="#F1D9B3"/></g>
+<text x="400" y="190" font-size="104" font-weight="750" letter-spacing="-3" font-family="Segoe UI,Arial,sans-serif" fill="#F3F2F0">WFS <tspan fill="#D5B991">Notch</tspan></text>
+<text x="405" y="255" font-size="25" font-family="Segoe UI,Arial,sans-serif" letter-spacing="8" fill="#9CA1A7">YOUR DESKTOP, REIMAGINED</text>
+</svg>

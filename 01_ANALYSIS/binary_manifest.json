@@ -1,0 +1,203 @@
+{
+  "analysis_type": "read-only static PE triage",
+  "results": [
+    {
+      "filename": "Poni_1.5.0_portable.exe",
+      "size_bytes": 11895808,
+      "sha256": "4c0ee8719d474eed32389352d41874ab11b1541272a3886f63f3ff5cc62388ce",
+      "architecture": "x86_64",
+      "pe_format": "PE32+",
+      "sections": [
+        {
+          "name": ".text",
+          "disk_size": 7157248,
+          "offset": 1024
+        },
+        {
+          "name": ".rdata",
+          "disk_size": 4456960,
+          "offset": 7158272
+        },
+        {
+          "name": ".data",
+          "disk_size": 12288,
+          "offset": 11615232
+        },
+        {
+          "name": ".pdata",
+          "disk_size": 136704,
+          "offset": 11627520
+        },
+        {
+          "name": ".rsrc",
+          "disk_size": 37376,
+          "offset": 11764224
+        },
+        {
+          "name": ".reloc",
+          "disk_size": 94208,
+          "offset": 11801600
+        }
+      ],
+      "import_dlls": [
+        "advapi32.dll",
+        "api-ms-win-core-synch-l1-2-0.dll",
+        "api-ms-win-core-winrt-error-l1-1-0.dll",
+        "api-ms-win-core-winrt-l1-1-0.dll",
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-shcore-scaling-l1-1-1.dll",
+        "bcrypt.dll",
+        "bcryptprimitives.dll",
+        "combase.dll",
+        "comctl32.dll",
+        "crypt32.dll",
+        "d2d1.dll",
+        "d3d11.dll",
+        "dcomp.dll",
+        "dwmapi.dll",
+        "dxva2.dll",
+        "gdi32.dll",
+        "imm32.dll",
+        "iphlpapi.dll",
+        "kernel32.dll",
+        "netapi32.dll",
+        "ntdll.dll",
+        "ole32.dll",
+        "oleaut32.dll",
+        "pdh.dll",
+        "powrprof.dll",
+        "propsys.dll",
+        "psapi.dll",
+        "shell32.dll",
+        "shlwapi.dll",
+        "user32.dll",
+        "version.dll",
+        "windowscodecs.dll",
+        "wlanapi.dll",
+        "ws2_32.dll",
+        "wtsapi32.dll"
+      ],
+      "signals": {
+        "rust_compiler": {
+          "present": true,
+          "first_file_offset": "0x6d6ce9"
+        },
+        "tauri_framework": {
+          "present": true,
+          "first_file_offset": "0x8519ba"
+        },
+        "tauri_invoke": {
+          "present": true,
+          "first_file_offset": "0x850eed"
+        },
+        "webview2": {
+          "present": true,
+          "first_file_offset": "0x851020"
+        },
+        "tauri_updater": {
+          "present": true,
+          "first_file_offset": "0x85d2e3"
+        },
+        "tokio": {
+          "present": true,
+          "first_file_offset": "0x607aa1"
+        },
+        "nsis": {
+          "present": false,
+          "first_file_offset": null
+        },
+        "embedded_json": {
+          "present": true,
+          "first_file_offset": "0xbf936"
+        }
+      },
+      "visible_tauri_version": "2.12.4",
+      "execution": "NOT EXECUTED"
+    },
+    {
+      "filename": "Poni_1.5.0_x64-setup.exe",
+      "size_bytes": 4973625,
+      "sha256": "e45f95d75e47d4869321e64507d2999931868f9c3971e8681ec9277007a5fdde",
+      "architecture": "x86",
+      "pe_format": "PE32",
+      "sections": [
+        {
+          "name": ".text",
+          "disk_size": 26624,
+          "offset": 1024
+        },
+        {
+          "name": ".rdata",
+          "disk_size": 5120,
+          "offset": 27648
+        },
+        {
+          "name": ".data",
+          "disk_size": 1536,
+          "offset": 32768
+        },
+        {
+          "name": ".ndata",
+          "disk_size": 0,
+          "offset": 0
+        },
+        {
+          "name": ".rsrc",
+          "disk_size": 18432,
+          "offset": 34304
+        }
+      ],
+      "import_dlls": [
+        "ADVAPI32.dll",
+        "COMCTL32.dll",
+        "GDI32.dll",
+        "KERNEL32.dll",
+        "SHELL32.dll",
+        "USER32.dll",
+        "ole32.dll"
+      ],
+      "signals": {
+        "rust_compiler": {
+          "present": false,
+          "first_file_offset": null
+        },
+        "tauri_framework": {
+          "present": false,
+          "first_file_offset": null
+        },
+        "tauri_invoke": {
+          "present": false,
+          "first_file_offset": null
+        },
+        "webview2": {
+          "present": false,
+          "first_file_offset": null
+        },
+        "tauri_updater": {
+          "present": false,
+          "first_file_offset": null
+        },
+        "tokio": {
+          "present": false,
+          "first_file_offset": null
+        },
+        "nsis": {
+          "present": true,
+          "first_file_offset": "0xc7cc"
+        },
+        "embedded_json": {
+          "present": false,
+          "first_file_offset": null
+        }
+      },
+      "visible_tauri_version": null,
+      "execution": "NOT EXECUTED"
+    }
+  ]
+}

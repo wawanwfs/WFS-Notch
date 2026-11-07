@@ -1,0 +1,43 @@
+"""Dependency-free structural audit for the WFS Notch Phase 3 source tree."""
+from pathlib import Path
+import json
+import re
+import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
+
+root = Path(__file__).resolve().parents[1]
+app = root / '02_APP'
+html = (app / 'ui/index.html').read_text()
+js = (app / 'ui/app.js').read_text()
+rust = (app / 'src-tauri/src/main.rs').read_text()
+config = json.loads((app / 'src-tauri/tauri.conf.json').read_text())
+capabilities = json.loads((app / 'src-tauri/capabilities/default.json').read_text())
+
+class IdParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.ids = []
+    def handle_starttag(self, tag, attrs):
+        self.ids.extend(value for key, value in attrs if key == 'id')
+
+parser = IdParser(); parser.feed(html)
+ids = parser.ids
+assert len(ids) == len(set(ids)), 'Duplicate HTML ids'
+referenced_ids = set(re.findall(r"\$\('#([^']+)'\)", js))
+assert referenced_ids.issubset(set(ids)), f'Missing elements: {referenced_ids - set(ids)}'
+commands = set(re.findall(r'\#\[tauri::command\]\s*fn\s+(\w+)', rust))
+frontend_calls = set(re.findall(r"(?:mutation|invoke)\('([a-z_]+)'", js))
+assert frontend_calls.issubset(commands), f'Missing Rust command(s): {frontend_calls - commands}'
+assert config['productName'] == 'WFS Notch'
+assert config['version'] == '0.3.0'
+assert config['identifier'] == 'id.wfs.notch'
+assert capabilities['windows'] == ['main']
+assert config['app']['withGlobalTauri'] is True
+for path in config['bundle']['icon']:
+    assert (app / 'src-tauri' / path).exists(), path
+for path in (root / '05_BRANDING').glob('*.svg'):
+    ET.parse(path)
+assert (app / 'ui/assets/wfs-notch-mark.svg').exists()
+assert 'update_event' in commands and 'update_event' in js
+assert len(commands) >= 20
+print('PASS: static audit |', len(ids), 'unique element IDs |', len(frontend_calls), 'bound frontend commands |', len(commands), 'Rust commands | JSON/SVG/icons checked')

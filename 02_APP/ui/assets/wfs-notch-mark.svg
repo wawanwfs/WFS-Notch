@@ -1,0 +1,16 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+  <linearGradient id="tile" x1="40" y1="60" x2="984" y2="988" gradientUnits="userSpaceOnUse"><stop stop-color="#232931"/><stop offset=".48" stop-color="#11151C"/><stop offset="1" stop-color="#080A0F"/></linearGradient>
+  <linearGradient id="gold" x1="208" y1="287" x2="839" y2="731" gradientUnits="userSpaceOnUse"><stop stop-color="#FFF1D7"/><stop offset=".19" stop-color="#DCC6A2"/><stop offset=".48" stop-color="#B79B73"/><stop offset=".72" stop-color="#F4DCBA"/><stop offset="1" stop-color="#AA875E"/></linearGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse"><stop stop-color="#8F8577" stop-opacity=".9"/><stop offset=".28" stop-color="#645748" stop-opacity=".32"/><stop offset=".7" stop-color="#F7DFBC" stop-opacity=".16"/><stop offset="1" stop-color="#96856C" stop-opacity=".65"/></linearGradient>
+  <filter id="shine" x="100" y="175" width="850" height="690"><feGaussianBlur stdDeviation="15"/></filter>
+ </defs>
+ <rect x="18" y="18" width="988" height="988" rx="250" fill="url(#tile)"/>
+ <rect x="24" y="24" width="976" height="976" rx="244" stroke="url(#rim)" stroke-width="12"/>
+ <path d="M 342 223 C 387 247 431 265 512 265 C 593 265 637 247 682 223" stroke="#CBB18B" stroke-width="14" stroke-linecap="round" opacity=".9"/>
+ <path d="M 246 343 L 381 710 L 512 465 L 643 710 L 778 343" stroke="#B89B73" stroke-opacity=".36" stroke-width="117" stroke-linecap="round" stroke-linejoin="round" filter="url(#shine)"/>
+ <path d="M 246 343 L 381 710 L 512 465 L 643 710 L 778 343" stroke="url(#gold)" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"/>
+ <path d="M 234 322 L 379 693" stroke="#FFF7E9" stroke-opacity=".42" stroke-width="12" stroke-linecap="round"/>
+ <path d="M 511 451 L 642 690" stroke="#FFF7E9" stroke-opacity=".2" stroke-width="10" stroke-linecap="round"/>
+ <circle cx="512" cy="250" r="10" fill="#E9D2AD"/>
+</svg>

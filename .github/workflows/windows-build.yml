@@ -1,0 +1,141 @@
+name: WFS Notch — Windows CI & Browser Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# No repository writes, privileged events, remote shell, or tunnel in CI.
+permissions:
+  contents: read
+
+concurrency:
+  group: wfs-notch-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  attribution-audit:
+    name: Verify owner push and commit identity
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout complete commit history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify actor and commit metadata
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: python3 04_TESTS/verify_push_identity.py
+
+  browser-audit:
+    name: Browser regression / static audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install --disable-pip-version-check 'playwright==1.56.0'
+          python -m playwright install --with-deps chromium
+      - name: JavaScript syntax
+        run: node --check 02_APP/ui/app.js
+      - name: Structural and metadata audit
+        run: python 04_TESTS/static_audit.py
+      - name: Phase 2 browser regression
+        run: python 04_TESTS/browser_smoke.py
+      - name: Phase 3 browser integration
+        run: python 04_TESTS/browser_phase3.py
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFSNotch-browser-evidence
+          path: 06_EVIDENCE/browser-*.png
+          retention-days: 14
+          if-no-files-found: warn
+
+  rust-quality:
+    name: Rust tests / Clippy / format
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Rust MSVC (x64)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 02_APP/src-tauri
+      - name: Run Rust unit tests
+        working-directory: 02_APP/src-tauri
+        shell: pwsh
+        run: cargo test --all-targets --verbose
+      - name: Rust Clippy diagnostics
+        working-directory: 02_APP/src-tauri
+        shell: pwsh
+        if: success() || failure()
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Verify Rust source format
+        working-directory: 02_APP/src-tauri
+        shell: pwsh
+        if: success() || failure()
+        run: cargo fmt --all -- --check
+
+  windows-build:
+    name: Build Windows x64 unsigned NSIS installer
+    # Independent of rust-quality so a formatting failure does not hide build errors.
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Rust MSVC (x64)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 02_APP/src-tauri
+      - name: Build Windows installer with official Tauri action
+        uses: tauri-apps/tauri-action@v1
+        with:
+          projectPath: 02_APP
+          uploadWorkflowArtifacts: true
+      - name: Check generated installer and build hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $directory = '02_APP/src-tauri/target/release/bundle/nsis'
+          $installers = @(Get-ChildItem $directory -Filter '*.exe' -File -ErrorAction Stop)
+          if ($installers.Count -lt 1) { throw 'No NSIS installer was produced' }
+          New-Item -ItemType Directory -Force -Path 'build-evidence' | Out-Null
+          foreach ($file in $installers) {
+            $hash = Get-FileHash -Path $file.FullName -Algorithm SHA256
+            "$($hash.Hash.ToLower())  $($file.Name)" | Add-Content 'build-evidence/SHA256SUMS.txt'
+          }
+          Get-Content 'build-evidence/SHA256SUMS.txt'
+      - name: Upload verified installer checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFSNotch-Windows-SHA256
+          path: build-evidence/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error

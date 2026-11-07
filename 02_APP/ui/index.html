@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>WFS Notch</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="notch" class="notch" aria-label="WFS Notch">
+    <div class="collapsed" id="collapsed" tabindex="0" role="button" aria-label="Open WFS Notch">
+      <span class="signal"><span></span><span></span><span></span></span>
+      <span class="collapsed-label">WFS <b>NOTCH</b></span>
+      <time id="closed-clock">00:00</time>
+    </div>
+    <div class="expanded" id="expanded" hidden>
+      <header class="topbar">
+        <div class="brand"><div class="brand-mark"><img src="assets/wfs-notch-mark.svg" alt="" width="34" height="34"></div><div><strong>WFS Notch</strong><small>YOUR DESKTOP, REIMAGINED</small></div></div>
+        <div class="top-actions"><span id="current-date"></span><button class="icon-button" id="pin-button" title="Keep panel open" aria-pressed="false" aria-label="Toggle pinned panel">⌖</button><button class="icon-button" id="collapse" title="Collapse" aria-label="Collapse">—</button></div>
+      </header>
+      <nav class="tabs" aria-label="Modules">
+        <button data-tab="home" class="tab active">Overview</button>
+        <button data-tab="todos" class="tab">Tasks</button>
+        <button data-tab="notes" class="tab">Notes</button>
+        <button data-tab="calendar" class="tab">Calendar</button>
+        <button data-tab="timer" class="tab">Focus timer</button>
+        <button data-tab="system" class="tab">System</button>
+        <button data-tab="settings" class="tab">Settings</button>
+      </nav>
+      <main>
+        <section class="panel active" id="panel-home">
+          <div class="welcome"><div><p class="eyebrow">PERSONAL COMMAND CENTER</p><h1>Make every minute count<span>.</span></h1><p>Everything essential, one hover away.</p></div><div class="hero-time" id="hero-time">00:00</div></div>
+          <div class="home-grid">
+            <div class="mini-card"><span class="mini-label">OPEN TASKS</span><b id="task-count">0</b><small>Focus on what matters</small></div>
+            <div class="mini-card"><span class="mini-label">SAVED NOTES</span><b id="note-count">0</b><small>Ideas at your fingertips</small></div>
+            <div class="mini-card focus-card"><span class="mini-label">FOCUS SESSION</span><b id="focus-status">25:00</b><button class="text-button" id="go-timer">Open timer →</button></div>
+          </div>
+          <div class="home-upcoming"><span class="mini-label">NEXT CALENDAR EVENT</span><span id="next-event">No upcoming events</span><button class="text-button" id="go-calendar" type="button">View calendar →</button></div>
+          <div class="footnote">Local-first · Rust backend · Original WFS Notch design</div>
+        </section>
+        <section class="panel" id="panel-todos">
+          <div class="section-heading"><div><h2>Tasks</h2><p>Keep your priorities moving.</p></div><span class="section-pill" id="todo-progress">0 complete</span></div>
+          <form class="input-row" id="todo-form"><input id="todo-input" maxlength="200" placeholder="Add a task..." autocomplete="off" aria-label="New task" required><button type="submit" class="primary">Add task</button></form>
+          <div id="todo-list" class="list-scroll"></div>
+        </section>
+        <section class="panel" id="panel-notes">
+          <div class="section-heading"><div><h2>Notes</h2><p>Capture ideas as they happen.</p></div><button id="note-new" class="primary">+ New note</button></div>
+          <div class="note-layout"><div id="note-list" class="note-list"></div><div class="note-editor"><input id="note-title" placeholder="Note title" maxlength="200"><textarea id="note-body" placeholder="Start writing your thoughts..." maxlength="50000"></textarea><div class="note-foot"><small id="save-status" aria-live="polite">Choose or create a note</small><div class="note-actions"><button class="text-button" id="note-save" type="button">Save now</button><button class="danger-link" id="note-delete" type="button">Delete note</button></div></div></div></div>
+        </section>
+        <section class="panel" id="panel-calendar">
+          <div class="section-heading"><div><h2>Calendar</h2><p>Local events and in-app reminders while WFS Notch is running.</p></div><span class="section-pill" id="calendar-count">0 EVENTS</span></div>
+          <form id="event-form" class="event-form">
+            <input id="event-title" maxlength="200" required placeholder="Event title" aria-label="Event title">
+            <input id="event-time" type="datetime-local" required aria-label="Event date and time">
+            <select id="event-remind" aria-label="Reminder"><option value="off">No reminder</option><option value="0">At event time</option><option value="5">5 min before</option><option value="15">15 min before</option><option value="30">30 min before</option><option value="60">1 hour before</option></select>
+            <button class="primary" id="event-submit" type="submit">Add event</button>
+          </form>
+          <div class="event-edit-actions"><button class="text-button" id="event-cancel" type="button" hidden>Cancel editing event</button></div>
+          <div class="event-hint">Dates are stored as UTC timestamps and shown in your computer's local timezone. Reminders are only displayed while this app is running.</div>
+          <div id="event-list" class="event-list" aria-live="polite"></div>
+        </section>
+        <section class="panel" id="panel-system">
+          <div class="section-heading"><div><h2>System monitor</h2><p>Live CPU and memory usage from Windows.</p></div><button class="secondary" id="system-refresh" type="button">Refresh</button></div>
+          <div class="system-grid">
+            <div class="system-card"><span class="mini-label">CPU USAGE</span><b id="system-cpu">—</b><div class="meter"><span id="cpu-meter"></span></div></div>
+            <div class="system-card"><span class="mini-label">MEMORY USAGE</span><b id="system-memory">—</b><div class="meter"><span id="memory-meter"></span></div></div>
+          </div>
+          <p id="system-detail" class="system-detail">No reading yet.</p>
+          <p class="event-hint">Refreshes every 4 seconds while this panel is open. Does not track running apps, upload telemetry, or run a background service.</p>
+        </section>
+        <section class="panel" id="panel-timer">
+          <div class="section-heading"><div><h2>Focus timer</h2><p>Own your next session.</p></div><span class="section-pill">POMODORO</span></div>
+          <div class="timer-layout"><div class="timer-ring"><div class="timer-ring-inner"><strong id="timer-display">25:00</strong><span id="timer-label">READY WHEN YOU ARE</span></div></div><div class="timer-controls"><p>SESSION LENGTH</p><div class="preset-row"><button data-minutes="15">15m</button><button data-minutes="25" class="selected">25m</button><button data-minutes="45">45m</button><button data-minutes="60">60m</button></div><button id="timer-start" class="primary large">Start focus</button><button id="timer-reset" class="secondary large">Reset</button></div></div>
+        </section>
+        <section class="panel" id="panel-settings">
+          <div class="section-heading"><div><h2>Appearance</h2><p>Personalize your command center.</p></div><span class="section-pill">LOCAL</span></div>
+          <div class="settings-row"><div><b>Accent color</b><small>Choose a highlight for your workspace</small></div><div class="swatches"><button class="swatch" data-color="#d6b77a" style="--swatch:#d6b77a" aria-label="Champagne"></button><button class="swatch" data-color="#73c9e5" style="--swatch:#73c9e5" aria-label="Ice"></button><button class="swatch" data-color="#ae91f2" style="--swatch:#ae91f2" aria-label="Lavender"></button><button class="swatch" data-color="#8bd7ab" style="--swatch:#8bd7ab" aria-label="Mint"></button></div></div>
+          <div class="settings-row"><div><b>Hover to open</b><small>Expand the notch when the pointer enters</small></div><label class="toggle-label"><input id="hover-toggle" type="checkbox"><span>Enabled</span></label></div>
+          <div class="settings-row"><div><b>Keep panel open</b><small>Prevent automatic collapsing when your pointer leaves</small></div><label class="toggle-label"><input id="pin-toggle" type="checkbox"><span>Pinned</span></label></div>
+          <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
+          <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
+          <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.3.0 · PREVIEW</span></div>
+          <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
+        </section>
+      </main>
+      <footer><span><span class="live-dot"></span> LOCAL SYSTEM</span><span id="environment">RUST + TAURI 2</span></footer>
+    </div>
+  </div>
+  <div id="toast" aria-live="polite" role="status"></div>
+  <script src="app.js" defer></script>
+</body>
+</html>
