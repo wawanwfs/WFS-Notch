@@ -147,3 +147,10 @@ jobs:
           path: build-evidence/SHA256SUMS.txt
           retention-days: 30
           if-no-files-found: error
+      - name: Upload unsigned portable Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFSNotch-Windows-x64-portable-unsigned
+          path: 02_APP/src-tauri/target/release/wfs-notch.exe
+          retention-days: 30
+          if-no-files-found: error

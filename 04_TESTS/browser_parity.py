@@ -24,6 +24,14 @@ with sync_playwright() as pw:
     mark = base64.b64encode((UI / "assets/wfs-notch-mark.svg").read_bytes()).decode()
     html = html.replace('src="assets/wfs-notch-mark.svg"', f'src="data:image/svg+xml;base64,{mark}"')
     page.set_content(html)
+    page.evaluate("""() => {
+      const state = {};
+      Object.defineProperty(window,'localStorage',{configurable:true,value:{
+        getItem:key=>state[key] ?? null,
+        setItem:(key,value)=>{state[key]=String(value)},
+        removeItem:key=>{delete state[key]}
+      }});
+    }""")
     page.add_style_tag(content=(UI / "styles.css").read_text())
     for name in ("app.js", "modules.js", "parity.js"):
         page.add_script_tag(content=(UI / name).read_text())
