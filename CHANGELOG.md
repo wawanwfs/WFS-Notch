@@ -1,3 +1,11 @@
+## 0.7.0 — Native disk and network monitoring (CI validation required)
+
+- Added Rust read-only per-volume capacity/used/available bytes via sysinfo.
+- Added Rust local network interface received/transmitted byte totals, without Wi-Fi scanning, MAC/IP collection or API calls.
+- Added on-demand and panel-scoped polling with 15-second cache and a responsive System view.
+- Browser preview intentionally displays no fabricated system readings; Rust unit/static/browser tests extended.
+- Native hardware telemetry depends on device/driver support; not equivalent to Poni's GPU/temperature/control panel.
+
 ## 0.6.0 — Local calendar interoperability and Notes search (under validation)
 
 - Added UTC iCalendar import/export as Rust commands with transactional state updates, UID deduplication, strict validation and unit tests.
