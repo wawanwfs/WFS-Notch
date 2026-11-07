@@ -1,14 +1,19 @@
-> **Phase 5 REA (feature parity, NOT 100%):** Health, flexible countdown, Day Progress, opt-in city weather, and flashcards are implemented on branch `feat/rea-parity-phase5`. See [feature-by-feature parity audit](01_ANALYSIS/REA_FULL_PARITY_MATRIX_V150.md). Native Windows behavior remains subject to CI and device testing.
+# WFS Notch — Phase 6 / v0.6.0 (development)
 
-# WFS Notch — Phase 5 / v0.5.0
-
-**GitHub CI / publisher instructions:** [README_GITHUB.md](README_GITHUB.md). The codebase is prepared for GitHub Actions, but no GitHub-hosted CI result is claimed.
+**GitHub CI / publisher instructions:** [README_GITHUB.md](README_GITHUB.md). GitHub Actions builds Windows x64 installers; CI results are available in the repository Actions tab. Successful CI is not a native Windows user-interaction parity test.
 
 ![WFS Notch original brand](05_BRANDING/WFS_Notch_Logo_Preview.png)
 
-**Status: Phase 3 source delivery — browser tests PASS, static audit PASS, JavaScript syntax PASS. Native Rust compilation, Windows 10/11 hardware telemetry, and installer validation NOT RUN. This is NOT a signed, production-ready Windows release.**
-
+**Status:** v0.6.0 source is under CI and feature review. Rust/Windows compilation and browser regressions must be checked on this commit. The installer is unsigned and the product is NOT a 100% Poni replacement or production-certified.\n
 WFS Notch is an original implementation built with a Rust + Tauri 2 backend and an HTML/CSS/JavaScript WebView front end. It does not redistribute or modify the supplied Poni binaries. It targets Windows 10/11 x64.
+
+## Phase 6 — calendar interoperability + searchable notes
+
+- **Monthly calendar**: Monday-first month view, day selection that pre-fills the local event editor, event-count markers, and accessible navigation.
+- **iCalendar (ICS)**: Paste/import or export local events through the Rust backend (no network). A 256 KiB size cap, 250-event import limit, transactional validation, and UID deduplication protect existing data. Export text can be copied and saved as `.ics` via a text editor.
+- **Supported ICS timestamp**: `DTSTART:YYYYMMDDTHHMMSSZ` (UTC). Explicit `TZID`, floating-time and all-day imports are rejected rather than misinterpreted; this is not automatic iCal subscription or Google/Outlook sync.
+- **Notes**: Instant case-insensitive search across titles and bodies, without changing the selected note or its autosave queue.
+- **Verification**: Rust unit tests and a dedicated browser regression were added. Native Windows workflow results are tracked in GitHub Actions, not assumed.
 
 ## Phase 4 — expanded desktop features (v0.4.0 preview)
 

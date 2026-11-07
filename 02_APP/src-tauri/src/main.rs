@@ -9,6 +9,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use sysinfo::System;
+mod calendar_ics;
 mod extra;
 mod parity;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
@@ -777,6 +778,8 @@ fn main() {
             add_event,
             update_event,
             remove_event,
+            calendar_ics::import_ics,
+            calendar_ics::export_ics,
             create_backup,
             list_backups,
             restore_backup,

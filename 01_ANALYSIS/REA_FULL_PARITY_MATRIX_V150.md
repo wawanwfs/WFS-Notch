@@ -1,4 +1,4 @@
-# REA functional parity matrix — Poni 1.5.0 versus WFS Notch 0.5.0
+# REA functional parity matrix — Poni 1.5.0 versus WFS Notch 0.6.0
 
 **Method.** Independent static examination of two user-supplied Poni 1.5.0 executables plus the published feature guide/release notes and WFS Notch source. No original vendor source or copyrighted assets were copied. Reference executables were **not run** in this environment. This report distinguishes confirmed functionality from unverified work; it does not claim 100% parity.
 
@@ -19,9 +19,9 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Appearance / glass / animations | Partial | Accent + collapse; glass, frosted, 9 animations, layout editor missing |
 | Music & transport controls | Partial | Global media keys only; Windows session title, album art, progress, player list missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
-| Desktop calendar | Partial | Local CRUD and reminders; month, iCal feeds, Google/Outlook sync missing |
+| Desktop calendar | Partial | Month grid, UTC ICS text import/export and local reminders; TZID/floating-date support, file picker, iCal subscriptions and Google/Outlook sync missing |
 | Todo | Partial | CRUD; reminders, recurring, natural language parsing, snooze missing |
-| Notes | Partial | Local CRUD/autosave, new question::answer flashcards; rich view/search missing |
+| Notes | Partial | Local CRUD/autosave, full-text search and question::answer flashcards; rich editing and tagging missing |
 | Focus/Pomodoro | Partial | Preset focus; automatic work-break cycles and sounds missing |
 | Stopwatch | Implemented | Browser UI + localStorage; native runtime still unverified |
 | Independent timer | Implemented | 1–1440 min, pause, +1/+5, persistent Rust state; native runtime to verify |

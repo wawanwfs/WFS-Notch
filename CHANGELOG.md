@@ -1,3 +1,11 @@
+## 0.6.0 — Local calendar interoperability and Notes search (under validation)
+
+- Added UTC iCalendar import/export as Rust commands with transactional state updates, UID deduplication, strict validation and unit tests.
+- Added responsive monthly calendar grid with event badges and keyboard-accessible day selection.
+- Added case-insensitive full-text search of saved note titles and bodies.
+- Added Chromium regressions and CI coverage. Native Windows interactive validation still required.
+- Scope intentionally excludes automatic sync with Google/Outlook, native file dialog, TZID/floating dates and 100% Poni feature parity.
+
 ## 0.5.0 — Phase 5 REA
 
 - Added Rust-persisted water/break/calm counters and an independent, suspend-aware, adjustable countdown.

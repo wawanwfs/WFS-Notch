@@ -336,7 +336,10 @@ function renderNotes() {
   $('#note-count').textContent = String(data.notes.length);
   const list = $('#note-list');
   list.replaceChildren();
-  const sorted = [...data.notes].sort((left, right) => right.updated_ms - left.updated_ms);
+  const query = ($('#note-search')?.value || '').trim().toLocaleLowerCase();
+  const sorted = [...data.notes]
+    .filter(note => !query || (note.title + ' ' + note.body).toLocaleLowerCase().includes(query))
+    .sort((left, right) => right.updated_ms - left.updated_ms);
   for (const note of sorted) {
     const button = node('button', 'note-card' + (selectedNoteId === note.id ? ' selected' : ''), note.title || 'Untitled');
     button.type = 'button';
@@ -348,7 +351,7 @@ function renderNotes() {
     });
     list.append(button);
   }
-  if (!sorted.length) list.append(node('div', 'empty', 'Nothing saved yet.'));
+  if (!sorted.length) list.append(node('div', 'empty', query ? 'No matching notes.' : 'Nothing saved yet.'));
   const current = data.notes.find(note => note.id === selectedNoteId);
   for (const control of [$('#note-title'), $('#note-body'), $('#note-delete'), $('#note-save')]) {
     control.disabled = !current;
@@ -529,6 +532,7 @@ function render() {
   renderTodos();
   renderNotes();
   renderCalendar();
+  if (typeof renderCalendarPlus === 'function') renderCalendarPlus();
   renderTimer();
   if (typeof renderExtras === 'function') renderExtras();
   if (typeof renderParity === 'function') renderParity();
