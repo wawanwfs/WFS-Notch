@@ -8,6 +8,20 @@
 
 WFS Notch is an original implementation built with a Rust + Tauri 2 backend and an HTML/CSS/JavaScript WebView front end. It does not redistribute or modify the supplied Poni binaries. It targets Windows 10/11 x64.
 
+## Phase 4 — expanded desktop features (v0.4.0 preview)
+
+| Module | Implementation | Limitations |
+| --- | --- | --- |
+| Habits | Daily check-ins, streaks, Rust persistence & backup | No cloud sync |
+| Dock | 5 built-in Windows launchers and user-pinned safe http(s) URLs | No automatic installed-app scanning |
+| Media | Play/Pause, Next, Previous, Stop, Mute, Volume via Windows media keys | No metadata, lyrics or cover art |
+| Quick Tools | Stopwatch & laps, secure password generation, calculator | Passwords not saved; copy requires permission |
+| Command palette | Ctrl+K inside focused notch | No global OS shortcut |
+| System tray | Show, Exit, close-to-hide | Windows runtime validation required |
+| Autostart | Explicit opt-in HKCU Run value | Windows runtime validation required |
+
+**Validation:** CI covers Rust tests, Clippy, Windows build and browser workflows. Browser preview is not proof of native Windows runtime behavior. This is not yet a full Poni replacement.
+
 ## Features delivered through Phase 3
 
 | Module | Scope in this source | Verification |
