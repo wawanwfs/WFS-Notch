@@ -1,4 +1,4 @@
-# REA functional parity matrix — Poni 1.5.0 versus WFS Notch 0.7.0
+# REA functional parity matrix — Poni 1.5.0 versus WFS Notch 0.8.0
 
 **Method.** Independent static examination of two user-supplied Poni 1.5.0 executables plus the published feature guide/release notes and WFS Notch source. No original vendor source or copyrighted assets were copied. Reference executables were **not run** in this environment. This report distinguishes confirmed functionality from unverified work; it does not claim 100% parity.
 
@@ -17,7 +17,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Compact/expanded interactive notch | Partial | Exact hover, mouse pass-through, auto-hide, multi-monitor, fullscreen handling |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
 | Appearance / glass / animations | Partial | Accent + collapse; glass, frosted, 9 animations, layout editor missing |
-| Music & transport controls | Partial | Global media keys only; Windows session title, album art, progress, player list missing |
+| Music & transport controls | Partial | Global media keys plus WinRT session title/artist/album/status/progress; album artwork, lyrics, player list and native device tests missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
 | Desktop calendar | Partial | Month grid, UTC ICS text import/export and local reminders; TZID/floating-date support, file picker, iCal subscriptions and Google/Outlook sync missing |
 | Todo | Partial | CRUD; reminders, recurring, natural language parsing, snooze missing |
