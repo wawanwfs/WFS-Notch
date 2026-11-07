@@ -1,4 +1,4 @@
-# WFS Notch — Phase 6 / v0.6.0 (development)
+# WFS Notch — Phase 7 / v0.7.0 (development)
 
 **GitHub CI / publisher instructions:** [README_GITHUB.md](README_GITHUB.md). GitHub Actions builds Windows x64 installers; CI results are available in the repository Actions tab. Successful CI is not a native Windows user-interaction parity test.
 
@@ -6,6 +6,10 @@
 
 **Status:** v0.6.0 source is under CI and feature review. Rust/Windows compilation and browser regressions must be checked on this commit. The installer is unsigned and the product is NOT a 100% Poni replacement or production-certified.\n
 WFS Notch is an original implementation built with a Rust + Tauri 2 backend and an HTML/CSS/JavaScript WebView front end. It does not redistribute or modify the supplied Poni binaries. It targets Windows 10/11 x64.
+
+## Phase 7 — native disk/network monitoring
+
+The Windows Rust backend now reads local disk total/used/free capacity and per-network-interface byte totals using the pinned sysinfo crate. The System panel requests details only while open, at most once per 15 seconds unless Refresh is pressed. Browser preview never substitutes synthetic values. This is **read-only** telemetry, not Wi-Fi controls, packet capture, GPU metrics or speed tests. No network access, administrator privilege or data upload is used by this feature. Native Windows device verification remains necessary.
 
 ## Phase 6 — calendar interoperability + searchable notes
 
