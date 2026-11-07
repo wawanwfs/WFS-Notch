@@ -81,6 +81,9 @@ with sync_playwright() as pw:
     page.get_by_role("button", name="System", exact=True).click()
     assert "unavailable in browser preview" in page.locator("#system-disks").inner_text()
     assert "unavailable in browser preview" in page.locator("#system-networks").inner_text()
+    page.get_by_role("button", name="Media", exact=True).click()
+    assert "No active media session" in page.locator("#media-track-title").inner_text()
+    assert "Browser preview" in page.locator("#media-track-source").inner_text()
     assert not issues, f"JavaScript errors: {issues}"
     browser.close()
 print("PASS: calendar month navigation/event badges, Notes full-text search, honest browser ICS preview")
