@@ -9,6 +9,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use sysinfo::System;
+mod extra;
+use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
 use tauri::{Manager, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -135,12 +137,29 @@ struct AppData {
     todos: Vec<Todo>,
     notes: Vec<Note>,
     events: Vec<CalendarEvent>,
+    habits: Vec<extra::Habit>,
+    quick_links: Vec<extra::QuickLink>,
     settings: Settings,
     focus: FocusState,
 }
 
 impl AppData {
     fn sanitize(&mut self) {
+        self.habits.retain(|habit| !habit.title.trim().is_empty() && habit.title.chars().count() <= 120);
+        self.habits.truncate(200);
+        self.quick_links.retain(|link| !link.label.trim().is_empty() && link.label.chars().count() <= 120
+            && (link.url.starts_with("https://") || link.url.starts_with("http://"))
+            && link.url.len() <= 2048);
+        self.quick_links.truncate(100);
+        for habit in &mut self.habits {
+            habit.completed_dates.retain(|date| date.len() == 10 && date.bytes().all(|c| c.is_ascii_digit() || c == b'-'));
+            habit.completed_dates.sort();
+            habit.completed_dates.dedup();
+            if habit.completed_dates.len() > 3660 {
+                let excess = habit.completed_dates.len() - 3660;
+                habit.completed_dates.drain(..excess);
+            }
+        }
         self.events.retain(|event| {
             !event.title.trim().is_empty()
                 && event.title.chars().count() <= 200
@@ -675,9 +694,7 @@ fn set_expanded(window: tauri::Window, expanded: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn close_app(window: tauri::Window) -> Result<(), String> {
-    window.close().map_err(|error| error.to_string())
-}
+fn close_app(app: tauri::AppHandle) { app.exit(0); }
 
 fn main() {
     tauri::Builder::default()
@@ -687,6 +704,28 @@ fn main() {
             let store = Store::open(directory.join("state.json")).map_err(std::io::Error::other)?;
             app.manage(Mutex::new(store));
             app.manage(Mutex::new(System::new_all()));
+            let tray_menu = MenuBuilder::new(app)
+                .text("show", "Show WFS Notch")
+                .text("quit", "Exit WFS Notch")
+                .build()?;
+            let tray_icon = app.default_window_icon()
+                .ok_or_else(|| std::io::Error::other("No embedded WFS Notch icon"))?
+                .clone();
+            TrayIconBuilder::new()
+                .icon(tray_icon)
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|handle, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => handle.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
             if let Some(window) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = window.current_monitor() {
                     let scale = monitor.scale_factor();
@@ -699,6 +738,12 @@ fn main() {
                 }
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             load_data,
@@ -722,7 +767,17 @@ fn main() {
             focus_toggle,
             focus_reset,
             set_expanded,
-            close_app
+            close_app,
+            extra::add_habit,
+            extra::toggle_habit_day,
+            extra::remove_habit,
+            extra::add_quick_link,
+            extra::remove_quick_link,
+            extra::open_quick_link,
+            extra::launch_builtin,
+            extra::media_key,
+            extra::get_autostart,
+            extra::set_autostart
         ])
         .run(tauri::generate_context!())
         .expect("WFS Notch encountered a fatal error");
