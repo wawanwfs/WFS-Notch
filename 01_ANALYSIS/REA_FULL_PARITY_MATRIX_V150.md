@@ -1,4 +1,4 @@
-# REA functional parity matrix — Poni 1.5.0 versus WFS Notch 0.6.0
+# REA functional parity matrix — Poni 1.5.0 versus WFS Notch 0.7.0
 
 **Method.** Independent static examination of two user-supplied Poni 1.5.0 executables plus the published feature guide/release notes and WFS Notch source. No original vendor source or copyrighted assets were copied. Reference executables were **not run** in this environment. This report distinguishes confirmed functionality from unverified work; it does not claim 100% parity.
 
@@ -29,7 +29,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Day Progress | Partial | Time and today events/tasks; wake/sleep schedule and richer timeline missing |
 | Weather | Partial | Manual city current/daily via Open-Meteo; 7-day/hourly, geolocation missing |
 | Prayer Times | Gap | Kemenag/Aladhan integration and reminders |
-| System Monitor | Partial | CPU and RAM only; disk/GPU/temp/network missing |
+| System Monitor | Partial | CPU/RAM, per-volume disk capacity and per-interface network byte totals; GPU/temperature and network controls missing |
 | Screen Time | Gap | Per-app foreground activity not tracked |
 | Wi-Fi Controls | Gap | Windows adapter & network list APIs |
 | Bluetooth Controls | Gap | Windows radio/device APIs, pairing/battery |
