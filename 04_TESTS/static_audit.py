@@ -23,7 +23,7 @@ class IdParser(HTMLParser):
 parser = IdParser(); parser.feed(html)
 ids = parser.ids
 assert len(ids) == len(set(ids)), 'Duplicate HTML ids'
-referenced_ids = set(re.findall(r"\$\('#([^']+)'\)", js))
+referenced_ids = set(re.findall(r"\$\('#([A-Za-z0-9_-]+)'\)", js))
 assert referenced_ids.issubset(set(ids)), f'Missing elements: {referenced_ids - set(ids)}'
 commands = set(re.findall(r'\#\[tauri::command\]\s*fn\s+(\w+)', rust))
 frontend_calls = set(re.findall(r"(?:mutation|invoke)\('([a-z_]+)'", js))
