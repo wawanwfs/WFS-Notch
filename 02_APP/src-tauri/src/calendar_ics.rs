@@ -245,7 +245,7 @@ fn parse_ics(source: &str) -> Result<Vec<CalendarEvent>, String> {
                         "DESCRIPTION" => event.description = unescape_text(value),
                         "UID" => event.uid = Some(value.to_owned()),
                         "DTSTART" => {
-                            if full_key.to_ascii_uppercase() != "DTSTART" {
+                            if !full_key.eq_ignore_ascii_case("DTSTART") {
                                 return Err(
                                     "TZID and all-day dates require conversion to UTC first".into(),
                                 );
