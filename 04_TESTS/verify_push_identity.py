@@ -1,6 +1,6 @@
 """Audit the GitHub push actor and author metadata for the main branch.
 
-This is *not* cryptographic identity proof. Enforce branch rules + signed commits
+GitHub-created merge commits can have GitHub as committer but still require the owner's author identity. This is *not* cryptographic identity proof. Enforce branch rules + signed commits
 on GitHub for stronger guarantees. Doesn't run for pull_request jobs.
 """
 import json
@@ -45,7 +45,14 @@ def main() -> int:
         # Field separation preserves spaces in the author's display name.
         author = git('show', '-s', '--format=%an%x00%ae', sha).split('\x00')
         committer = git('show', '-s', '--format=%cn%x00%ce', sha).split('\x00')
-        if author != [NAME, EMAIL] or committer != [NAME, EMAIL]:
+        parent_count = len(git('show', '-s', '--format=%P', sha).split())
+        # GitHub legitimately creates the committer identity for a merge commit.
+        # The author must still be the owner and the push actor must be @wawanwfs.
+        github_merge = (
+            parent_count == 2
+            and committer == ['GitHub', 'noreply@github.com']
+        )
+        if author != [NAME, EMAIL] or (committer != [NAME, EMAIL] and not github_merge):
             print(f'FAIL: commit {sha} author={author} committer={committer}')
             return 1
     print(f'PASS: @{OWNER} pushed {len(hashes)} commit(s) with configured author/committer metadata')
