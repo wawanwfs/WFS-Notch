@@ -1,4 +1,6 @@
-# WFS Notch — Phase 3 / v0.3.0
+> **Phase 5 REA (feature parity, NOT 100%):** Health, flexible countdown, Day Progress, opt-in city weather, and flashcards are implemented on branch `feat/rea-parity-phase5`. See [feature-by-feature parity audit](01_ANALYSIS/REA_FULL_PARITY_MATRIX_V150.md). Native Windows behavior remains subject to CI and device testing.
+
+# WFS Notch — Phase 5 / v0.5.0
 
 **GitHub CI / publisher instructions:** [README_GITHUB.md](README_GITHUB.md). The codebase is prepared for GitHub Actions, but no GitHub-hosted CI result is claimed.
 

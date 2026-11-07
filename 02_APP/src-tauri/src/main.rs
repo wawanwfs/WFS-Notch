@@ -10,6 +10,7 @@ use std::{
 };
 use sysinfo::System;
 mod extra;
+mod parity;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
 use tauri::{Manager, State};
 
@@ -139,12 +140,21 @@ struct AppData {
     events: Vec<CalendarEvent>,
     habits: Vec<extra::Habit>,
     quick_links: Vec<extra::QuickLink>,
+    health: parity::HealthState,
+    countdown: parity::CountdownState,
     settings: Settings,
     focus: FocusState,
 }
 
 impl AppData {
     fn sanitize(&mut self) {
+        self.health.water_glasses = self.health.water_glasses.min(40);
+        self.health.break_count = self.health.break_count.min(100);
+        self.health.calm_minutes = self.health.calm_minutes.min(600);
+        if !(1..=86_400).contains(&self.countdown.duration_seconds) {
+            self.countdown = parity::CountdownState::default();
+        }
+        self.countdown.remaining_seconds = self.countdown.remaining_seconds.min(86_400);
         self.habits
             .retain(|habit| !habit.title.trim().is_empty() && habit.title.chars().count() <= 120);
         self.habits.truncate(200);
@@ -288,6 +298,7 @@ impl Store {
     {
         let previous = self.data.clone();
         self.data.focus.normalize(now_ms());
+        self.data.countdown.normalize(now_ms());
         if let Err(error) = update(&mut self.data) {
             self.data = previous;
             return Err(error);
@@ -318,6 +329,7 @@ fn load_data(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
         .data
         .clone();
     snapshot.focus.normalize(now_ms());
+    snapshot.countdown.normalize(now_ms());
     Ok(snapshot)
 }
 
@@ -786,7 +798,12 @@ fn main() {
             extra::launch_builtin,
             extra::media_key,
             extra::get_autostart,
-            extra::set_autostart
+            extra::set_autostart,
+            parity::health_action,
+            parity::countdown_set,
+            parity::countdown_toggle,
+            parity::countdown_adjust,
+            parity::countdown_reset
         ])
         .run(tauri::generate_context!())
         .expect("WFS Notch encountered a fatal error");

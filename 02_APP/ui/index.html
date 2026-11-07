@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com">
   <title>WFS Notch</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -27,6 +27,11 @@
         <button data-tab="calendar" class="tab">Calendar</button>
         <button data-tab="timer" class="tab">Focus timer</button>
         <button data-tab="system" class="tab">System</button>
+        <button data-tab="health" class="tab">Health</button>
+        <button data-tab="day" class="tab">Day Progress</button>
+        <button data-tab="countdown" class="tab">Countdown</button>
+        <button data-tab="weather" class="tab">Weather</button>
+        <button data-tab="flashcards" class="tab">Flashcards</button>
         <button data-tab="habits" class="tab">Habits</button>
         <button data-tab="dock" class="tab">Dock</button>
         <button data-tab="media" class="tab">Media</button>
@@ -80,6 +85,46 @@
           <div class="timer-layout"><div class="timer-ring"><div class="timer-ring-inner"><strong id="timer-display">25:00</strong><span id="timer-label">READY WHEN YOU ARE</span></div></div><div class="timer-controls"><p>SESSION LENGTH</p><div class="preset-row"><button data-minutes="15">15m</button><button data-minutes="25" class="selected">25m</button><button data-minutes="45">45m</button><button data-minutes="60">60m</button></div><button id="timer-start" class="primary large">Start focus</button><button id="timer-reset" class="secondary large">Reset</button></div></div>
         </section>
 
+        <section class="panel" id="panel-health">
+          <div class="section-heading"><div><h2>Health &amp; wellness</h2><p>Daily water, short breaks, and calm minutes. Local-only tracking.</p></div><span class="section-pill" id="health-day">TODAY</span></div>
+          <div class="health-grid">
+            <div class="system-card"><span class="mini-label">WATER · GOAL 8 GLASSES</span><b id="health-water">0 / 8</b><div class="meter"><span id="health-water-meter"></span></div><div class="tool-actions"><button class="primary" data-health="water_plus" type="button">+ Glass</button><button class="secondary" data-health="water_minus" type="button">− Glass</button></div></div>
+            <div class="system-card"><span class="mini-label">BREAKS TODAY</span><b id="health-breaks">0</b><button class="secondary" data-health="break_plus" type="button">Log short break</button></div>
+            <div class="system-card"><span class="mini-label">CALM MINUTES</span><b id="health-calm">0</b><button class="secondary" data-health="calm_plus" type="button">+ 1 mindful minute</button></div>
+          </div>
+          <p class="event-hint">Your counters roll over at the next local date. This is a personal reminder, not a medical device.</p>
+        </section>
+        <section class="panel" id="panel-day">
+          <div class="section-heading"><div><h2>Day progress</h2><p>One view of today’s timeline and completed tasks.</p></div><span class="section-pill" id="day-percent">0%</span></div>
+          <div class="progress-caption"><strong id="day-clock">00:00</strong><span>Elapsed today</span></div>
+          <div class="day-progress-track"><span id="day-progress-meter"></span></div>
+          <div class="day-summary"><span id="day-task-progress">0 / 0 tasks completed</span><span id="day-events-count">0 events today</span></div>
+          <div class="module-list" id="day-event-list"></div>
+        </section>
+        <section class="panel" id="panel-countdown">
+          <div class="section-heading"><div><h2>Flexible countdown</h2><p>Independent timer with resume and +1/+5 minute adjustments.</p></div><span class="section-pill">LOCAL</span></div>
+          <div class="countdown-face" id="countdown-display">05:00</div>
+          <form class="countdown-form" id="countdown-form">
+            <label for="countdown-minutes">Minutes (1–1440)</label><input id="countdown-minutes" type="number" min="1" max="1440" value="5" required>
+            <button type="submit" class="secondary">Set duration</button>
+          </form>
+          <div class="tool-actions"><button class="primary" id="countdown-toggle" type="button">Start</button><button class="secondary" data-add-minutes="1" type="button">+1 minute</button><button class="secondary" data-add-minutes="5" type="button">+5 minutes</button><button class="secondary" id="countdown-reset" type="button">Reset to 5m</button></div>
+          <p class="event-hint" id="countdown-status">Timer is ready. It continues to count down while the panel is hidden.</p>
+        </section>
+        <section class="panel" id="panel-weather">
+          <div class="section-heading"><div><h2>Weather</h2><p>Opt-in weather from Open-Meteo, without API key or automatic location tracking.</p></div><span class="section-pill">ONLINE</span></div>
+          <form class="input-row" id="weather-form"><input id="weather-city" maxlength="100" required placeholder="Enter city (e.g. Surabaya)" aria-label="Weather city"><button class="primary" type="submit" id="weather-search">Get weather</button></form>
+          <div class="weather-current" id="weather-current" aria-live="polite">Enter a city to request current conditions.</div>
+          <div class="weather-days" id="weather-days"></div>
+          <p class="event-hint">City search is sent only on request to Open-Meteo. Results show the matched location; internet is required. No temperature is invented when unavailable.</p>
+        </section>
+        <section class="panel" id="panel-flashcards">
+          <div class="section-heading"><div><h2>Notes flashcards</h2><p>Write lines like “question :: answer” in Notes, then practice here.</p></div><span class="section-pill" id="flashcards-count">0 CARDS</span></div>
+          <select id="flashcards-note" class="flashcards-select" aria-label="Select flashcard note"></select>
+          <div class="flashcard-face" id="flashcard-face">Select a note with flashcard lines.</div>
+          <div class="tool-actions"><button class="primary" id="flashcard-flip" type="button">Show answer</button><button class="secondary" id="flashcard-next" type="button">Next card</button></div>
+          <p id="flashcard-position" class="event-hint">Study locally; no account or AI service required.</p>
+        </section>
         <section class="panel" id="panel-habits">
           <div class="section-heading"><div><h2>Habit tracker</h2><p>Build daily consistency, one check-in at a time.</p></div><span class="section-pill" id="habit-count">0 TODAY</span></div>
           <form id="habit-form" class="input-row"><input id="habit-title" maxlength="120" placeholder="New habit, e.g. Read for 20 minutes" aria-label="New habit" required><button class="primary" type="submit">Add habit</button></form>
@@ -140,7 +185,7 @@
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.4.0 · PREVIEW</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.5.0 · REA PREVIEW</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>
@@ -150,5 +195,6 @@
   <div id="toast" aria-live="polite" role="status"></div>
   <script src="app.js" defer></script>
   <script src="modules.js" defer></script>
+  <script src="parity.js" defer></script>
 </body>
 </html>

@@ -54,6 +54,8 @@ jobs:
         run: node --check 02_APP/ui/app.js
       - name: Phase 4 JavaScript syntax
         run: node --check 02_APP/ui/modules.js
+      - name: REA parity JavaScript syntax
+        run: node --check 02_APP/ui/parity.js
       - name: Structural and metadata audit
         run: python 04_TESTS/static_audit.py
       - name: Phase 2 browser regression
@@ -62,6 +64,8 @@ jobs:
         run: python 04_TESTS/browser_phase3.py
       - name: Phase 4 functional UI integration
         run: python 04_TESTS/browser_phase4.py
+      - name: Phase 5 REA parity browser regression
+        run: python 04_TESTS/browser_parity.py
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -141,5 +145,12 @@ jobs:
         with:
           name: WFSNotch-Windows-SHA256
           path: build-evidence/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: Upload unsigned portable Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFSNotch-Windows-x64-portable-unsigned
+          path: 02_APP/src-tauri/target/release/wfs-notch.exe
           retention-days: 30
           if-no-files-found: error

@@ -7,6 +7,8 @@ const previewKey = 'wfs-notch-browser-preview-v2';
 const previewBackupsKey = 'wfs-notch-browser-backups-v3';
 const defaults = () => ({
   todos: [], notes: [], events: [], habits: [], quick_links: [],
+  health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
+  countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
   settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
 });
@@ -50,6 +52,8 @@ function previewInvoke(command, args = {}) {
   state.events = Array.isArray(state.events) ? state.events : [];
   state.habits = Array.isArray(state.habits) ? state.habits : [];
   state.quick_links = Array.isArray(state.quick_links) ? state.quick_links : [];
+  state.health = { ...defaults().health, ...state.health };
+  state.countdown = { ...defaults().countdown, ...state.countdown };
   if (command === 'list_backups') return Promise.resolve(JSON.parse(localStorage.getItem(previewBackupsKey) || '[]').map(item => item.info));
   if (command === 'create_backup') {
     const backups = JSON.parse(localStorage.getItem(previewBackupsKey) || '[]');
@@ -78,6 +82,11 @@ function previewInvoke(command, args = {}) {
   if (focus.ends_at_ms != null) {
     focus.remaining_seconds = live.remaining;
     if (live.completed) { focus.ends_at_ms = null; focus.completed = true; focus.paused = false; }
+  }
+  if (state.countdown.ends_at_ms != null) {
+    const remaining = Math.max(0, Math.ceil((state.countdown.ends_at_ms - Date.now()) / 1000));
+    state.countdown.remaining_seconds = remaining;
+    if (!remaining) { state.countdown.ends_at_ms = null; state.countdown.completed = true; }
   }
   if (command === 'load_data') return Promise.resolve(state);
   switch (command) {
@@ -154,6 +163,46 @@ function previewInvoke(command, args = {}) {
       if (!state.quick_links.some(item => item.id === args.id)) throw new Error('Quick link not found');
       state.quick_links = state.quick_links.filter(item => item.id !== args.id); break;
     }
+    case 'health_action': {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(args.day)) throw new Error('Invalid health date');
+      if (state.health.day !== args.day) state.health = { ...defaults().health, day: args.day };
+      const actions = {
+        water_plus: ['water_glasses', 1, 40],
+        water_minus: ['water_glasses', -1, 40],
+        break_plus: ['break_count', 1, 100],
+        calm_plus: ['calm_minutes', 1, 600],
+      };
+      const action = actions[args.action];
+      if (!action) throw new Error('Unknown health action');
+      state.health[action[0]] = Math.max(0, Math.min(action[2], state.health[action[0]] + action[1]));
+      break;
+    }
+    case 'countdown_set': {
+      const seconds = Number(args.seconds);
+      if (!Number.isInteger(seconds) || seconds < 1 || seconds > 86400) throw new Error('Invalid countdown duration');
+      state.countdown = {duration_seconds: seconds, remaining_seconds: seconds, ends_at_ms: null, completed: false};
+      break;
+    }
+    case 'countdown_toggle': {
+      const timer = state.countdown;
+      if (timer.ends_at_ms != null) timer.ends_at_ms = null;
+      else {
+        if (!timer.remaining_seconds) timer.remaining_seconds = timer.duration_seconds;
+        timer.ends_at_ms = Date.now() + timer.remaining_seconds * 1000;
+        timer.completed = false;
+      }
+      break;
+    }
+    case 'countdown_adjust': {
+      if (![1,5].includes(args.minutes)) throw new Error('Invalid countdown adjustment');
+      const timer = state.countdown;
+      timer.remaining_seconds = Math.min(86400, timer.remaining_seconds + args.minutes * 60);
+      timer.duration_seconds = Math.max(timer.duration_seconds, timer.remaining_seconds);
+      if (timer.ends_at_ms != null) timer.ends_at_ms = Date.now() + timer.remaining_seconds * 1000;
+      timer.completed = false;
+      break;
+    }
+    case 'countdown_reset': state.countdown = { ...defaults().countdown }; break;
     case 'set_accent': state.settings.accent = args.accent; break;
     case 'set_hover_to_open': state.settings.hover_to_open = args.enabled; break;
     case 'set_pin_open': state.settings.pin_open = args.enabled; break;
@@ -482,6 +531,7 @@ function render() {
   renderCalendar();
   renderTimer();
   if (typeof renderExtras === 'function') renderExtras();
+  if (typeof renderParity === 'function') renderParity();
 }
 
 async function flushNote() {
@@ -531,6 +581,7 @@ function clockTick() {
   }
   if (!data.focus.completed) focusCompletionNotified = false;
   checkReminders(now.getTime());
+  if (typeof tickParity === 'function') tickParity();
   if (activeTab === 'system' && Date.now() - telemetryLastAt > 4000) void refreshTelemetry();
 }
 
@@ -650,6 +701,8 @@ async function start() {
   data.events = Array.isArray(data.events) ? data.events : [];
   data.habits = Array.isArray(data.habits) ? data.habits : [];
   data.quick_links = Array.isArray(data.quick_links) ? data.quick_links : [];
+  data.health = { ...defaults().health, ...data.health };
+  data.countdown = { ...defaults().countdown, ...data.countdown };
   $('#event-time').value = asLocalInput(Date.now() + 15 * 60000);
   if (!nativeInvoke || data.settings.pin_open) await setExpanded(true);
   render();
