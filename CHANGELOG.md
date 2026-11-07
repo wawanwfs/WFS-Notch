@@ -1,3 +1,10 @@
+## 0.5.0 — Phase 5 REA
+
+- Added Rust-persisted water/break/calm counters and an independent, suspend-aware, adjustable countdown.
+- Added opt-in weather via Open-Meteo, Day Progress and Notes flashcards.
+- Added browser regression tests, expanded navigation and detailed gap matrix against Poni 1.5.0.
+- Clearly marked unimplemented native Windows integrations and 100% parity as **not yet achieved**.
+
 # Changelog
 
 ## 0.2.0 — Phase 2 (2026-11-07)

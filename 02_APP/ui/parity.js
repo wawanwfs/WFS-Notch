@@ -42,7 +42,7 @@ function renderCountdown() {
   $('#countdown-toggle').textContent = timer.running ? 'Pause' : timer.completed ? 'Restart' : 'Start / resume';
   $('#countdown-status').textContent = timer.running ? 'Countdown running.' :
     timer.completed ? 'Countdown complete.' : 'Paused or ready.';
-  if (timer.completed && !countdownSeenComplete && data.countdown?.completed && !document.hidden) {
+  if (timer.completed && !countdownSeenComplete && (data.countdown?.completed || data.countdown?.ends_at_ms != null) && !document.hidden) {
     countdownSeenComplete = true;
     showInfo('Countdown complete.');
   }

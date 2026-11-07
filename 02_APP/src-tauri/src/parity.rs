@@ -75,8 +75,14 @@ fn valid_day(day: &str) -> bool {
             .iter()
             .enumerate()
             .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
-        && day.get(5..7).and_then(|v| v.parse::<u8>().ok()).is_some_and(|m| (1..=12).contains(&m))
-        && day.get(8..10).and_then(|v| v.parse::<u8>().ok()).is_some_and(|d| (1..=31).contains(&d))
+        && day
+            .get(5..7)
+            .and_then(|v| v.parse::<u8>().ok())
+            .is_some_and(|m| (1..=12).contains(&m))
+        && day
+            .get(8..10)
+            .and_then(|v| v.parse::<u8>().ok())
+            .is_some_and(|d| (1..=31).contains(&d))
 }
 
 #[tauri::command]
@@ -115,10 +121,7 @@ pub fn health_action(
 }
 
 #[tauri::command]
-pub fn countdown_set(
-    store: State<'_, Mutex<Store>>,
-    seconds: u64,
-) -> Result<AppData, String> {
+pub fn countdown_set(store: State<'_, Mutex<Store>>, seconds: u64) -> Result<AppData, String> {
     if !(1..=86_400).contains(&seconds) {
         return Err("Countdown duration must be 1–86400 seconds".into());
     }
@@ -141,10 +144,7 @@ pub fn countdown_toggle(store: State<'_, Mutex<Store>>) -> Result<AppData, Strin
 }
 
 #[tauri::command]
-pub fn countdown_adjust(
-    store: State<'_, Mutex<Store>>,
-    minutes: u64,
-) -> Result<AppData, String> {
+pub fn countdown_adjust(store: State<'_, Mutex<Store>>, minutes: u64) -> Result<AppData, String> {
     if !matches!(minutes, 1 | 5) {
         return Err("Only +1 and +5 minute adjustments are supported".into());
     }

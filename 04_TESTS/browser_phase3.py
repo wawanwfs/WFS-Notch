@@ -60,7 +60,7 @@ with sync_playwright() as pw:
     page.get_by_text('Delete on restore').wait_for()
     page.get_by_role('button', name='Calendar', exact=True).click()
     page.get_by_role('button', name='Delete event: Updated client review').click()
-    page.get_by_text('0 EVENTS').wait_for()
+    page.locator('#calendar-count').get_by_text('0 EVENTS', exact=True).wait_for()
     page.get_by_role('button', name='Settings').click()
     page.locator('.backup-entry button').click()
     page.get_by_text('Backup restored successfully.').wait_for()
