@@ -531,6 +531,7 @@ function eventDisplayDate(event) {
     : event.all_day.start_date + ' – ' + end + ' · All day';
 }
 function cancelEventEdit() {
+  if (typeof closeSeriesShift === 'function') closeSeriesShift();
   selectedEventId = null;
   selectedSeriesEventId = null;
   $('#event-submit').textContent = 'Add event';
@@ -628,7 +629,13 @@ function renderCalendar() {
         if (!window.confirm('Delete all occurrences of this imported series? WFS will remember the cancellation and skip it on future imports until you explicitly reset ICS cancellation history.')) return;
         if (await mutation('remove_event_series', {id: event.id})) cancelEventEdit();
       });
-      line.append(rename, deleteSeries);
+      const shiftSeries = node('button', 'text-button', 'Move series');
+      shiftSeries.type = 'button';
+      shiftSeries.setAttribute('aria-label', 'Preview whole-series day shift: ' + event.title);
+      shiftSeries.addEventListener('click', () => {
+        if (typeof openSeriesShift === 'function') openSeriesShift(event.id);
+      });
+      line.append(rename, shiftSeries, deleteSeries);
     }
     list.append(line);
   }

@@ -82,6 +82,8 @@ jobs:
         run: python tests/browser_tasks_phase18.py
       - name: Phase 22 GSMTC ambiguous app ID and stale selection regression
         run: python tests/browser_media_ambiguity.py
+      - name: Phase 22 calendar series shift native-only preview regression
+        run: python tests/browser_calendar_shift.py
       - name: Calendar UI JavaScript syntax
         run: node --check src/features/calendar.js
       - name: System details JavaScript syntax
