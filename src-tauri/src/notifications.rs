@@ -89,11 +89,7 @@ fn needs_delivery(
             .is_some_and(|expiry| *expiry > now)
 }
 
-fn retry_allowed_key(
-    key: &str,
-    now: u128,
-    retries: &HashMap<String, ReminderRetry>,
-) -> bool {
+fn retry_allowed_key(key: &str, now: u128, retries: &HashMap<String, ReminderRetry>) -> bool {
     retries.get(key).is_none_or(|record| {
         record.expires_at_ms <= now
             || (record.attempts < MAX_RETRY_ATTEMPTS && now >= record.retry_after_ms)
@@ -137,9 +133,7 @@ fn task_delivery_key(todo: &Todo) -> Option<String> {
 
 fn task_due(todo: &Todo, now: u128) -> bool {
     todo.due_at_ms.is_some_and(|due| {
-        !todo.done
-            && now >= u128::from(due)
-            && now < u128::from(due).saturating_add(EVENT_GRACE_MS)
+        !todo.done && now >= u128::from(due) && now < u128::from(due).saturating_add(EVENT_GRACE_MS)
     })
 }
 
@@ -284,7 +278,9 @@ where
     }
     let key = delivery_key(&event);
     let expires_at = reservation_expires_at(&event);
-    reserve_and_send(&mut guard, key, expires_at, now, || sender(&event, &settings))
+    reserve_and_send(&mut guard, key, expires_at, now, || {
+        sender(&event, &settings)
+    })
 }
 
 /// Shared durable reservation and retry journal for calendar and task alerts.
@@ -374,7 +370,9 @@ where
     let key = task_delivery_key(&todo).ok_or("Task due date was cleared")?;
     let expires_at = u128::from(todo.due_at_ms.ok_or("Task due date was cleared")?)
         .saturating_add(LEDGER_RETENTION_MS);
-    reserve_and_send(&mut guard, key, expires_at, now, || sender(&todo, &settings))
+    reserve_and_send(&mut guard, key, expires_at, now, || {
+        sender(&todo, &settings)
+    })
 }
 
 fn deliver_task_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool, String> {
@@ -406,7 +404,10 @@ fn poll_due_events(app: &AppHandle) -> Result<usize, String> {
             .lock()
             .map_err(|_| "Storage lock unavailable".to_owned())?;
         let now = now_ms();
-        (due_event_ids(&guard.data, now), due_task_ids(&guard.data, now))
+        (
+            due_event_ids(&guard.data, now),
+            due_task_ids(&guard.data, now),
+        )
     };
     let mut delivered = 0;
     for id in due_ids {
@@ -475,7 +476,9 @@ pub fn get_reminder_scheduler_status(
                 .data
                 .todos
                 .iter()
-                .filter(|todo| !todo.done && todo.due_at_ms.is_some_and(|due| u128::from(due) >= now))
+                .filter(|todo| {
+                    !todo.done && todo.due_at_ms.is_some_and(|due| u128::from(due) >= now)
+                })
                 .count()
         } else {
             0
@@ -601,7 +604,10 @@ mod tests {
         data.todos[0].title = "Edited title".into();
         assert!(due_task_ids(&data, u128::from(time)).is_empty());
         data.todos[0].due_at_ms = Some(time + 60_000);
-        assert_eq!(due_task_ids(&data, u128::from(time) + 60_000), vec!["task-1"]);
+        assert_eq!(
+            due_task_ids(&data, u128::from(time) + 60_000),
+            vec!["task-1"]
+        );
         data.todos[0].done = true;
         assert!(due_task_ids(&data, u128::from(time) + 60_000).is_empty());
         data.todos.clear();
@@ -628,20 +634,27 @@ mod tests {
         .unwrap_err();
         assert!(!error.contains("private"));
         assert!(!error.contains("task-1"));
-        assert!(!deliver_task_with(&store, "task-1", u128::from(due) + 1, |_, _| {
-            panic!("Retry was scheduled in the future")
-        })
-        .unwrap());
-        assert!(deliver_task_with(&store, "task-1", u128::from(due) + 20_000, |todo, _| {
-            assert_eq!(todo.id, "task-1");
-            Ok(())
-        })
-        .unwrap());
+        assert!(
+            !deliver_task_with(&store, "task-1", u128::from(due) + 1, |_, _| {
+                panic!("Retry was scheduled in the future")
+            })
+            .unwrap()
+        );
+        assert!(
+            deliver_task_with(&store, "task-1", u128::from(due) + 20_000, |todo, _| {
+                assert_eq!(todo.id, "task-1");
+                Ok(())
+            })
+            .unwrap()
+        );
         let from_disk = Store::open(path.clone()).unwrap();
         let after_restart = Mutex::new(from_disk);
-        assert!(!deliver_task_with(&after_restart, "task-1", u128::from(due) + 25_000, |_, _| {
-            panic!("Successful durable reservation must not replay")
-        })
+        assert!(!deliver_task_with(
+            &after_restart,
+            "task-1",
+            u128::from(due) + 25_000,
+            |_, _| { panic!("Successful durable reservation must not replay") }
+        )
         .unwrap());
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("json.bak"));
