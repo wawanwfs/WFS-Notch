@@ -9,7 +9,7 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.18.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.19.0 source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware manual placement plus opt-in Win32 foreground fullscreen guard (excluding spanning windows) / display hotplug polling; real device/hover/pass-through QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
@@ -31,7 +31,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Wi-Fi Controls | Gap | Windows adapter & network list APIs |
 | Bluetooth Controls | Gap | Windows radio/device APIs, pairing/battery |
 | Dashboard quick toggles | Gap | Wi-Fi, Bluetooth, Keep Awake, dark mode, brightness, mic |
-| Notifications | Partial | Rust-native background scheduler, durable per-event at-most-once reservation ledger with bounded clock rollback retention, deterministic transaction tests and backup restore replay protection, catch-up after resume, opt-in private titles, WinRT toast setting diagnostic and WFS-only pause; OS delivery acknowledgement, full system DND, native tests and third-party listener missing |
+| Notifications | Partial | Rust-native background scheduler, durable per-event at-most-once reservation ledger with bounded clock rollback retention, bounded persistent 3-attempt OS enqueue error retries with 20/60/180 second backoff, deterministic transaction tests and backup restore replay protection, catch-up after resume, opt-in private titles, WinRT toast setting diagnostic and WFS-only pause; OS delivery acknowledgement, full system DND, native tests and third-party listener missing |
 | HUD/OSD | Gap | Volume, brightness, keyboard state, airplane mode overlays |
 | Dock | Partial | Quick launch/links only, not running-app/taskbar dock |
 | Shelf/drop actions | Gap | File drops, ZIP, convert, safe send |
@@ -50,9 +50,9 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Data backup | Partial | Local JSON snapshots/restore; portable import/export missing |
 | Self-update | Gap | Signed updater, portable notification |
 
-## Phase 17 weighted score (38 categories)
+## Phase 18–19 weighted score (38 categories)
 
-Counts: **Implemented 3**, **Partial 16**, **Gap 19**. Formula: (3 × 1 + 16 × 0.5 + 19 × 0) / 38 × 100 = **28.9%** (rounded to one decimal). This remains unchanged from v0.16.0: significant progress *within* partial categories does not promote an entire category to Implemented without completing its scope. CI results and real Windows tests are tracked separately in `docs/PHASE17_REPORT.md`.
+Counts: **Implemented 3**, **Partial 16**, **Gap 19**. Formula: (3 × 1 + 16 × 0.5 + 19 × 0) / 38 × 100 = **28.9%** (rounded to one decimal). This remains unchanged from v0.16.0: significant progress *within* partial categories does not promote an entire category to Implemented without completing its scope. CI results and real Windows tests are tracked separately in `docs/PHASE18_TO_22_BATCH_REPORT.md`.
 
 ## Gate for accurate 100% claim
 

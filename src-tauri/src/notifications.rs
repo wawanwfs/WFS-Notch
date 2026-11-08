@@ -2,7 +2,7 @@
 //! Never accesses notifications from other applications, OS DND, or private calendars
 //! outside the local WFS Notch store. All user-facing content is redacted by default.
 use crate::{now_ms, with_store, AppData, CalendarEvent, Settings, Store};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Mutex, time::Duration};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_notification::NotificationExt;
@@ -15,6 +15,26 @@ const EVENT_GRACE_MS: u128 = 300_000;
 // short backward clock jumps or restored calendar backups cannot replay it.
 // This remains a bounded best-effort guarantee, not exactly-once visibility.
 const LEDGER_RETENTION_MS: u128 = 30 * 24 * 60 * 60 * 1_000;
+// Explicit retry budget for definite OS enqueue errors only. An already
+// reserved enqueue never retries after a process crash before acknowledgement.
+const MAX_RETRY_ATTEMPTS: u8 = 3;
+const MAX_RETRY_ENTRIES: usize = 4096;
+const RETRY_DELAYS_MS: [u128; 3] = [20_000, 60_000, 180_000];
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct ReminderRetry {
+    pub attempts: u8,
+    pub retry_after_ms: u128,
+    pub expires_at_ms: u128,
+}
+
+impl ReminderRetry {
+    pub(super) fn valid(&self) -> bool {
+        (1..=MAX_RETRY_ATTEMPTS).contains(&self.attempts)
+            && self.retry_after_ms <= self.expires_at_ms
+            && self.expires_at_ms <= u128::from(u64::MAX)
+    }
+}
 
 #[derive(Serialize)]
 pub struct ReminderSchedulerStatus {
@@ -24,6 +44,9 @@ pub struct ReminderSchedulerStatus {
     next_due_at_ms: Option<u64>,
     poll_interval_seconds: u64,
     persisted_delivery_count: usize,
+    pending_retry_count: usize,
+    suppressed_after_failures_count: usize,
+    max_sender_attempts: u8,
 }
 
 fn can_notify(settings: &Settings) -> bool {
@@ -64,6 +87,17 @@ fn needs_delivery(
             .is_some_and(|expiry| *expiry > now)
 }
 
+fn retry_allowed(
+    event: &CalendarEvent,
+    now: u128,
+    retries: &HashMap<String, ReminderRetry>,
+) -> bool {
+    retries.get(&delivery_key(event)).is_none_or(|record| {
+        record.expires_at_ms <= now
+            || (record.attempts < MAX_RETRY_ATTEMPTS && now >= record.retry_after_ms)
+    })
+}
+
 fn reservation_expires_at(event: &CalendarEvent) -> u128 {
     u128::from(event.starts_at_ms).saturating_add(LEDGER_RETENTION_MS)
 }
@@ -75,7 +109,10 @@ fn due_event_ids(data: &AppData, now: u128) -> Vec<String> {
     }
     data.events
         .iter()
-        .filter(|event| needs_delivery(event, &data.settings, now, &data.reminder_deliveries))
+        .filter(|event| {
+            needs_delivery(event, &data.settings, now, &data.reminder_deliveries)
+                && retry_allowed(event, now, &data.reminder_retries)
+        })
         .map(|event| event.id.clone())
         .take(256)
         .collect()
@@ -174,7 +211,9 @@ where
         return Ok(false); // Event deleted before dispatch.
     };
     let settings = guard.data.settings.clone();
-    if !needs_delivery(&event, &settings, now, &guard.data.reminder_deliveries) {
+    if !needs_delivery(&event, &settings, now, &guard.data.reminder_deliveries)
+        || !retry_allowed(&event, now, &guard.data.reminder_retries)
+    {
         return Ok(false);
     }
     let key = delivery_key(&event);
@@ -185,14 +224,44 @@ where
         data.reminder_deliveries.insert(key.clone(), expires_at);
         Ok(())
     })?;
-    if let Err(error) = sender(&event, &settings) {
-        // OS API rejected the enqueue. Revert reservation so the native worker
-        // can retry on its next 20-second pass, assuming the event remains due.
+    if let Err(_error) = sender(&event, &settings) {
+        // The OS call returned an error. Its precise presentation state may be
+        // unknowable, so retries are bounded (3 total) and marked locally.
+        // Commit the unreserve + retry atomically; if this transaction fails,
+        // the original durable reservation survives and blocks replay.
         guard.transact(|data| {
+            data.reminder_retries
+                .retain(|_, retry| retry.expires_at_ms > now);
+            if !data.reminder_retries.contains_key(&key)
+                && data.reminder_retries.len() >= MAX_RETRY_ENTRIES
+            {
+                return Err("Reminder retry journal is full; send not repeated".into());
+            }
+            let attempts = data.reminder_retries.get(&key).map_or(1, |previous| {
+                previous.attempts.saturating_add(1).min(MAX_RETRY_ATTEMPTS)
+            });
+            let delay = RETRY_DELAYS_MS[usize::from(attempts - 1)];
+            data.reminder_retries.insert(
+                key.clone(),
+                ReminderRetry {
+                    attempts,
+                    retry_after_ms: now.saturating_add(delay),
+                    expires_at_ms: expires_at,
+                },
+            );
             data.reminder_deliveries.remove(&key);
             Ok(())
         })?;
-        return Err(error);
+        // Do not log event title, source UID, sender error body or descriptions.
+        return Err("Windows rejected notification enqueue; bounded retry scheduled".into());
+    }
+    // Success already has a durably committed reservation. Removing a stale
+    // retry marker is housekeeping, not a reason to repeat the OS send.
+    if guard.data.reminder_retries.contains_key(&key) {
+        let _ = guard.transact(|data| {
+            data.reminder_retries.remove(&key);
+            Ok(())
+        });
     }
     Ok(true)
 }
@@ -222,9 +291,9 @@ fn poll_due_events(app: &AppHandle) -> Result<usize, String> {
         match deliver_by_id(app, store.inner(), &id) {
             Ok(true) => delivered += 1,
             Ok(false) => {}
-            Err(error) => {
-                // No calendar titles or private event data are written to logs.
-                eprintln!("WFS reminder delivery failed: {error}");
+            Err(_) => {
+                // No event titles, source UIDs or Windows error strings logged.
+                eprintln!("WFS reminder enqueue failed (retry bounded by local journal)");
             }
         }
     }
@@ -273,6 +342,19 @@ pub fn get_reminder_scheduler_status(
             .values()
             .filter(|expiry| **expiry > now)
             .count(),
+        pending_retry_count: guard
+            .data
+            .reminder_retries
+            .values()
+            .filter(|entry| entry.expires_at_ms > now && entry.attempts < MAX_RETRY_ATTEMPTS)
+            .count(),
+        suppressed_after_failures_count: guard
+            .data
+            .reminder_retries
+            .values()
+            .filter(|entry| entry.expires_at_ms > now && entry.attempts >= MAX_RETRY_ATTEMPTS)
+            .count(),
+        max_sender_attempts: MAX_RETRY_ATTEMPTS,
     })
 }
 
@@ -517,8 +599,13 @@ mod tests {
         })
         .is_err());
         assert!(store.lock().unwrap().data.reminder_deliveries.is_empty());
+        assert_eq!(store.lock().unwrap().data.reminder_retries.len(), 1);
+        assert!(!deliver_with(&store, "event-1", 1_799_999_700_100, |_, _| {
+            panic!("bounded backoff must block immediate retry")
+        })
+        .unwrap());
         assert!(
-            deliver_with(&store, "event-1", 1_799_999_700_100, |_, settings| {
+            deliver_with(&store, "event-1", 1_799_999_720_000, |_, settings| {
                 assert!(!settings.notifications_show_details);
                 Ok(())
             })
@@ -539,6 +626,130 @@ mod tests {
         drop(store);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn sender_rejections_use_persistent_three_attempt_backoff_and_suppress_clock_replay() {
+        let (store, path) = fixture_store("bounded-backoff", 1_800_000_000_000);
+        let base = 1_799_999_700_000_u128;
+        let attempts_at = [base, base + 20_000, base + 80_000];
+        for (index, timestamp) in attempts_at.iter().enumerate() {
+            assert!(deliver_with(&store, "event-1", *timestamp, |_, _| {
+                Err("Private appointment should not appear in error logs".into())
+            })
+            .is_err());
+            let state = store.lock().unwrap();
+            let retry = state.data.reminder_retries.values().next().unwrap();
+            assert_eq!(retry.attempts, (index + 1) as u8);
+            assert_eq!(retry.retry_after_ms, timestamp + RETRY_DELAYS_MS[index]);
+            assert!(state.data.reminder_deliveries.is_empty());
+            drop(state);
+            assert!(!deliver_with(&store, "event-1", *timestamp + 1, |_, _| {
+                panic!("Retry blocked before deadline")
+            })
+            .unwrap());
+        }
+        assert!(!deliver_with(&store, "event-1", base + 280_000, |_, _| {
+            panic!("Three failed attempts should suppress further sends")
+        })
+        .unwrap());
+        assert_eq!(
+            due_event_ids(&store.lock().unwrap().data, base + 280_000).len(),
+            0
+        );
+        let restored = Mutex::new(Store::open(path.clone()).unwrap());
+        assert!(!deliver_with(&restored, "event-1", base + 280_000, |_, _| {
+            panic!("Recovered retry journal must suppress replay")
+        })
+        .unwrap());
+        let current = restored.lock().unwrap().data.clone();
+        let mut backed_up = AppData::default();
+        crate::preserve_reminder_history(&mut backed_up, &current);
+        assert_eq!(
+            backed_up.reminder_retries.values().next().unwrap().attempts,
+            3
+        );
+        backed_up.events = current.events;
+        backed_up.settings = current.settings;
+        assert!(due_event_ids(&backed_up, base + 280_000).is_empty());
+        drop(restored);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn successful_retry_clears_error_history_but_retains_durable_reservation() {
+        let (store, path) = fixture_store("retry-success", 1_800_000_000_000);
+        let base = 1_799_999_700_000_u128;
+        assert!(deliver_with(&store, "event-1", base, |_, _| Err("rejected".into())).is_err());
+        assert_eq!(store.lock().unwrap().data.reminder_retries.len(), 1);
+        assert!(
+            deliver_with(&store, "event-1", base + 20_000, |event, settings| {
+                assert_eq!(
+                    event_message(event, settings.notifications_show_details),
+                    "You have an upcoming calendar event. Open WFS Notch to view it."
+                );
+                Ok(())
+            })
+            .unwrap()
+        );
+        assert!(store.lock().unwrap().data.reminder_retries.is_empty());
+        assert_eq!(store.lock().unwrap().data.reminder_deliveries.len(), 1);
+        let restored = Mutex::new(Store::open(path.clone()).unwrap());
+        assert!(!deliver_with(&restored, "event-1", base + 60_000, |_, _| {
+            panic!("Confirmed enqueue must stay suppressed after restart")
+        })
+        .unwrap());
+        drop(restored);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn retry_parser_validation_and_defensive_backup_merge_preserve_privacy() {
+        let valid = ReminderRetry {
+            attempts: 2,
+            retry_after_ms: 1_800_000_000_000,
+            expires_at_ms: 1_802_000_000_000,
+        };
+        assert!(valid.valid());
+        assert!(!ReminderRetry {
+            attempts: 0,
+            ..valid.clone()
+        }
+        .valid());
+        assert!(!ReminderRetry {
+            attempts: 4,
+            ..valid.clone()
+        }
+        .valid());
+        assert!(!ReminderRetry {
+            retry_after_ms: valid.expires_at_ms + 1,
+            ..valid.clone()
+        }
+        .valid());
+        let mut current = AppData::default();
+        current
+            .reminder_retries
+            .insert("opaque-event-key".into(), valid.clone());
+        let mut recovered = AppData::default();
+        recovered.reminder_retries.insert(
+            "opaque-event-key".into(),
+            ReminderRetry {
+                attempts: 1,
+                retry_after_ms: valid.retry_after_ms - 60_000,
+                expires_at_ms: valid.expires_at_ms - 60_000,
+            },
+        );
+        crate::preserve_reminder_history(&mut recovered, &current);
+        assert_eq!(
+            recovered.reminder_retries.get("opaque-event-key"),
+            Some(&valid)
+        );
+        let json = serde_json::to_string(&recovered).unwrap();
+        assert!(!json.contains("Private appointment"));
     }
 
     #[test]

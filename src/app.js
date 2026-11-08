@@ -6,7 +6,7 @@ const nativeInvoke = window.__TAURI__?.core?.invoke;
 const previewKey = 'wfs-notch-browser-preview-v2';
 const previewBackupsKey = 'wfs-notch-browser-backups-v3';
 const defaults = () => ({
-  todos: [], notes: [], events: [], calendar_tombstones: [], calendar_series: {}, habits: [], quick_links: [],
+  todos: [], notes: [], events: [], calendar_tombstones: [], calendar_series: {}, reminder_retries: {}, habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
   settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, always_on_top: true, auto_lower_fullscreen: false },
@@ -59,6 +59,8 @@ function previewInvoke(command, args = {}) {
   state.calendar_tombstones = Array.isArray(state.calendar_tombstones) ? state.calendar_tombstones : [];
   state.calendar_series = state.calendar_series && typeof state.calendar_series === 'object' && !Array.isArray(state.calendar_series)
     ? state.calendar_series : {};
+  state.reminder_retries = state.reminder_retries && typeof state.reminder_retries === 'object' && !Array.isArray(state.reminder_retries)
+    ? state.reminder_retries : {};
   state.habits = Array.isArray(state.habits) ? state.habits : [];
   state.quick_links = Array.isArray(state.quick_links) ? state.quick_links : [];
   state.health = { ...defaults().health, ...state.health };
@@ -892,10 +894,15 @@ function bind() {
       const next = Number.isFinite(upcoming) && upcoming > 0
         ? ' Next reminder: ' + new Date(upcoming).toLocaleString() + '.'
         : '';
+      const retrying = Math.max(0, Number(status.pending_retry_count || 0));
+      const exhausted = Math.max(0, Number(status.suppressed_after_failures_count || 0));
+      const retryNote = ' Sender retries: ' + retrying + ' pending, ' + exhausted +
+        ' exhausted (up to ' + (status.max_sender_attempts || 3) +
+        ' enqueue attempts; Windows may still hide accepted toasts).';
       $('#notification-scheduler-status').textContent =
         'Native reminder scheduler: ' + state + '. ' + count +
         ' upcoming reminder(s); checks every ' + status.poll_interval_seconds +
-        ' seconds while WFS Notch is running.' + next;
+        ' seconds while WFS Notch is running.' + next + retryNote;
     } catch (error) {
       $('#notification-scheduler-status').textContent = 'Native scheduler status unavailable.';
       showError(error);
