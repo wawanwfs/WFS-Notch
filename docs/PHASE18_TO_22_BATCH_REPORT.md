@@ -105,3 +105,11 @@ On `feat/phase24f-opt-in-task-reminders`, implement task due alerts as a separat
 Baseline verified main v0.25.0 `9ba9c9e37361ec84b934eda564cb881bb516cf33`, exact postmerge [CI 42515389548](https://github.com/wawanwfs/WFS-Notch/actions/runs/42515389548) ALL PASS, including 88 Rust tests, Chromium/64 screenshots, unsigned Windows NSIS+portable, SHA256 and commit identity.
 
 Feature branch `feat/phase26e-accessible-appearance-presets` implements persisted compact/comfortable spacing, independent reduced motion, high contrast, reset and test coverage. **Candidate only until its exact PR-head and post-merge main GitHub Actions are green.** Device Win10/11 UI/keyboard/screen-reader behavior remains NOT TESTED. Fixed 38-category parity stays 28.9%.
+
+## Phase26E — exact verified merged UI settings (v0.26.0)
+
+PR [#29](https://github.com/wawanwfs/WFS-Notch/pull/29) merged to main `077859e1b3eb72ef3c5e5a06c0823ee4f755bb06` after passing PR-head [CI 42535562012](https://github.com/wawanwfs/WFS-Notch/actions/runs/42535562012). The post-merge main run is [42535776621](https://github.com/wawanwfs/WFS-Notch/actions/runs/42535776621); check this run's result rather than assuming PASS from PR CI. Features: compact/comfortable density, minimal motion, optional high contrast and reset with persisted Rust migration tests. Native Windows GUI acceptance remains NOT TESTED.
+
+## Phase27I — robust local state recovery PR candidate
+
+Feature branch `feat/phase27i-state-recovery-retention` adds two retained local recovery generations, guarded fallback and deterministic forced-staging-error rollback tests. **Candidate only** until its own Windows CI and exact-main CI pass. Not a claim that native NSIS upgrades from older versions have been tested.

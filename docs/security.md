@@ -15,3 +15,7 @@ Unverified Windows hardware behavior, unsigned installer, no independent penetra
 ## Windows installer reproducibility
 
 CI fetches the official NSIS 3.13 bundle and Tauri NSIS utility DLL only from Tauri's own GitHub Releases/API, checks their upstream-pinned SHA-1 digests, and uses the per-user Tauri cache. This is an integrity match to Tauri's bundled pins, **not** a replacement for code signing or stronger artifact attestations. Downloads are retried to mitigate GitHub CDN 504 errors; unsigned installers remain explicitly labeled.
+
+## Workstream I: interrupted local writes and two-stage recovery (v0.27.0)
+
+The native Tauri state remains local JSON. New writes fsync an uncommitted temporary file; the current primary and most recent backup are rotated only after the temporary write succeeds, with the older backup retained as `state.json.bak.prev`. On launch, recovery reads `state.json.bak` first then `state.json.bak.prev` if required. An invalid primary is renamed to a distinct local corrupt-state archive rather than discarded; a failed staging write must leave both backups and the original primary untouched. The `state.json.tmp` file is never auto-imported after a crash. This is best-effort crash recovery, not an unconditional guarantee across file system, disk or power failure. Native Windows upgrades from 0.15–0.17 require actual interactive QA before a production release claim.
