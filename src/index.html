@@ -97,6 +97,19 @@
             <button class="primary" id="event-submit" type="submit">Add event</button>
           </form>
           <div class="event-edit-actions"><button class="text-button" id="event-cancel" type="button" hidden>Cancel editing event</button></div>
+          <section id="calendar-series-shift" class="series-shift-panel" hidden aria-labelledby="calendar-shift-heading">
+            <strong id="calendar-shift-heading">Move this imported series — local schedule only</strong>
+            <p>One-time whole-day shift for untouched all-day or explicitly UTC series. IANA/floating series or individually edited occurrences are refused to protect DST semantics. Moved occurrences export independently, not as the original RRULE.</p>
+            <div class="series-shift-controls">
+              <label for="calendar-shift-days">Days (+ forward, − backward)
+                <input id="calendar-shift-days" type="number" min="-365" max="365" step="1" value="1" aria-label="Days to shift imported series">
+              </label>
+              <button class="secondary" id="calendar-shift-preview" type="button">Preview changes</button>
+              <button class="primary" id="calendar-shift-apply" type="button" disabled>Confirm shift</button>
+              <button class="text-button" id="calendar-shift-cancel" type="button">Cancel</button>
+            </div>
+            <small id="calendar-shift-status" role="status" aria-live="polite">Preview the proposed schedule before applying it.</small>
+          </section>
           <div class="calendar-toolbar" aria-label="Calendar navigation">
             <button id="calendar-prev" class="text-button" type="button" aria-label="Previous month">◀</button>
             <strong id="calendar-month-title">Month</strong>
