@@ -9,13 +9,13 @@ WFS Notch brings an expandable top-edge panel with a calendar, tasks, notes, foc
 ## Features
 
 - Lightweight notch with opt-in Win32 fullscreen-aware topmost handling, selected-monitor placement, DPI/topology re-positioning, tray and autostart.
-- Task and note tools, calendar with explicit UTC/IANA timezones, date-only multi-day all-day events, bounded daily/weekly recurrence, EXDATE/RDATE exceptions, recurrence group rename/cancel and UTC or DATE export, wellness and focus timers.
+- Task and note tools; a calendar with UTC/IANA, true all-day DATE and timed exclusive DTEND/DURATION, multi-day view, bounded daily/weekly recurrence, EXDATE/RDATE exceptions, local durable cancellation history, group rename/delete and UTC or DATE export; wellness and focus timers.
 - Windows GSMTC media sessions: selected-player metadata, capability-checked playback controls, artwork when supplied by the player and bounded progress.
 - Native opt-in calendar notifications with a Rust scheduler, persistent title-free delivery ledger and Windows toast setting diagnostic that run independently of the hidden notch panel. WFS Notch never reads other applications' notifications. Event titles stay private unless enabled; WFS-only Pause Reminders is available.
 - Read-only local disk/network/CPU/RAM inventory, theme colors and accessible keyboard navigation.
 - Local JSON with backup and restore.
 
-iCalendar DATE/DTEND is stored as true timezone-neutral civil dates with an exclusive end; all-day events do not fire unintended midnight reminders. Unsupported RECURRENCE-ID overrides, timed DTEND, complex recurrence and DST-ambiguous/nonexistent local timestamps are rejected rather than guessed. Supported RRULE events are materialized as independently editable occurrences: rename/delete the imported group, or edit one occurrence. Changing an entire series schedule, full recurrence fidelity and automatic subscriptions remain out of scope. The local-only manual Windows acceptance checklist is `scripts/phase14-native-acceptance.ps1`.
+iCalendar DATE/DTEND is stored as true timezone-neutral civil dates with an exclusive end; all-day events do not fire unintended midnight reminders. Unsupported RECURRENCE-ID overrides, complex recurrence, and DST-ambiguous/nonexistent IANA local timestamps are rejected rather than guessed. Timed DTEND and positive DURATION (up to 366 days) use a strict elapsed UTC duration for materialized occurrences, with no guessed timezone. Supported RRULE events are materialized as independently editable occurrences: rename/delete the imported group, or edit one occurrence. Deleted imported occurrences/series remain canceled on subsequent explicit imports until the user deliberately clears their local cancellation markers. Changing an entire series schedule, full recurrence fidelity and automatic subscriptions remain out of scope. The local-only manual Windows acceptance checklist is `scripts/phase14-native-acceptance.ps1`.
 
 ## Project layout
 
