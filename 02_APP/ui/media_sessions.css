@@ -1,9 +1,0 @@
-.now-playing {background:linear-gradient(135deg,rgba(214,183,122,.12),rgba(255,255,255,.025));border:1px solid rgba(214,183,122,.25);border-radius:16px;padding:16px;margin-bottom:16px;display:grid;gap:7px;}
-.now-playing-overline {font-size:.66rem;letter-spacing:.12em;color:#c7b68e;font-weight:700;}
-.now-playing strong {font-size:1.2rem;line-height:1.4;overflow-wrap:anywhere;}
-.now-playing #media-track-artist {font-size:.88rem;opacity:.87;overflow-wrap:anywhere;}
-.now-playing #media-track-source {color:#aeb1ba;overflow-wrap:anywhere;}
-.media-progress {height:5px;border-radius:9px;overflow:hidden;background:rgba(255,255,255,.11);margin-top:8px;}
-.media-progress>span {display:block;background:var(--accent,#d6b77a);height:100%;width:0%;transition:width .4s linear;}
-.media-time {display:flex;justify-content:space-between;gap:10px;font-size:.75rem;color:#d7d5d1;}
-.now-playing button {justify-self:start;}

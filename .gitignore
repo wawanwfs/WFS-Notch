@@ -1,16 +1,25 @@
-# Never commit third-party reference executables, reverse engineering evidence or secrets.
+# Build output
+target/
+src-tauri/target/
+node_modules/
+dist/
+*.pdb
+# Development + secrets
+.env
+.env.*
+!.env.example
+*.local
+.vscode/
+.idea/
+# Generated evidence/artifacts
+test-results/
+build-evidence/
+playwright-report/
+# Private research/source binaries do not belong in product repository
 Poni*.exe
 Poni*.msi
-*.dmp
 private-rea-audit/
 audit-private/
 rea-evidence/
 craft-anything-workspace/
-*.pdb
-*.user
-.env
-.env.*
-# Build byproducts
-node_modules/
-target/
-02_APP/src-tauri/target/
+*.dmp
