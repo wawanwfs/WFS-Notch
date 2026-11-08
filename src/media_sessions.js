@@ -41,7 +41,9 @@ async function refreshMediaDetails(force = false) {
   if (!force && Date.now() - mediaDetailsLastAt < 5000) return;
   mediaDetailsPending = true;
   try {
-    renderMediaDetails(await invoke('get_active_media_session'));
+    const active = await invoke('get_active_media_session');
+    renderMediaDetails(active);
+    renderSelectedPlayers(await invoke('list_media_sessions'), active?.source);
     mediaDetailsLastAt = Date.now();
   } catch (error) {
     renderMediaDetails(null);
@@ -50,10 +52,59 @@ async function refreshMediaDetails(force = false) {
     mediaDetailsPending = false;
   }
 }
+function renderSelectedPlayers(sessions, systemCurrentSource) {
+  const picker = document.querySelector('#media-player-picker');
+  const status = document.querySelector('#media-player-status');
+  const safe = Array.isArray(sessions) ? sessions.filter(item => typeof item.source === 'string' && item.source.length > 0) : [];
+  const previous = picker.value;
+  picker.replaceChildren();
+  if (!safe.length) {
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'No controllable media players';
+    picker.append(empty);
+    picker.disabled = true;
+    status.textContent = 'No Windows GSMTC sessions available right now.';
+  } else {
+    for (const session of safe) {
+      const option = document.createElement('option');
+      option.value = session.source;
+      option.textContent = ((session.title || session.source) + ' · ' + (session.artist || session.playback_status || 'Unknown')).slice(0, 160);
+      picker.append(option);
+    }
+    picker.value = safe.some(item => item.source === previous) ? previous
+      : safe.some(item => item.source === systemCurrentSource) ? systemCurrentSource : safe[0].source;
+    picker.disabled = false;
+    status.textContent = 'Playback actions are sent only to the selected app. Availability depends on the player.';
+  }
+  for (const button of document.querySelectorAll('[data-selected-media]')) {
+    button.disabled = picker.disabled;
+  }
+}
+async function controlSelectedPlayer(action) {
+  const picker = document.querySelector('#media-player-picker');
+  const status = document.querySelector('#media-player-status');
+  if (!nativeInvoke || !picker.value) return;
+  for (const button of document.querySelectorAll('[data-selected-media]')) button.disabled = true;
+  try {
+    const accepted = await invoke('control_media_session', {source: picker.value, action});
+    status.textContent = accepted ? 'Command accepted by the selected media player.' : 'The selected player did not accept that command.';
+    await refreshMediaDetails(true);
+  } catch (error) {
+    status.textContent = 'Selected media session unavailable. Refresh the list and retry.';
+    showError(error);
+  } finally {
+    for (const button of document.querySelectorAll('[data-selected-media]')) button.disabled = picker.disabled;
+  }
+}
 function initMediaSessions() {
   if (mediaDetailsInitialized) return;
   mediaDetailsInitialized = true;
   renderMediaDetails(null);
+  for (const button of document.querySelectorAll('[data-selected-media]')) {
+    button.addEventListener('click', () => { void controlSelectedPlayer(button.dataset.selectedMedia); });
+    button.disabled = !nativeInvoke;
+  }
   document.querySelector('#media-refresh').addEventListener('click', () => {
     void refreshMediaDetails(true);
   });
