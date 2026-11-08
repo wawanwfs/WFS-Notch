@@ -803,6 +803,180 @@ fn remove_event_series(store: State<'_, Mutex<Store>>, id: String) -> Result<App
     with_store(store, move |data| remove_series(data, &id))
 }
 
+/// A cautious one-time local series shift. Only true date-only or explicitly
+/// UTC-scheduled source series qualify; IANA/floating timestamp reflow requires
+/// DST-aware RECURRENCE-ID semantics and remains deliberately unsupported.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct SeriesShiftPreview {
+    occurrence_count: usize,
+    delta_days: i64,
+    first_old_ms: u64,
+    first_new_ms: u64,
+    last_old_ms: u64,
+    last_new_ms: u64,
+    reminders_affected: usize,
+    same_start_conflicts: usize,
+    fingerprint: String,
+    all_day: bool,
+}
+
+fn shifted_calendar_millis(old: u64, days: i64) -> Result<u64, String> {
+    let moved = i128::from(old) + i128::from(days) * 86_400_000_i128;
+    let updated = u64::try_from(moved).map_err(|_| "Series shift exceeds timestamp range")?;
+    if !(946_684_800_000..=4_102_444_800_000).contains(&updated) {
+        return Err("Series shift is outside supported calendar years".into());
+    }
+    Ok(updated)
+}
+
+fn plan_series_shift(
+    state: &AppData,
+    event_id: &str,
+    days: i64,
+) -> Result<(SeriesShiftPreview, Vec<CalendarEvent>), String> {
+    use std::hash::{Hash, Hasher};
+    if days == 0 || !(-365..=365).contains(&days) {
+        return Err("Shift must be 1–365 whole days forward or backward".into());
+    }
+    let uid = event_series_id(state, event_id)?;
+    if state.calendar_tombstones.contains(&uid) {
+        return Err("A canceled whole series cannot be rescheduled".into());
+    }
+    let source = state
+        .calendar_series
+        .get(&uid)
+        .ok_or("Legacy series source unavailable; schedule shift refused")?;
+    if !source.valid(&uid) || !source.modified_occurrence_ids.is_empty() {
+        return Err("An edited or invalid series cannot be shifted safely as a whole".into());
+    }
+    let all_day = source.dtstart.0.eq_ignore_ascii_case("DTSTART;VALUE=DATE");
+    if !all_day
+        && !(source.dtstart.0.eq_ignore_ascii_case("DTSTART")
+            && source.dtstart.1.ends_with('Z'))
+    {
+        return Err("Only all-day or explicitly UTC series can shift safely; TZID/floating DST reflow is unsupported".into());
+    }
+    let mut members = state
+        .events
+        .iter()
+        .filter(|event| event.series_uid.as_deref() == Some(uid.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if members.is_empty() || members.len() > 250 {
+        return Err("Series must contain 1–250 saved local occurrences".into());
+    }
+    members.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut seen_ids = HashSet::new();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    uid.hash(&mut hasher);
+    days.hash(&mut hasher);
+    source.dtstart.hash(&mut hasher);
+    source.rrule.hash(&mut hasher);
+    let mut moved = Vec::with_capacity(members.len());
+    let mut same_start_conflicts = 0_usize;
+    for existing in &members {
+        if !seen_ids.insert(existing.id.clone()) || existing.all_day.is_some() != all_day {
+            return Err("Mixed or duplicate occurrence identities; no shift performed".into());
+        }
+        existing.id.hash(&mut hasher);
+        existing.starts_at_ms.hash(&mut hasher);
+        existing.ends_at_ms.hash(&mut hasher);
+        existing.remind_minutes.hash(&mut hasher);
+        existing.title.hash(&mut hasher);
+        existing.description.hash(&mut hasher);
+        if let Some(span) = existing.all_day.as_ref() {
+            span.start_date.hash(&mut hasher);
+            span.end_date_exclusive.hash(&mut hasher);
+        }
+        let mut next = existing.clone();
+        if let Some(span) = existing.all_day.as_ref() {
+            let shifted = span.shift_days(days)?;
+            next.starts_at_ms = shifted.utc_midnight_ms()?;
+            next.all_day = Some(shifted);
+        } else {
+            next.starts_at_ms = shifted_calendar_millis(existing.starts_at_ms, days)?;
+            next.ends_at_ms = existing.ends_at_ms
+                .map(|end| shifted_calendar_millis(end, days))
+                .transpose()?;
+            validate_timed_end(next.starts_at_ms, next.ends_at_ms)?;
+        }
+        validate_event(&next.title, &next.description, next.starts_at_ms, next.remind_minutes)?;
+        same_start_conflicts += state.events.iter().filter(|other| {
+            other.series_uid.as_deref() != Some(uid.as_str())
+                && other.starts_at_ms == next.starts_at_ms
+        }).count();
+        moved.push(next);
+    }
+    let first_old = members.iter().min_by_key(|item| item.starts_at_ms).unwrap();
+    let last_old = members.iter().max_by_key(|item| item.starts_at_ms).unwrap();
+    let first_new = moved.iter().min_by_key(|item| item.starts_at_ms).unwrap();
+    let last_new = moved.iter().max_by_key(|item| item.starts_at_ms).unwrap();
+    let preview = SeriesShiftPreview {
+        occurrence_count: members.len(),
+        delta_days: days,
+        first_old_ms: first_old.starts_at_ms,
+        first_new_ms: first_new.starts_at_ms,
+        last_old_ms: last_old.starts_at_ms,
+        last_new_ms: last_new.starts_at_ms,
+        reminders_affected: members.iter().filter(|item| item.remind_minutes.is_some()).count(),
+        same_start_conflicts,
+        fingerprint: format!("{:016x}", hasher.finish()),
+        all_day,
+    };
+    Ok((preview, moved))
+}
+
+fn shift_series_after_preview(
+    state: &mut AppData,
+    event_id: &str,
+    days: i64,
+    expected_fingerprint: &str,
+) -> Result<(), String> {
+    let (preview, proposed) = plan_series_shift(state, event_id, days)?;
+    if expected_fingerprint.len() != 16 || preview.fingerprint != expected_fingerprint {
+        return Err("Calendar series changed after preview; review the new schedule again".into());
+    }
+    let uid = event_series_id(state, event_id)?;
+    let moves = proposed
+        .into_iter()
+        .map(|event| (event.id.clone(), event))
+        .collect::<HashMap<_, _>>();
+    for event in &mut state.events {
+        if let Some(moved) = moves.get(&event.id) {
+            *event = moved.clone();
+        }
+    }
+    let source = state.calendar_series.get_mut(&uid)
+        .ok_or("Series metadata disappeared during shift")?;
+    // The original RRULE describes the imported source, not the locally
+    // shifted schedule. Mark all moved instances modified so ICS export
+    // strictly flattens them and NEVER re-emits a misleading master RRULE.
+    source.modified_occurrence_ids.extend(moves.keys().cloned());
+    Ok(())
+}
+
+#[tauri::command]
+fn preview_event_series_shift(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    delta_days: i64,
+) -> Result<SeriesShiftPreview, String> {
+    let guard = store.lock().map_err(|_| "Storage lock unavailable".to_owned())?;
+    plan_series_shift(&guard.data, &id, delta_days).map(|(preview, _)| preview)
+}
+
+#[tauri::command]
+fn shift_event_series(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    delta_days: i64,
+    expected_fingerprint: String,
+) -> Result<AppData, String> {
+    with_store(store, move |data| {
+        shift_series_after_preview(data, &id, delta_days, &expected_fingerprint)
+    })
+}
+
 // Explicitly allow re-importing canceled ICS events, with a UI confirmation.
 #[tauri::command]
 fn clear_calendar_cancellations(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
@@ -1159,6 +1333,8 @@ fn main() {
             update_all_day_event,
             update_event_series_title,
             remove_event_series,
+            preview_event_series_shift,
+            shift_event_series,
             clear_calendar_cancellations,
             calendar_ics::import_ics,
             calendar_ics::export_ics,
