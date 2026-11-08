@@ -103,7 +103,9 @@ fn normalize_note_tags(raw: Vec<String>) -> Result<Vec<String>, String> {
         let tag = item.trim().to_ascii_lowercase();
         if tag.is_empty()
             || tag.len() > 24
-            || !tag.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+            || !tag
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
         {
             return Err("Each tag must be 1–24 ASCII letters, numbers, - or _".into());
         }
@@ -1474,7 +1476,9 @@ mod tests {
         let legacy = r#"{"id":"old","title":"Legacy","body":"Preserve me","updated_ms":9}"#;
         let mut note: Note = serde_json::from_str(legacy).unwrap();
         assert!(note.tags.is_empty());
-        let tags = normalize_note_tags(vec![" Release ".into(), "release".into(), "dev_ops".into()]).unwrap();
+        let tags =
+            normalize_note_tags(vec![" Release ".into(), "release".into(), "dev_ops".into()])
+                .unwrap();
         assert_eq!(tags, vec!["release", "dev_ops"]);
         assert!(normalize_note_tags(vec!["contains space".into()]).is_err());
         assert!(normalize_note_tags(vec!["<script>".into()]).is_err());
@@ -1483,7 +1487,12 @@ mod tests {
         note.tags = tags;
         let path = temp_file("note-tags");
         let mut store = Store::open(path.clone()).unwrap();
-        store.transact(|data| { data.notes.push(note.clone()); Ok(()) }).unwrap();
+        store
+            .transact(|data| {
+                data.notes.push(note.clone());
+                Ok(())
+            })
+            .unwrap();
         let reopened = Store::open(path.clone()).unwrap();
         assert_eq!(reopened.data.notes, vec![note]);
         assert!(reopened.data.notes[0].body.contains("Preserve"));
