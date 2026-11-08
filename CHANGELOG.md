@@ -1,3 +1,11 @@
+## 0.16.0 — Timed UTC event ends and durable ICS cancellation (development)
+
+- Added optional UTC exclusive timed event end (max 366 days), strict IANA-aware DTEND and positive DURATION subset import/export, DST gap/overlap checks and backward-compatible JSON serialization.
+- Recurrence expansion preserves elapsed UTC durations after timezone-specific occurrence starts. Full source recurrence metadata and wall-clock schedule editing remain out of scope.
+- Added bounded, title-free local cancellation markers for deleted imported occurrences or entire series. Explicit user-confirmed reset allows a later manual reimport; no background subscriptions or unintentional resurrection.
+- Timed start/end and private description editing, DST-safe multi-day month badges, new Rust/Playwright regressions, and read-only native Windows acceptance script.
+- Unsigned Windows x64 NSIS and portable deliverables require CI; actual interactive Windows 10/11 test remains NOT TESTED. Weighted 38-category parity remains 3 Implemented / 16 Partial / 19 Gap = 28.9%.
+
 ## 0.15.0 — Civil-date calendar and series actions (development)
 
 - True iCalendar all-day DTSTART;VALUE=DATE/DTEND;VALUE=DATE import/export with exclusive end dates, timezone-neutral display, non-destructive UTC legacy state compatibility and no automatic midnight reminders.
