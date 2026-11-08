@@ -8,14 +8,9 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(20);
-const DUE_WINDOW_MS: u128 = 600_000;
-
-#[derive(Default)]
-pub struct SentNotices {
-    // Expiration by reminder key (event identity + scheduled time + offset).
-    // The in-memory ledger avoids repeat toasts while WFS Notch is running.
-    ids: Mutex<HashMap<String, u128>>,
-}
+// Resume catch-up is allowed until five minutes after the scheduled event.
+// A clock jump past this grace period does not flood the user with old reminders.
+const EVENT_GRACE_MS: u128 = 300_000;
 
 #[derive(Serialize)]
 pub struct ReminderSchedulerStatus {
@@ -24,6 +19,7 @@ pub struct ReminderSchedulerStatus {
     scheduled_count: usize,
     next_due_at_ms: Option<u64>,
     poll_interval_seconds: u64,
+    persisted_delivery_count: usize,
 }
 
 fn can_notify(settings: &Settings) -> bool {
@@ -37,7 +33,9 @@ fn reminder_start(event: &CalendarEvent) -> Option<u128> {
 }
 
 fn event_due(event: &CalendarEvent, now: u128) -> bool {
-    reminder_start(event).is_some_and(|due| now >= due && now < due.saturating_add(DUE_WINDOW_MS))
+    reminder_start(event).is_some_and(|due| {
+        now >= due && now < u128::from(event.starts_at_ms).saturating_add(EVENT_GRACE_MS)
+    })
 }
 
 fn delivery_key(event: &CalendarEvent) -> String {
@@ -57,7 +55,9 @@ fn needs_delivery(
 ) -> bool {
     can_notify(settings)
         && event_due(event, now)
-        && !already_sent.contains_key(&delivery_key(event))
+        && !already_sent
+            .get(&delivery_key(event))
+            .is_some_and(|expiry| *expiry > now)
 }
 
 fn event_message(event: &CalendarEvent, details: bool) -> String {
@@ -80,46 +80,49 @@ fn show(app: &AppHandle, title: &str, body: &str) -> Result<(), String> {
         .map_err(|error| format!("Windows notification unavailable: {error}"))
 }
 
-/// All native reminder entry points share the same deduplication and consent checks.
-/// Locks are acquired in the same store -> sent order for the whole operation, so
-/// changes to opt-in and pause cannot race the final notification dispatch.
-fn deliver_by_id(
-    app: &AppHandle,
-    store: &Mutex<Store>,
-    sent: &SentNotices,
-    id: &str,
-) -> Result<bool, String> {
+/// Reserve a reminder durably *before* asking Windows to enqueue the toast.
+/// This is at-most-once across restarts. A crash after reservation but before the
+/// platform accepts the toast may miss a reminder; Windows does not expose an
+/// atomic, cross-process acknowledgement for the notification queue.
+fn deliver_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool, String> {
     if id.is_empty() || id.len() > 160 {
         return Err("Invalid calendar reminder id".into());
     }
-    let guard = store
+    // Hold the same store lock for consent, reservation, and OS submission:
+    // preference changes cannot race with a just-queued reminder.
+    let mut guard = store
         .lock()
         .map_err(|_| "Storage lock unavailable".to_owned())?;
-    if !can_notify(&guard.data.settings) {
-        return Ok(false);
-    }
-    let Some(event) = guard.data.events.iter().find(|event| event.id == id) else {
+    let now = now_ms();
+    let Some(event) = guard.data.events.iter().find(|event| event.id == id).cloned() else {
         return Ok(false);
     };
-    let now = now_ms();
-    let mut ledger = sent
-        .ids
-        .lock()
-        .map_err(|_| "Notification lock unavailable".to_owned())?;
-    ledger.retain(|_, expires_at| *expires_at > now);
-    if !needs_delivery(event, &guard.data.settings, now, &ledger) {
+    let settings = guard.data.settings.clone();
+    if !needs_delivery(&event, &settings, now, &guard.data.reminder_deliveries) {
         return Ok(false);
     }
-    // Mark only after successful OS delivery, so a transient Windows error can retry.
-    show(
+    let key = delivery_key(&event);
+    let expires_at = u128::from(event.starts_at_ms).saturating_add(EVENT_GRACE_MS);
+    // Store::transact writes a temp + fsync + rename and reverts on save errors.
+    // Neither a process crash nor sleep/resume can lose a committed reservation.
+    guard.transact(|data| {
+        data.reminder_deliveries.retain(|_, expiry| *expiry > now);
+        data.reminder_deliveries.insert(key.clone(), expires_at);
+        Ok(())
+    })?;
+    if let Err(error) = show(
         app,
         "WFS Notch · Calendar",
-        &event_message(event, guard.data.settings.notifications_show_details),
-    )?;
-    let expires_at = reminder_start(event)
-        .unwrap_or(now)
-        .saturating_add(DUE_WINDOW_MS);
-    ledger.insert(delivery_key(event), expires_at);
+        &event_message(&event, settings.notifications_show_details),
+    ) {
+        // The platform rejected the request: clear the reservation to permit
+        // another attempt on the next scheduler pass.
+        guard.transact(|data| {
+            data.reminder_deliveries.remove(&key);
+            Ok(())
+        })?;
+        return Err(error);
+    }
     Ok(true)
 }
 
@@ -144,10 +147,9 @@ fn poll_due_events(app: &AppHandle) -> Result<usize, String> {
             .take(256)
             .collect::<Vec<_>>()
     };
-    let sent = app.state::<SentNotices>();
     let mut delivered = 0;
     for id in due_ids {
-        match deliver_by_id(app, store.inner(), sent.inner(), &id) {
+        match deliver_by_id(app, store.inner(), &id) {
             Ok(true) => delivered += 1,
             Ok(false) => {}
             Err(error) => {
@@ -195,6 +197,7 @@ pub fn get_reminder_scheduler_status(
             .min()
             .and_then(|value| u64::try_from(*value).ok()),
         poll_interval_seconds: POLL_INTERVAL.as_secs(),
+        persisted_delivery_count: guard.data.reminder_deliveries.values().filter(|expiry| **expiry > now).count(),
     })
 }
 
@@ -243,10 +246,9 @@ pub fn notify_test(app: AppHandle, store: State<'_, Mutex<Store>>) -> Result<boo
 pub fn notify_due_event(
     app: AppHandle,
     store: State<'_, Mutex<Store>>,
-    sent: State<'_, SentNotices>,
     id: String,
 ) -> Result<bool, String> {
-    deliver_by_id(&app, store.inner(), sent.inner(), &id)
+    deliver_by_id(&app, store.inner(), &id)
 }
 
 #[cfg(test)]
@@ -277,7 +279,9 @@ mod tests {
         let upcoming = event(1_500_000, Some(15));
         assert!(event_due(&upcoming, 620_000));
         assert!(event_due(&upcoming, 1_199_999));
-        assert!(!event_due(&upcoming, 1_200_000));
+        assert!(event_due(&upcoming, 1_200_000));
+        assert!(event_due(&upcoming, 1_799_999));
+        assert!(!event_due(&upcoming, 1_800_000));
     }
 
     #[test]
@@ -295,6 +299,9 @@ mod tests {
         assert!(!needs_delivery(&upcoming, &settings, 700_000, &sent));
         let changed = event(1_100_000, Some(5));
         assert!(needs_delivery(&changed, &settings, 800_000, &sent));
+        // Same key survives a restart, but an edited event gets a fresh key.
+        let restored: HashMap<String, u128> = serde_json::from_str(&serde_json::to_string(&sent).unwrap()).unwrap();
+        assert!(!needs_delivery(&upcoming, &settings, 700_000, &restored));
     }
 
     #[test]
@@ -303,6 +310,24 @@ mod tests {
         let hidden = event_message(&e, false);
         assert!(!hidden.contains("Private appointment"));
         assert!(event_message(&e, true).contains("Private appointment"));
+    }
+
+    #[test]
+    fn wake_up_and_clock_changes_do_not_duplicate_deliveries() {
+        let mut settings = Settings::default();
+        settings.notifications_enabled = true;
+        let appointment = event(3_600_000, Some(60));
+        let due = reminder_start(&appointment).unwrap();
+        let mut sent = HashMap::new();
+        assert!(needs_delivery(&appointment, &settings, due, &sent));
+        sent.insert(delivery_key(&appointment), 3_900_000);
+        let disk = serde_json::to_string(&sent).unwrap();
+        let after_restart: HashMap<String, u128> = serde_json::from_str(&disk).unwrap();
+        assert!(!needs_delivery(&appointment, &settings, due + 20_000, &after_restart));
+        assert!(!needs_delivery(&appointment, &settings, due, &after_restart)); // clock moved back
+        assert!(!event_due(&appointment, 3_900_000)); // stale after resume
+        let changed = event(3_660_000, Some(60));
+        assert!(needs_delivery(&changed, &settings, 60_000, &after_restart));
     }
 
     #[test]
