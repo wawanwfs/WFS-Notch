@@ -9,7 +9,7 @@ const defaults = () => ({
   todos: [], notes: [], events: [], habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
-  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, always_on_top: true },
+  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, always_on_top: true, auto_lower_fullscreen: false },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
 });
 let data = defaults();
@@ -207,6 +207,7 @@ function previewInvoke(command, args = {}) {
     case 'set_hover_to_open': state.settings.hover_to_open = args.enabled; break;
     case 'set_pin_open': state.settings.pin_open = args.enabled; break;
     case 'set_notch_on_top': state.settings.always_on_top = args.enabled; break;
+    case 'set_fullscreen_auto': state.settings.auto_lower_fullscreen = Boolean(args.enabled); break;
     case 'set_notifications_paused': state.settings.notifications_paused = Boolean(args.paused); break;
     case 'set_notification_preferences':
       state.settings.notifications_enabled = args.enabled;
@@ -509,6 +510,7 @@ function renderSettings() {
   $('#hover-toggle').checked = data.settings.hover_to_open;
   $('#pin-toggle').checked = data.settings.pin_open;
   $('#on-top-toggle').checked = data.settings.always_on_top !== false;
+  $('#fullscreen-auto-toggle').checked = Boolean(data.settings.auto_lower_fullscreen);
   $('#notifications-toggle').checked = Boolean(data.settings.notifications_enabled);
   $('#notification-details-toggle').checked = Boolean(data.settings.notifications_show_details);
   $('#notification-details-toggle').disabled = !data.settings.notifications_enabled;
@@ -695,6 +697,7 @@ function bind() {
   $('#hover-toggle').addEventListener('change', event => void mutation('set_hover_to_open', { enabled: event.target.checked }));
   $('#pin-toggle').addEventListener('change', event => void mutation('set_pin_open', { enabled: event.target.checked }));
   $('#on-top-toggle').addEventListener('change', event => void mutation('set_notch_on_top', { enabled: event.target.checked }));
+  $('#fullscreen-auto-toggle').addEventListener('change', event => void mutation('set_fullscreen_auto', { enabled: event.target.checked }));
   $('#notifications-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: event.target.checked, showDetails: event.target.checked && $('#notification-details-toggle').checked }));
   $('#notification-details-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: $('#notifications-toggle').checked, showDetails: event.target.checked }));
   $('#notifications-pause-toggle').addEventListener('change', event => void mutation('set_notifications_paused', { paused: event.target.checked }));
