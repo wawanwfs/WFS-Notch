@@ -79,6 +79,9 @@ with sync_playwright() as pw:
         title: 'Recurring alert', starts_at_ms: Date.UTC(2027, 5, day, 12),
         remind_minutes: null, description: '', created_ms: Date.now()
       });
+      // The browser preview persists through localStorage, not the live JS
+      // data variable. Hydrate both stores before exercising IPC-style writes.
+      localStorage.setItem(previewKey, JSON.stringify(data));
       render();
     }""")
     assert page.get_by_role("button", name="Rename entire series: Recurring alert").count() == 2
