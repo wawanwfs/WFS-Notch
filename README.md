@@ -9,13 +9,13 @@ WFS Notch brings an expandable top-edge panel with a calendar, tasks, notes, foc
 ## Features
 
 - Lightweight notch with opt-in Win32 fullscreen-aware topmost handling, selected-monitor placement, DPI/topology re-positioning, tray and autostart.
-- Task and note tools, calendar with UTC/IANA TZID and explicitly resolved floating-time iCalendar import, bounded daily/weekly recurrence expansion and UTC export, wellness and focus timers.
+- Task and note tools, calendar with explicit UTC/IANA timezones, date-only multi-day all-day events, bounded daily/weekly recurrence, EXDATE/RDATE exceptions, recurrence group rename/cancel and UTC or DATE export, wellness and focus timers.
 - Windows GSMTC media sessions: selected-player metadata, capability-checked playback controls, artwork when supplied by the player and bounded progress.
 - Native opt-in calendar notifications with a Rust scheduler, persistent title-free delivery ledger and Windows toast setting diagnostic that run independently of the hidden notch panel. WFS Notch never reads other applications' notifications. Event titles stay private unless enabled; WFS-only Pause Reminders is available.
 - Read-only local disk/network/CPU/RAM inventory, theme colors and accessible keyboard navigation.
 - Local JSON with backup and restore.
 
-The iCalendar importer rejects DST-ambiguous/nonexistent times, unbounded/complex recurrence and all-day dates instead of changing them silently. Recurrences are materialized as independent UTC events; editing one occurrence does not update the original series. A local-only Windows acceptance inventory is available at `scripts/phase14-native-acceptance.ps1`.
+iCalendar DATE/DTEND is stored as true timezone-neutral civil dates with an exclusive end; all-day events do not fire unintended midnight reminders. Unsupported RECURRENCE-ID overrides, timed DTEND, complex recurrence and DST-ambiguous/nonexistent local timestamps are rejected rather than guessed. Supported RRULE events are materialized as independently editable occurrences: rename/delete the imported group, or edit one occurrence. Changing an entire series schedule, full recurrence fidelity and automatic subscriptions remain out of scope. The local-only manual Windows acceptance checklist is `scripts/phase14-native-acceptance.ps1`.
 
 ## Project layout
 
@@ -55,7 +55,7 @@ Native notifications are off by default, and their titles are hidden until the u
 
 **Phase 13 development target: v0.13.0.** Windows CI builds and regression tests verify code quality and package creation, not real-device behavior or complete equivalence to any other product. This is a development release, unsigned and not independently certified on physical Windows machines.
 
-Read [Phase 13 Report](docs/PHASE14_REPORT.md), [Next Phase 14 Prompt](docs/NEXT_PHASE15_PROMPT.md), [Architecture](docs/architecture.md), [Security](docs/security.md), [Feature coverage](docs/feature-coverage.md), [Phase 12 Report](docs/PHASE12_REPORT.md), [Phase 13 Prompt](docs/NEXT_PHASE13_PROMPT.md), and [Roadmap](docs/roadmap.md).
+Read [Phase 13 Report](docs/PHASE15_REPORT.md), [Next Phase 14 Prompt](docs/NEXT_PHASE16_PROMPT.md), [Architecture](docs/architecture.md), [Security](docs/security.md), [Feature coverage](docs/feature-coverage.md), [Phase 12 Report](docs/PHASE12_REPORT.md), [Phase 13 Prompt](docs/NEXT_PHASE13_PROMPT.md), and [Roadmap](docs/roadmap.md).
 
 ## License
 
