@@ -516,6 +516,7 @@ function renderSettings() {
   $('#notifications-pause-toggle').disabled = !data.settings.notifications_enabled;
   $('#notification-test').disabled = !nativeInvoke || !data.settings.notifications_enabled || Boolean(data.settings.notifications_paused);
   $('#notification-scheduler-refresh').disabled = !nativeInvoke;
+  $('#notification-permission-check').disabled = !nativeInvoke;
   const pinButton = $('#pin-button');
   pinButton.setAttribute('aria-pressed', String(data.settings.pin_open));
   pinButton.classList.toggle('on', data.settings.pin_open);
@@ -713,6 +714,26 @@ function bind() {
         ' seconds while WFS Notch is running.' + next;
     } catch (error) {
       $('#notification-scheduler-status').textContent = 'Native scheduler status unavailable.';
+      showError(error);
+    }
+  });
+  $('#notification-permission-check').addEventListener('click', async () => {
+    if (!nativeInvoke) return;
+    try {
+      const permission = await invoke('get_windows_notification_permission');
+      const labels = {
+        enabled: 'Windows reports toasts enabled for WFS Notch.',
+        disabled_for_application: 'Notifications are disabled for WFS Notch in Windows Settings.',
+        disabled_for_user: 'Windows notifications are disabled for this user.',
+        disabled_by_policy: 'Windows policy blocks notifications.',
+        disabled_by_manifest: 'Application toast capability is not enabled.',
+        unavailable: 'Windows could not report app permission (portable or unregistered app).',
+      };
+      $('#notification-permission-status').textContent =
+        (labels[permission.status] || 'Unknown Windows notification state.') +
+        ' Focus Assist or Do Not Disturb can still suppress delivery.';
+    } catch (error) {
+      $('#notification-permission-status').textContent = 'Cannot inspect Windows notification setting.';
       showError(error);
     }
   });
