@@ -15,14 +15,17 @@ fn event_due(event: &CalendarEvent, now: u128) -> bool {
     let Some(minutes) = event.remind_minutes else {
         return false;
     };
-    let due = u128::from(event.starts_at_ms)
-        .saturating_sub(u128::from(minutes).saturating_mul(60_000));
+    let due =
+        u128::from(event.starts_at_ms).saturating_sub(u128::from(minutes).saturating_mul(60_000));
     now >= due && now < due.saturating_add(600_000)
 }
 
 fn event_message(event: &CalendarEvent, details: bool) -> String {
     if details {
-        format!("Upcoming: {}", event.title.chars().take(120).collect::<String>())
+        format!(
+            "Upcoming: {}",
+            event.title.chars().take(120).collect::<String>()
+        )
     } else {
         "You have an upcoming calendar event. Open WFS Notch to view it.".to_owned()
     }
@@ -52,10 +55,7 @@ pub fn set_notification_preferences(
 }
 
 #[tauri::command]
-pub fn notify_test(
-    app: AppHandle,
-    store: State<'_, Mutex<Store>>,
-) -> Result<bool, String> {
+pub fn notify_test(app: AppHandle, store: State<'_, Mutex<Store>>) -> Result<bool, String> {
     let enabled = store
         .lock()
         .map_err(|_| "Storage lock unavailable".to_owned())?
@@ -84,7 +84,9 @@ pub fn notify_due_event(
         return Err("Invalid calendar reminder id".into());
     }
     let (event, settings): (CalendarEvent, Settings) = {
-        let guard = store.lock().map_err(|_| "Storage lock unavailable".to_owned())?;
+        let guard = store
+            .lock()
+            .map_err(|_| "Storage lock unavailable".to_owned())?;
         if !guard.data.settings.notifications_enabled {
             return Ok(false);
         }
@@ -96,7 +98,10 @@ pub fn notify_due_event(
     if !event_due(&event, now_ms()) {
         return Ok(false);
     }
-    let mut seen = sent.ids.lock().map_err(|_| "Notification lock unavailable".to_owned())?;
+    let mut seen = sent
+        .ids
+        .lock()
+        .map_err(|_| "Notification lock unavailable".to_owned())?;
     if seen.contains(&id) {
         return Ok(false);
     }
