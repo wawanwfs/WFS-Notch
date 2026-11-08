@@ -1023,10 +1023,16 @@ mod tests {
     #[test]
     fn backup_restore_cannot_replay_existing_reminder_reservations() {
         let mut current = AppData::default();
-        current.reminder_deliveries.insert("event:1800000000000:5".into(), 1_802_592_000_000);
-        current.reminder_deliveries.insert("event-other:1800000000000:15".into(), 1_802_592_000_000);
+        current
+            .reminder_deliveries
+            .insert("event:1800000000000:5".into(), 1_802_592_000_000);
+        current
+            .reminder_deliveries
+            .insert("event-other:1800000000000:15".into(), 1_802_592_000_000);
         let mut old_backup = AppData::default();
-        old_backup.reminder_deliveries.insert("event:1800000000000:5".into(), 1_800_000_300_000);
+        old_backup
+            .reminder_deliveries
+            .insert("event:1800000000000:5".into(), 1_800_000_300_000);
         old_backup.events.push(CalendarEvent {
             id: "event".into(),
             title: "Private".into(),
