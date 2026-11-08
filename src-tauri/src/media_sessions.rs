@@ -199,23 +199,49 @@ fn read_media_choices() -> Result<Vec<MediaSessionChoice>, String> {
             .SourceAppUserModelId()
             .map(|s| s.to_string())
             .unwrap_or_default();
-        if source.is_empty() || source.len() > 256 || result.iter().any(|item: &MediaSessionChoice| item.source == source) {
+        if source.is_empty()
+            || source.len() > 256
+            || result
+                .iter()
+                .any(|item: &MediaSessionChoice| item.source == source)
+        {
             continue;
         }
         let properties = session
             .TryGetMediaPropertiesAsync()
             .ok()
             .and_then(|operation| operation.join().ok());
-        let title = properties.as_ref().and_then(|p| p.Title().ok()).map(|s| s.to_string()).unwrap_or_default();
-        let artist = properties.as_ref().and_then(|p| p.Artist().ok()).map(|s| s.to_string()).unwrap_or_default();
+        let title = properties
+            .as_ref()
+            .and_then(|p| p.Title().ok())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let artist = properties
+            .as_ref()
+            .and_then(|p| p.Artist().ok())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
         let status = session
             .GetPlaybackInfo()
             .ok()
             .and_then(|information| information.PlaybackStatus().ok())
-            .map(|status| if status == Status::Playing { "Playing" } else if status == Status::Paused { "Paused" } else { "Inactive" })
+            .map(|status| {
+                if status == Status::Playing {
+                    "Playing"
+                } else if status == Status::Paused {
+                    "Paused"
+                } else {
+                    "Inactive"
+                }
+            })
             .unwrap_or("Unknown")
             .to_owned();
-        result.push(MediaSessionChoice { source, title, artist, playback_status: status });
+        result.push(MediaSessionChoice {
+            source,
+            title,
+            artist,
+            playback_status: status,
+        });
     }
     Ok(result)
 }
@@ -242,7 +268,10 @@ fn apply_media_control(source: &str, action: &str) -> Result<bool, String> {
     let view = manager.GetSessions().map_err(|e| e.to_string())?;
     for index in 0..view.Size().map_err(|e| e.to_string())?.min(64) {
         let session = view.GetAt(index).map_err(|e| e.to_string())?;
-        let id = session.SourceAppUserModelId().map(|v| v.to_string()).unwrap_or_default();
+        let id = session
+            .SourceAppUserModelId()
+            .map(|v| v.to_string())
+            .unwrap_or_default();
         if id != source {
             continue;
         }
@@ -251,8 +280,11 @@ fn apply_media_control(source: &str, action: &str) -> Result<bool, String> {
             "next" => session.TrySkipNextAsync(),
             "previous" => session.TrySkipPreviousAsync(),
             _ => return Err("Unsupported media action".into()),
-        }.map_err(|e| format!("Media player rejected control: {e}"))?;
-        return operation.join().map_err(|e| format!("Media player did not respond: {e}"));
+        }
+        .map_err(|e| format!("Media player rejected control: {e}"))?;
+        return operation
+            .join()
+            .map_err(|e| format!("Media player did not respond: {e}"));
     }
     Err("The selected media player is no longer available".into())
 }
