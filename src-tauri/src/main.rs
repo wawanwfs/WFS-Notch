@@ -851,8 +851,7 @@ fn plan_series_shift(
     }
     let all_day = source.dtstart.0.eq_ignore_ascii_case("DTSTART;VALUE=DATE");
     if !all_day
-        && !(source.dtstart.0.eq_ignore_ascii_case("DTSTART")
-            && source.dtstart.1.ends_with('Z'))
+        && !(source.dtstart.0.eq_ignore_ascii_case("DTSTART") && source.dtstart.1.ends_with('Z'))
     {
         return Err("Only all-day or explicitly UTC series can shift safely; TZID/floating DST reflow is unsupported".into());
     }
@@ -895,16 +894,26 @@ fn plan_series_shift(
             next.all_day = Some(shifted);
         } else {
             next.starts_at_ms = shifted_calendar_millis(existing.starts_at_ms, days)?;
-            next.ends_at_ms = existing.ends_at_ms
+            next.ends_at_ms = existing
+                .ends_at_ms
                 .map(|end| shifted_calendar_millis(end, days))
                 .transpose()?;
             validate_timed_end(next.starts_at_ms, next.ends_at_ms)?;
         }
-        validate_event(&next.title, &next.description, next.starts_at_ms, next.remind_minutes)?;
-        same_start_conflicts += state.events.iter().filter(|other| {
-            other.series_uid.as_deref() != Some(uid.as_str())
-                && other.starts_at_ms == next.starts_at_ms
-        }).count();
+        validate_event(
+            &next.title,
+            &next.description,
+            next.starts_at_ms,
+            next.remind_minutes,
+        )?;
+        same_start_conflicts += state
+            .events
+            .iter()
+            .filter(|other| {
+                other.series_uid.as_deref() != Some(uid.as_str())
+                    && other.starts_at_ms == next.starts_at_ms
+            })
+            .count();
         moved.push(next);
     }
     let first_old = members.iter().min_by_key(|item| item.starts_at_ms).unwrap();
@@ -918,7 +927,10 @@ fn plan_series_shift(
         first_new_ms: first_new.starts_at_ms,
         last_old_ms: last_old.starts_at_ms,
         last_new_ms: last_new.starts_at_ms,
-        reminders_affected: members.iter().filter(|item| item.remind_minutes.is_some()).count(),
+        reminders_affected: members
+            .iter()
+            .filter(|item| item.remind_minutes.is_some())
+            .count(),
         same_start_conflicts,
         fingerprint: format!("{:016x}", hasher.finish()),
         all_day,
@@ -948,7 +960,9 @@ fn shift_series_after_preview(
             }
         }
     }
-    let source = state.calendar_series.get_mut(&uid)
+    let source = state
+        .calendar_series
+        .get_mut(&uid)
         .ok_or("Series metadata disappeared during shift")?;
     // The original RRULE describes the imported source, not the locally
     // shifted schedule. Mark all moved instances modified so ICS export
@@ -963,7 +977,9 @@ fn preview_event_series_shift(
     id: String,
     delta_days: i64,
 ) -> Result<SeriesShiftPreview, String> {
-    let guard = store.lock().map_err(|_| "Storage lock unavailable".to_owned())?;
+    let guard = store
+        .lock()
+        .map_err(|_| "Storage lock unavailable".to_owned())?;
     plan_series_shift(&guard.data, &id, delta_days).map(|(preview, _)| preview)
 }
 
@@ -1630,24 +1646,29 @@ mod tests {
         let uid = "ics:shift@example.org".to_owned();
         let first = u64::try_from(
             chrono::DateTime::parse_from_rfc3339("2027-06-14T09:00:00Z")
-                .unwrap().timestamp_millis()
-        ).unwrap();
+                .unwrap()
+                .timestamp_millis(),
+        )
+        .unwrap();
         let mut data = AppData::default();
-        data.calendar_series.insert(uid.clone(), calendar_ics::SeriesSource {
-            schema_version: 1,
-            uid: uid.clone(),
-            title: "Team standup".into(),
-            description: "Private team note".into(),
-            dtstart: ("DTSTART".into(), "20270614T090000Z".into()),
-            dtend: Some(("DTEND".into(), "20270614T100000Z".into())),
-            duration: None,
-            rrule: Some("FREQ=DAILY;COUNT=3".into()),
-            exdates: vec![],
-            rdates: vec![],
-            floating_timezone: None,
-            reminder_minutes: Some(15),
-            modified_occurrence_ids: HashSet::new(),
-        });
+        data.calendar_series.insert(
+            uid.clone(),
+            calendar_ics::SeriesSource {
+                schema_version: 1,
+                uid: uid.clone(),
+                title: "Team standup".into(),
+                description: "Private team note".into(),
+                dtstart: ("DTSTART".into(), "20270614T090000Z".into()),
+                dtend: Some(("DTEND".into(), "20270614T100000Z".into())),
+                duration: None,
+                rrule: Some("FREQ=DAILY;COUNT=3".into()),
+                exdates: vec![],
+                rdates: vec![],
+                floating_timezone: None,
+                reminder_minutes: Some(15),
+                modified_occurrence_ids: HashSet::new(),
+            },
+        );
         for day in 0..3_u64 {
             let start = first + day * 86_400_000;
             data.events.push(CalendarEvent {
@@ -1671,7 +1692,8 @@ mod tests {
         let id = data.events[0].id.clone();
         let before = data.events.clone();
         data.reminder_deliveries.insert(
-            format!("{}:{}:15", id, before[0].starts_at_ms), 1_900_000_000_000
+            format!("{}:{}:15", id, before[0].starts_at_ms),
+            1_900_000_000_000,
         );
         data.events.push(CalendarEvent {
             id: "standalone".into(),
@@ -1698,16 +1720,18 @@ mod tests {
             assert_eq!(before.title, after.title);
             assert_eq!(before.remind_minutes, after.remind_minutes);
             assert_eq!(after.starts_at_ms, before.starts_at_ms + 86_400_000);
-            assert_eq!(after.ends_at_ms, before.ends_at_ms.map(|end| end + 86_400_000));
+            assert_eq!(
+                after.ends_at_ms,
+                before.ends_at_ms.map(|end| end + 86_400_000)
+            );
         }
         assert_eq!(data.events[3].id, "standalone");
         assert_eq!(data.reminder_deliveries.len(), 1);
         let source = data.calendar_series.get("ics:shift@example.org").unwrap();
         assert_eq!(source.modified_occurrence_ids.len(), 3);
         assert!(plan_series_shift(&data, &id, 1).is_err()); // no unsafe second reflow
-        let restored: AppData = serde_json::from_str(
-            &serde_json::to_string(&data).unwrap()
-        ).unwrap();
+        let restored: AppData =
+            serde_json::from_str(&serde_json::to_string(&data).unwrap()).unwrap();
         assert_eq!(restored.events, data.events);
         assert_eq!(restored.calendar_series, data.calendar_series);
     }
@@ -1719,32 +1743,60 @@ mod tests {
         let span = all_day::AllDaySpan::new(
             all_day::parse_iso_date("2028-02-29").unwrap(),
             all_day::parse_iso_date("2028-03-02").unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         let start = span.utc_midnight_ms().unwrap();
         data.events.push(CalendarEvent {
-            id: format!("{uid}:{start}"), title: "Leap event".into(),
-            starts_at_ms: start, remind_minutes: None,
-            description: String::new(), created_ms: 7,
-            all_day: Some(span.clone()), series_uid: Some(uid.into()), ends_at_ms: None,
+            id: format!("{uid}:{start}"),
+            title: "Leap event".into(),
+            starts_at_ms: start,
+            remind_minutes: None,
+            description: String::new(),
+            created_ms: 7,
+            all_day: Some(span.clone()),
+            series_uid: Some(uid.into()),
+            ends_at_ms: None,
         });
-        data.calendar_series.insert(uid.into(), calendar_ics::SeriesSource {
-            schema_version:1, uid:uid.into(), title:"Leap event".into(),
-            description:String::new(), dtstart:("DTSTART;VALUE=DATE".into(),"20280229".into()),
-            dtend:Some(("DTEND;VALUE=DATE".into(),"20280302".into())),
-            duration:None, rrule:Some("FREQ=YEARLY;COUNT=1".into()),
-            exdates:vec![],rdates:vec![],floating_timezone:None,
-            reminder_minutes:None,modified_occurrence_ids:HashSet::new(),
-        });
+        data.calendar_series.insert(
+            uid.into(),
+            calendar_ics::SeriesSource {
+                schema_version: 1,
+                uid: uid.into(),
+                title: "Leap event".into(),
+                description: String::new(),
+                dtstart: ("DTSTART;VALUE=DATE".into(), "20280229".into()),
+                dtend: Some(("DTEND;VALUE=DATE".into(), "20280302".into())),
+                duration: None,
+                rrule: Some("FREQ=YEARLY;COUNT=1".into()),
+                exdates: vec![],
+                rdates: vec![],
+                floating_timezone: None,
+                reminder_minutes: None,
+                modified_occurrence_ids: HashSet::new(),
+            },
+        );
         let id = data.events[0].id.clone();
-        data.calendar_tombstones.insert(format!("{uid}:deleted-instance"));
+        data.calendar_tombstones
+            .insert(format!("{uid}:deleted-instance"));
         let (plan, _) = plan_series_shift(&data, &id, 1).unwrap();
         assert!(plan.all_day);
         shift_series_after_preview(&mut data, &id, 1, &plan.fingerprint).unwrap();
         assert_eq!(data.events.len(), 1); // deleted occurrence is never regenerated
-        assert_eq!(data.events[0].all_day.as_ref().unwrap().start_date, "2028-03-01");
-        assert_eq!(data.events[0].all_day.as_ref().unwrap().end_date_exclusive, "2028-03-03");
-        assert_eq!(data.events[0].starts_at_ms, span.shift_days(1).unwrap().utc_midnight_ms().unwrap());
-        assert!(data.calendar_tombstones.contains(&format!("{uid}:deleted-instance")));
+        assert_eq!(
+            data.events[0].all_day.as_ref().unwrap().start_date,
+            "2028-03-01"
+        );
+        assert_eq!(
+            data.events[0].all_day.as_ref().unwrap().end_date_exclusive,
+            "2028-03-03"
+        );
+        assert_eq!(
+            data.events[0].starts_at_ms,
+            span.shift_days(1).unwrap().utc_midnight_ms().unwrap()
+        );
+        assert!(data
+            .calendar_tombstones
+            .contains(&format!("{uid}:deleted-instance")));
     }
 
     #[test]
@@ -1753,13 +1805,23 @@ mod tests {
         let id = data.events[0].id.clone();
         assert!(plan_series_shift(&data, &id, 0).is_err());
         assert!(plan_series_shift(&data, &id, 366).is_err());
-        data.calendar_series.get_mut("ics:shift@example.org").unwrap().dtstart =
-            ("DTSTART;TZID=America/New_York".into(), "20270614T090000".into());
+        data.calendar_series
+            .get_mut("ics:shift@example.org")
+            .unwrap()
+            .dtstart = (
+            "DTSTART;TZID=America/New_York".into(),
+            "20270614T090000".into(),
+        );
         assert!(plan_series_shift(&data, &id, 1).is_err());
-        data.calendar_series.get_mut("ics:shift@example.org").unwrap().dtstart =
-            ("DTSTART".into(), "20270614T090000Z".into());
-        data.calendar_series.get_mut("ics:shift@example.org").unwrap()
-            .modified_occurrence_ids.insert(id.clone());
+        data.calendar_series
+            .get_mut("ics:shift@example.org")
+            .unwrap()
+            .dtstart = ("DTSTART".into(), "20270614T090000Z".into());
+        data.calendar_series
+            .get_mut("ics:shift@example.org")
+            .unwrap()
+            .modified_occurrence_ids
+            .insert(id.clone());
         assert!(plan_series_shift(&data, &id, 1).is_err());
         data.calendar_series.clear();
         assert!(plan_series_shift(&data, &id, 1).is_err());
