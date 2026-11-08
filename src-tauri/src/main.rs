@@ -229,9 +229,7 @@ impl AppData {
                 })
         });
         self.calendar_tombstones.retain(|uid| {
-            uid.starts_with("ics:")
-                && uid.len() <= 240
-                && !uid.chars().any(char::is_control)
+            uid.starts_with("ics:") && uid.len() <= 240 && !uid.chars().any(char::is_control)
         });
         // Never truncate cancellation markers silently: retain all safe ones
         // from existing state. New insertions are capped in mutation commands.
@@ -512,7 +510,9 @@ const MAX_TIMED_SPAN_MS: u64 = 366 * 24 * 60 * 60 * 1000;
 fn validate_timed_end(start: u64, end: Option<u64>) -> Result<(), String> {
     if let Some(end) = end {
         if end <= start || end > 4_102_444_800_000 || end - start > MAX_TIMED_SPAN_MS {
-            return Err("Timed end must be exclusive, after start, and within 366 days/2100".into());
+            return Err(
+                "Timed end must be exclusive, after start, and within 366 days/2100".into(),
+            );
         }
     }
     Ok(())
@@ -522,7 +522,9 @@ fn remember_calendar_cancellation(data: &mut AppData, key: &str) -> Result<(), S
         return Err("Invalid imported calendar cancellation identifier".into());
     }
     if !data.calendar_tombstones.contains(key) && data.calendar_tombstones.len() >= 4096 {
-        return Err("Calendar cancellation ledger is full; clear canceled ICS history first".into());
+        return Err(
+            "Calendar cancellation ledger is full; clear canceled ICS history first".into(),
+        );
     }
     data.calendar_tombstones.insert(key.to_owned());
     Ok(())
@@ -586,10 +588,13 @@ fn update_event(
 #[tauri::command]
 fn remove_event(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
     with_store(store, |state| {
-        let item = state.events.iter().find(|event| event.id == id)
+        let item = state
+            .events
+            .iter()
+            .find(|event| event.id == id)
             .ok_or("Event not found")?;
-        let tombstone = (item.id.starts_with("ics:") || item.series_uid.is_some())
-            .then(|| item.id.clone());
+        let tombstone =
+            (item.id.starts_with("ics:") || item.series_uid.is_some()).then(|| item.id.clone());
         if let Some(key) = tombstone {
             remember_calendar_cancellation(state, &key)?;
         }
@@ -1218,7 +1223,9 @@ mod tests {
         let json = serde_json::to_string(&state).unwrap();
         assert!(!json.contains("Private appointment"));
         let restored: AppData = serde_json::from_str(&json).unwrap();
-        assert!(restored.calendar_tombstones.contains("ics:series@example.org"));
+        assert!(restored
+            .calendar_tombstones
+            .contains("ics:series@example.org"));
     }
 
     #[test]
