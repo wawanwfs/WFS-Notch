@@ -8,10 +8,10 @@ WFS Notch brings an expandable top-edge panel with a calendar, tasks, notes, foc
 
 ## Features
 
-- Lightweight always-on-top notch with selected-monitor placement, DPI-aware centering, tray and autostart.
+- Lightweight notch with opt-in Win32 fullscreen-aware topmost handling, selected-monitor placement, DPI/topology re-positioning, tray and autostart.
 - Task and note tools, calendar with iCalendar UTC import/export, wellness and focus timers.
-- Windows GSMTC media sessions: player selection, playback controls, artwork when supplied by the player.
-- Native opt-in calendar notifications with a Rust scheduler that runs independently of the hidden notch panel. WFS Notch never reads other applications' notifications. Event titles stay private unless enabled; WFS-only Pause Reminders is available.
+- Windows GSMTC media sessions: selected-player metadata, capability-checked playback controls, artwork when supplied by the player and bounded progress.
+- Native opt-in calendar notifications with a Rust scheduler, persistent title-free delivery ledger and Windows toast setting diagnostic that run independently of the hidden notch panel. WFS Notch never reads other applications' notifications. Event titles stay private unless enabled; WFS-only Pause Reminders is available.
 - Read-only local disk/network/CPU/RAM inventory, theme colors and accessible keyboard navigation.
 - Local JSON with backup and restore.
 
@@ -51,9 +51,9 @@ For a static browser preview, open `src/index.html`. Browser mode is not an emul
 
 Native notifications are off by default, and their titles are hidden until the user opts in. The notification pause option affects only WFS Notch. All user data remains on the device except features where the user explicitly requests third-party weather or opens an external link. No public tunnel or remote shell is deployed.
 
-**Current development version: v0.11.0.** Windows CI builds and regression tests verify code quality and package creation, not real-device behavior or complete equivalence to any other product. This is a development release, unsigned and not independently certified on physical Windows machines.
+**Phase 12 development target: v0.12.0.** Windows CI builds and regression tests verify code quality and package creation, not real-device behavior or complete equivalence to any other product. This is a development release, unsigned and not independently certified on physical Windows machines.
 
-Read [Architecture](docs/architecture.md), [Security](docs/security.md), [Feature coverage](docs/feature-coverage.md), and [Roadmap](docs/roadmap.md).
+Read [Architecture](docs/architecture.md), [Security](docs/security.md), [Feature coverage](docs/feature-coverage.md), [Phase 12 Report](docs/PHASE12_REPORT.md), [Phase 13 Prompt](docs/NEXT_PHASE13_PROMPT.md), and [Roadmap](docs/roadmap.md).
 
 ## License
 
