@@ -72,6 +72,8 @@ jobs:
         run: node --check 02_APP/ui/calendar_plus.js
       - name: System details JavaScript syntax
         run: node --check 02_APP/ui/system_details.js
+      - name: Media sessions JavaScript syntax
+        run: node --check 02_APP/ui/media_sessions.js
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
