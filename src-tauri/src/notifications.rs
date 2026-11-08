@@ -468,30 +468,30 @@ mod tests {
 
     #[test]
     fn durable_enqueues_survive_restart_and_retry_on_sender_error() {
-        let (store, path) = fixture_store("replay", 1_000_000);
+        let (store, path) = fixture_store("replay", 1_1_799_999_800_000_000_000);
         let mut sends = 0;
-        assert!(deliver_with(&store, "event-1", 700_000, |_, _| {
+        assert!(deliver_with(&store, "event-1", 1_799_999_700_000, |_, _| {
             sends += 1;
             Ok(())
         }).unwrap());
         assert_eq!(sends, 1);
         // Repeated polls and application restarts must not duplicate attempts.
-        assert!(!deliver_with(&store, "event-1", 710_000, |_, _| {
+        assert!(!deliver_with(&store, "event-1", 1_799_999_710_000, |_, _| {
             sends += 1;
             Ok(())
         }).unwrap());
         let reloaded = Mutex::new(Store::open(path.clone()).unwrap());
-        assert!(!deliver_with(&reloaded, "event-1", 700_000, |_, _| {
+        assert!(!deliver_with(&reloaded, "event-1", 1_799_999_700_000, |_, _| {
             sends += 1;
             Ok(())
         }).unwrap());
         assert_eq!(sends, 1);
         // A new scheduled instant is a different reminder occurrence.
         reloaded.lock().unwrap().transact(|data| {
-            data.events[0].starts_at_ms = 1_100_000;
+            data.events[0].starts_at_ms = 1_800_000_100_000;
             Ok(())
         }).unwrap();
-        assert!(deliver_with(&reloaded, "event-1", 800_000, |_, _| {
+        assert!(deliver_with(&reloaded, "event-1", 1_799_999_800_000, |_, _| {
             sends += 1;
             Ok(())
         }).unwrap());
@@ -504,12 +504,12 @@ mod tests {
 
     #[test]
     fn rejected_platform_send_releases_reservation_without_logging_titles() {
-        let (store, path) = fixture_store("failure", 1_000_000);
-        assert!(deliver_with(&store, "event-1", 700_000, |_, _| {
+        let (store, path) = fixture_store("failure", 1_1_799_999_800_000_000_000);
+        assert!(deliver_with(&store, "event-1", 1_799_999_700_000, |_, _| {
             Err("OS notification disabled".into())
         }).is_err());
         assert!(store.lock().unwrap().data.reminder_deliveries.is_empty());
-        assert!(deliver_with(&store, "event-1", 700_100, |_, settings| {
+        assert!(deliver_with(&store, "event-1", 1_799_999_700_100, |_, settings| {
             assert!(!settings.notifications_show_details);
             Ok(())
         }).unwrap());
@@ -517,7 +517,7 @@ mod tests {
             data.settings.notifications_enabled = false;
             Ok(())
         }).unwrap();
-        assert!(!deliver_with(&store, "event-1", 700_200, |_, _| {
+        assert!(!deliver_with(&store, "event-1", 1_799_999_700_200, |_, _| {
             panic!("disabled consent must not call sender")
         }).unwrap());
         drop(store);
