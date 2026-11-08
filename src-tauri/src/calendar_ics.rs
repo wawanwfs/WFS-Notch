@@ -734,13 +734,103 @@ mod tests {
             "RRULE:FREQ=MONTHLY;COUNT=2\n",
             "RRULE:FREQ=DAILY;COUNT=251\n",
             "RRULE:FREQ=DAILY;COUNT=2\nRECURRENCE-ID:20270615T113000Z\n",
-            "DTEND:20270614T133000Z\n",
+            "DTEND:20270614T103000Z\n",
         ] {
             let input = format!(
                 "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:series@example.org\nSUMMARY:Series\nDTSTART:20270614T113000Z\n{suffix}END:VEVENT\nEND:VCALENDAR"
             );
             assert!(parse_ics(&input, None).is_err());
         }
+    }
+
+    #[test]
+    fn timed_dtend_and_duration_round_trip_without_losing_exclusive_utc_end() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:dtend@example.org\nSUMMARY:Timed review\nDTSTART;TZID=Asia/Jakarta:20270614T113000\nDTEND;TZID=Asia/Jakarta:20270614T130000\nEND:VEVENT\nEND:VCALENDAR";
+        let first = parse_ics(input, None).unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].starts_at_ms, utc_to_ms("20270614T043000Z").unwrap());
+        assert_eq!(first[0].ends_at_ms, Some(utc_to_ms("20270614T060000Z").unwrap()));
+        let text = serialize_ics(&first).unwrap();
+        assert!(text.contains("DTEND:20270614T060000Z"));
+        let recovered = parse_ics(&text, None).unwrap();
+        assert_eq!(recovered[0].starts_at_ms, first[0].starts_at_ms);
+        assert_eq!(recovered[0].ends_at_ms, first[0].ends_at_ms);
+        assert_eq!(recovered[0].id, first[0].id);
+        let duration_ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:duration@example.org\nSUMMARY:Duration\nDTSTART:20270614T113000Z\nDURATION:PT1H30M\nEND:VEVENT\nEND:VCALENDAR";
+        let duration = parse_ics(duration_ics, None).unwrap();
+        assert_eq!(duration[0].ends_at_ms, Some(utc_to_ms("20270614T130000Z").unwrap()));
+        assert!(serialize_ics(&duration).unwrap().contains("DTEND:20270614T130000Z"));
+    }
+
+    #[test]
+    fn iana_dtend_resolves_spring_dst_and_rejects_nonexistent_and_ambiguous_times() {
+        let valid = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:DST change\nDTSTART;TZID=America/New_York:20270313T233000\nDTEND;TZID=America/New_York:20270314T033000\nEND:VEVENT\nEND:VCALENDAR";
+        let events = parse_ics(valid, None).unwrap();
+        assert_eq!(events[0].starts_at_ms, utc_to_ms("20270314T043000Z").unwrap());
+        assert_eq!(events[0].ends_at_ms, Some(utc_to_ms("20270314T073000Z").unwrap()));
+        let gap = valid.replace("20270314T033000", "20270314T023000");
+        assert!(parse_ics(&gap, None).unwrap_err().contains("Nonexistent"));
+        let overlap = valid.replace("20270314T033000", "20271107T013000");
+        assert!(parse_ics(&overlap, None).unwrap_err().contains("Ambiguous"));
+        let negative = valid.replace("20270314T033000", "20270313T223000");
+        assert!(parse_ics(&negative, None).unwrap_err().contains("later"));
+    }
+
+    #[test]
+    fn recurring_timed_dtend_preserves_elapsed_duration_across_dst() {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:recurring-duration@example.org\nSUMMARY:NY weekly\nDTSTART;TZID=America/New_York:20270313T093000\nDTEND;TZID=America/New_York:20270313T103000\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
+        let events = parse_ics(ics, None).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].starts_at_ms, utc_to_ms("20270313T143000Z").unwrap());
+        assert_eq!(events[1].starts_at_ms, utc_to_ms("20270314T133000Z").unwrap());
+        assert!(events.iter().all(|item| item.ends_at_ms.unwrap() - item.starts_at_ms == 3_600_000));
+        assert_eq!(parse_ics(&serialize_ics(&events).unwrap(), None).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn unsafe_or_unsupported_duration_inputs_fail_closed() {
+        for property in [
+            "DURATION:P0D",
+            "DURATION:-PT1H",
+            "DURATION:P999D",
+            "DURATION:PT1H1H",
+            "DURATION:P1WT1H",
+            "DURATION:PT",
+            "DURATION:PT0.5H",
+            "DTEND:20270614T110000Z",
+            "DTEND:20270614T130000Z\nDURATION:PT1H",
+        ] {
+            let ics = format!("BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Strict\nDTSTART:20270614T113000Z\n{property}\nEND:VEVENT\nEND:VCALENDAR");
+            assert!(parse_ics(&ics, None).is_err(), "Should reject {property}");
+        }
+        let date_with_duration = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:No guessed time\nDTSTART;VALUE=DATE:20270614\nDURATION:P1D\nEND:VEVENT\nEND:VCALENDAR";
+        assert!(parse_ics(date_with_duration, None).is_err());
+    }
+
+    #[test]
+    fn durable_cancellation_blocks_reimport_until_explicit_reset() {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:cancel-me@example.org\nSUMMARY:Local subscription\nDTSTART:20270614T113000Z\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
+        let incoming = parse_ics(ics, None).unwrap();
+        let mut state = AppData::default();
+        merge_imported_events(&mut state, incoming.clone()).unwrap();
+        assert_eq!(state.events.len(), 3);
+        crate::remove_series(&mut state, &incoming[0].id).unwrap();
+        assert_eq!(state.events.len(), 0);
+        assert!(state.calendar_tombstones.contains("ics:cancel-me@example.org"));
+        merge_imported_events(&mut state, incoming.clone()).unwrap();
+        assert!(state.events.is_empty());
+        let serialized = serde_json::to_string(&state).unwrap();
+        let mut recovered: AppData = serde_json::from_str(&serialized).unwrap();
+        merge_imported_events(&mut recovered, incoming.clone()).unwrap();
+        assert!(recovered.events.is_empty());
+        recovered.calendar_tombstones.clear();
+        merge_imported_events(&mut recovered, incoming.clone()).unwrap();
+        assert_eq!(recovered.events.len(), 3);
+        let canceled_id = incoming[1].id.clone();
+        crate::remember_calendar_cancellation(&mut recovered, &canceled_id).unwrap();
+        recovered.events.retain(|entry| entry.id != canceled_id);
+        merge_imported_events(&mut recovered, incoming).unwrap();
+        assert_eq!(recovered.events.len(), 2);
     }
 
     #[test]
