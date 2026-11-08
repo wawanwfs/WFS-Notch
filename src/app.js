@@ -130,12 +130,21 @@ function previewInvoke(command, args = {}) {
       if (!state.todos.some(item => item.id === args.id)) throw new Error('Task not found');
       state.todos = state.todos.filter(item => item.id !== args.id); break;
     }
-    case 'add_note': state.notes.push({ id: nextId(), title: 'Untitled', body: '', updated_ms: Date.now() }); break;
+    case 'add_note': state.notes.push({ id: nextId(), title: 'Untitled', body: '', updated_ms: Date.now(), tags: [] }); break;
     case 'update_note': {
       const note = state.notes.find(item => item.id === args.id);
       if (!note) throw new Error('Note not found');
       if (args.title.length > 200 || args.body.length > 50_000) throw new Error('Note is too long');
-      Object.assign(note, { title: args.title, body: args.body, updated_ms: Date.now() }); break;
+      const rawTags = args.tags == null ? (note.tags || []) : args.tags;
+      if (!Array.isArray(rawTags) || rawTags.length > 8) throw new Error('A note supports at most 8 tags');
+      const tags = [];
+      for (const item of rawTags) {
+        if (typeof item !== 'string') throw new Error('Invalid note tag');
+        const tag = item.trim().toLowerCase();
+        if (!/^[a-z0-9_-]{1,24}$/.test(tag)) throw new Error('Each tag must be 1–24 ASCII letters, numbers, - or _');
+        if (!tags.includes(tag)) tags.push(tag);
+      }
+      Object.assign(note, { title: args.title, body: args.body, tags, updated_ms: Date.now() }); break;
     }
     case 'remove_note': {
       if (!state.notes.some(item => item.id === args.id)) throw new Error('Note not found');
@@ -466,13 +475,25 @@ function renderNotes() {
   const list = $('#note-list');
   list.replaceChildren();
   const query = ($('#note-search')?.value || '').trim().toLocaleLowerCase();
+  const filter = $('#note-tag-filter');
+  const tags = [...new Set(data.notes.flatMap(note => Array.isArray(note.tags) ? note.tags : []))].sort();
+  const selectedTag = filter.value;
+  filter.replaceChildren(new Option('All tags', ''), ...tags.map(tag => new Option('#' + tag, tag)));
+  filter.value = tags.includes(selectedTag) ? selectedTag : '';
   const sorted = [...data.notes]
-    .filter(note => !query || (note.title + ' ' + note.body).toLocaleLowerCase().includes(query))
+    .filter(note => !filter.value || (Array.isArray(note.tags) && note.tags.includes(filter.value)))
+    .filter(note => !query || (note.title + ' ' + note.body + ' ' +
+      (Array.isArray(note.tags) ? note.tags.join(' ') : '')).toLocaleLowerCase().includes(query))
     .sort((left, right) => right.updated_ms - left.updated_ms);
   for (const note of sorted) {
     const button = node('button', 'note-card' + (selectedNoteId === note.id ? ' selected' : ''), note.title || 'Untitled');
     button.type = 'button';
     button.append(node('small', '', note.body.split('\n').find(text => text.trim()) || 'Empty note'));
+    if (Array.isArray(note.tags) && note.tags.length) {
+      const chips = node('small', 'note-tag-chips', note.tags.map(tag => '#' + tag).join('  '));
+      chips.setAttribute('aria-hidden', 'true');
+      button.append(chips);
+    }
     button.addEventListener('click', async () => {
       if (!(await flushNote())) return;
       selectedNoteId = note.id;
@@ -482,12 +503,13 @@ function renderNotes() {
   }
   if (!sorted.length) list.append(node('div', 'empty', query ? 'No matching notes.' : 'Nothing saved yet.'));
   const current = data.notes.find(note => note.id === selectedNoteId);
-  for (const control of [$('#note-title'), $('#note-body'), $('#note-delete'), $('#note-save')]) {
+  for (const control of [$('#note-title'), $('#note-body'), $('#note-tags'), $('#note-delete'), $('#note-save')]) {
     control.disabled = !current;
   }
   if (boundEditorId !== selectedNoteId) {
     $('#note-title').value = current?.title || '';
     $('#note-body').value = current?.body || '';
+    $('#note-tags').value = Array.isArray(current?.tags) ? current.tags.join(', ') : '';
     boundEditorId = selectedNoteId;
   }
   const message = !current ? 'Choose or create a note'
@@ -797,6 +819,7 @@ function scheduleNoteSave() {
     id: selectedNoteId,
     title: $('#note-title').value,
     body: $('#note-body').value,
+    tags: $('#note-tags').value.split(',').map(tag => tag.trim()).filter(Boolean),
   };
   $('#save-status').textContent = 'Unsaved changes';
   clearTimeout(noteSaveTimeout);
@@ -936,8 +959,11 @@ function bind() {
   });
   $('#note-title').addEventListener('input', scheduleNoteSave);
   $('#note-body').addEventListener('input', scheduleNoteSave);
+  $('#note-tags').addEventListener('input', scheduleNoteSave);
   $('#note-title').addEventListener('blur', () => { void flushNote(); });
   $('#note-body').addEventListener('blur', () => { void flushNote(); });
+  $('#note-tags').addEventListener('blur', () => { void flushNote(); });
+  $('#note-tag-filter').addEventListener('change', renderNotes);
   $('#note-save').addEventListener('click', () => { void flushNote(); });
   $('#note-delete').addEventListener('click', async () => {
     if (!selectedNoteId) return;

@@ -88,6 +88,32 @@ struct Note {
     title: String,
     body: String,
     updated_ms: u128,
+    // Notes created before v0.24 still load unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
+}
+
+/// Bounded plain-text local labels; never interpret them as markup.
+fn normalize_note_tags(raw: Vec<String>) -> Result<Vec<String>, String> {
+    if raw.len() > 8 {
+        return Err("A note supports at most 8 tags".into());
+    }
+    let mut tags = Vec::with_capacity(raw.len());
+    for item in raw {
+        let tag = item.trim().to_ascii_lowercase();
+        if tag.is_empty()
+            || tag.len() > 24
+            || !tag
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        {
+            return Err("Each tag must be 1–24 ASCII letters, numbers, - or _".into());
+        }
+        if !tags.contains(&tag) {
+            tags.push(tag);
+        }
+    }
+    Ok(tags)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -512,6 +538,7 @@ fn add_note(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
             title: "Untitled".into(),
             body: String::new(),
             updated_ms: now_ms(),
+            tags: Vec::new(),
         });
         Ok(())
     })
@@ -523,10 +550,13 @@ fn update_note(
     id: String,
     title: String,
     body: String,
+    tags: Option<Vec<String>>,
 ) -> Result<AppData, String> {
     if title.chars().count() > 200 || body.chars().count() > 50_000 {
         return Err("Note is too long".into());
     }
+    // Legacy caller omitting tags must never erase previously saved tags.
+    let tags = tags.map(normalize_note_tags).transpose()?;
     with_store(store, |state| {
         let note = state
             .notes
@@ -535,6 +565,9 @@ fn update_note(
             .ok_or("Note not found")?;
         note.title = title;
         note.body = body;
+        if let Some(tags) = tags {
+            note.tags = tags;
+        }
         note.updated_ms = now_ms();
         Ok(())
     })
@@ -1436,6 +1469,35 @@ mod tests {
             std::process::id(),
             new_id()
         ))
+    }
+
+    #[test]
+    fn note_tags_migrate_validate_and_survive_atomic_persistence() {
+        let legacy = r#"{"id":"old","title":"Legacy","body":"Preserve me","updated_ms":9}"#;
+        let mut note: Note = serde_json::from_str(legacy).unwrap();
+        assert!(note.tags.is_empty());
+        let tags =
+            normalize_note_tags(vec![" Release ".into(), "release".into(), "dev_ops".into()])
+                .unwrap();
+        assert_eq!(tags, vec!["release", "dev_ops"]);
+        assert!(normalize_note_tags(vec!["contains space".into()]).is_err());
+        assert!(normalize_note_tags(vec!["<script>".into()]).is_err());
+        assert!(normalize_note_tags(vec!["a".repeat(25)]).is_err());
+        assert!(normalize_note_tags(vec!["tag".into(); 9]).is_err());
+        note.tags = tags;
+        let path = temp_file("note-tags");
+        let mut store = Store::open(path.clone()).unwrap();
+        store
+            .transact(|data| {
+                data.notes.push(note.clone());
+                Ok(())
+            })
+            .unwrap();
+        let reopened = Store::open(path.clone()).unwrap();
+        assert_eq!(reopened.data.notes, vec![note]);
+        assert!(reopened.data.notes[0].body.contains("Preserve"));
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("json.bak"));
     }
 
     #[test]

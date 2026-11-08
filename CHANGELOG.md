@@ -1,3 +1,10 @@
+## 0.24.0 — Private local Notes tags and filtering (Workstream F)
+
+- Notes support optional persisted comma-separated tags: up to 8 labels of 1–24 ASCII letters, numbers, dash and underscore, normalized to lowercase. Legacy JSON notes deserialize with empty tags without modifying title or body.
+- Rust and browser preview reject malformed/oversized tags, while older callers omitting tags preserve previously saved labels. Atomic local state, safe backup and restore behavior remain unchanged.
+- Notes search includes labels; an accessible dropdown filters by tag. Chips use text nodes instead of HTML and require no network, new permissions or cloud storage.
+- Adds Rust migration/validation/persistence and Playwright Notes tag search/filter regression. Windows 10/11 native GUI acceptance is NOT TESTED. Reference parity remains 28.9%.
+
 ## 0.23.0 — Guarded one-time local series day shift (Batch Workstream A)
 
 - New Tauri preview/apply commands let users move **existing** imported recurrence occurrences by a whole-day offset (-365..-1 or +1..+365), with a preview count, old/new bounds, reminder count, exact-start conflicts and an expiring-by-state freshness token; explicit user confirmation required.
