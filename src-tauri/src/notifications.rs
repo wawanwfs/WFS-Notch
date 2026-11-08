@@ -587,8 +587,12 @@ mod tests {
         })
         .is_err());
         assert!(store.lock().unwrap().data.reminder_deliveries.is_empty());
+        assert_eq!(store.lock().unwrap().data.reminder_retries.len(), 1);
+        assert!(!deliver_with(&store, "event-1", 1_799_999_700_100, |_, _| {
+            panic!("bounded backoff must block immediate retry")
+        }).unwrap());
         assert!(
-            deliver_with(&store, "event-1", 1_799_999_700_100, |_, settings| {
+            deliver_with(&store, "event-1", 1_799_999_720_000, |_, settings| {
                 assert!(!settings.notifications_show_details);
                 Ok(())
             })
@@ -609,6 +613,87 @@ mod tests {
         drop(store);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn sender_rejections_use_persistent_three_attempt_backoff_and_suppress_clock_replay() {
+        let (store, path) = fixture_store("bounded-backoff", 1_800_000_000_000);
+        let base = 1_799_999_700_000_u128;
+        let attempts_at = [base, base + 20_000, base + 80_000];
+        for (index, timestamp) in attempts_at.iter().enumerate() {
+            assert!(deliver_with(&store, "event-1", *timestamp, |_, _| {
+                Err("Private appointment should not appear in error logs".into())
+            }).is_err());
+            let state = store.lock().unwrap();
+            let retry = state.data.reminder_retries.values().next().unwrap();
+            assert_eq!(retry.attempts, (index + 1) as u8);
+            assert_eq!(retry.retry_after_ms, timestamp + RETRY_DELAYS_MS[index]);
+            assert!(state.data.reminder_deliveries.is_empty());
+            drop(state);
+            assert!(!deliver_with(&store, "event-1", *timestamp + 1, |_, _| {
+                panic!("Retry blocked before deadline")
+            }).unwrap());
+        }
+        assert!(!deliver_with(&store, "event-1", base + 280_000, |_, _| {
+            panic!("Three failed attempts should suppress further sends")
+        }).unwrap());
+        assert_eq!(due_event_ids(&store.lock().unwrap().data, base + 280_000).len(), 0);
+        let restored = Mutex::new(Store::open(path.clone()).unwrap());
+        assert!(!deliver_with(&restored, "event-1", base + 280_000, |_, _| {
+            panic!("Recovered retry journal must suppress replay")
+        }).unwrap());
+        let current = restored.lock().unwrap().data.clone();
+        let mut backed_up = AppData::default();
+        crate::preserve_reminder_history(&mut backed_up, &current);
+        assert_eq!(backed_up.reminder_retries.values().next().unwrap().attempts, 3);
+        backed_up.events = current.events;
+        backed_up.settings = current.settings;
+        assert!(due_event_ids(&backed_up, base + 280_000).is_empty());
+        drop(restored);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn successful_retry_clears_error_history_but_retains_durable_reservation() {
+        let (store, path) = fixture_store("retry-success", 1_800_000_000_000);
+        let base = 1_799_999_700_000_u128;
+        assert!(deliver_with(&store, "event-1", base, |_, _| Err("rejected".into())).is_err());
+        assert_eq!(store.lock().unwrap().data.reminder_retries.len(), 1);
+        assert!(deliver_with(&store, "event-1", base + 20_000, |event, settings| {
+            assert_eq!(event_message(event, settings.notifications_show_details),
+                "You have an upcoming calendar event. Open WFS Notch to view it.");
+            Ok(())
+        }).unwrap());
+        assert!(store.lock().unwrap().data.reminder_retries.is_empty());
+        assert_eq!(store.lock().unwrap().data.reminder_deliveries.len(), 1);
+        let restored = Mutex::new(Store::open(path.clone()).unwrap());
+        assert!(!deliver_with(&restored, "event-1", base + 60_000, |_, _| {
+            panic!("Confirmed enqueue must stay suppressed after restart")
+        }).unwrap());
+        drop(restored);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn retry_parser_validation_and_defensive_backup_merge_preserve_privacy() {
+        let valid = ReminderRetry { attempts: 2, retry_after_ms: 1_800_000_000_000, expires_at_ms: 1_802_000_000_000 };
+        assert!(valid.valid());
+        assert!(!ReminderRetry { attempts: 0, ..valid.clone() }.valid());
+        assert!(!ReminderRetry { attempts: 4, ..valid.clone() }.valid());
+        assert!(!ReminderRetry { retry_after_ms: valid.expires_at_ms + 1, ..valid.clone() }.valid());
+        let mut current = AppData::default();
+        current.reminder_retries.insert("opaque-event-key".into(), valid.clone());
+        let mut recovered = AppData::default();
+        recovered.reminder_retries.insert("opaque-event-key".into(),
+            ReminderRetry { attempts: 1, retry_after_ms: valid.retry_after_ms - 60_000, expires_at_ms: valid.expires_at_ms - 60_000 });
+        crate::preserve_reminder_history(&mut recovered, &current);
+        assert_eq!(recovered.reminder_retries.get("opaque-event-key"), Some(&valid));
+        let json = serde_json::to_string(&recovered).unwrap();
+        assert!(!json.contains("Private appointment"));
     }
 
     #[test]
