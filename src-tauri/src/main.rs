@@ -375,28 +375,47 @@ fn read_state(path: &Path) -> Result<AppData, String> {
     serde_json::from_slice(&content).map_err(|error| format!("Invalid state file: {error}"))
 }
 
+/// Find the newest readable local recovery generation without mutating any files.
+/// Ignore an uncommitted .tmp snapshot: a crash must not apply a partial write.
+fn read_recovery_state(backup: &Path, previous: &Path) -> Result<(AppData, PathBuf), String> {
+    match read_state(backup) {
+        Ok(data) => Ok((data, backup.to_path_buf())),
+        Err(latest_error) => read_state(previous)
+            .map(|data| (data, previous.to_path_buf()))
+            .map_err(|older_error| {
+                format!(
+                    "Local backup recovery failed: latest: {latest_error}; older: {older_error}"
+                )
+            }),
+    }
+}
+
 impl Store {
     fn open(path: PathBuf) -> Result<Self, String> {
         let backup = path.with_extension("json.bak");
+        let previous = path.with_extension("json.bak.prev");
         let data = if path.exists() {
             match read_state(&path) {
                 Ok(data) => data,
                 Err(primary_error) => {
-                    let restored = read_state(&backup).map_err(|backup_error| {
-                        format!(
-                            "Cannot recover local data: {primary_error}; backup: {backup_error}. Files were not deleted."
-                        )
-                    })?;
-                    // Keep the invalid file for forensic recovery instead of overwriting it.
+                    let (restored, recovery_path) =
+                        read_recovery_state(&backup, &previous).map_err(|backup_error| {
+                            format!(
+                                "Cannot recover local data: {primary_error}; {backup_error}. Files were not deleted."
+                            )
+                        })?;
+                    // Never overwrite an invalid primary in place; leave the file
+                    // intact under a distinct name for manual investigation.
                     let damaged = path.with_extension(format!("corrupt-{}.json", now_ms()));
                     fs::rename(&path, &damaged).map_err(|error| error.to_string())?;
-                    fs::copy(&backup, &path).map_err(|error| error.to_string())?;
+                    fs::copy(&recovery_path, &path).map_err(|error| error.to_string())?;
                     restored
                 }
             }
-        } else if backup.exists() {
-            let restored = read_state(&backup)?;
-            fs::copy(&backup, &path).map_err(|error| error.to_string())?;
+        } else if backup.exists() || previous.exists() {
+            // A crash between primary rotation and commit may leave no primary.
+            let (restored, recovery_path) = read_recovery_state(&backup, &previous)?;
+            fs::copy(&recovery_path, &path).map_err(|error| error.to_string())?;
             restored
         } else {
             AppData::default()
@@ -410,6 +429,7 @@ impl Store {
         let content = serde_json::to_vec_pretty(&self.data).map_err(|error| error.to_string())?;
         let temp = self.path.with_extension("json.tmp");
         let backup = self.path.with_extension("json.bak");
+        let previous = self.path.with_extension("json.bak.prev");
         if temp.exists() {
             fs::remove_file(&temp).map_err(|error| error.to_string())?;
         }
@@ -420,9 +440,22 @@ impl Store {
         drop(file);
         if self.path.exists() {
             if backup.exists() {
-                fs::remove_file(&backup).map_err(|error| error.to_string())?;
+                // Preserve the previous committed backup until the new primary
+                // is fully serialized/fsync'd, then rotate it to a second slot.
+                // An interrupted rotation can be recovered from either slot.
+                if previous.exists() {
+                    fs::remove_file(&previous).map_err(|error| error.to_string())?;
+                }
+                fs::rename(&backup, &previous).map_err(|error| error.to_string())?;
             }
-            fs::rename(&self.path, &backup).map_err(|error| error.to_string())?;
+            if let Err(error) = fs::rename(&self.path, &backup) {
+                // Primary is still intact if rename failed. Try to restore the
+                // latest backup name without ever discarding the prior snapshot.
+                if !backup.exists() && previous.exists() {
+                    let _ = fs::rename(&previous, &backup);
+                }
+                return Err(error.to_string());
+            }
         }
         if let Err(error) = fs::rename(&temp, &self.path) {
             if !self.path.exists() && backup.exists() {
@@ -1706,6 +1739,86 @@ mod tests {
         });
         assert!(result.is_err());
         assert!(store.data.todos.is_empty());
+    }
+
+    #[test]
+    fn two_generation_recovery_survives_corrupt_primary_and_latest_backup() {
+        let path = temp_file("two-generation-recovery");
+        let backup = path.with_extension("json.bak");
+        let previous = path.with_extension("json.bak.prev");
+        let mut store = Store::open(path.clone()).unwrap();
+        for accent in ["#111111", "#222222", "#333333"] {
+            store
+                .transact(|state| {
+                    state.settings.accent = accent.into();
+                    Ok(())
+                })
+                .unwrap();
+        }
+        assert_eq!(read_state(&path).unwrap().settings.accent, "#333333");
+        assert_eq!(read_state(&backup).unwrap().settings.accent, "#222222");
+        assert_eq!(read_state(&previous).unwrap().settings.accent, "#111111");
+        fs::write(&path, "{broken primary").unwrap();
+        fs::write(&backup, "{broken latest backup").unwrap();
+        let recovered = Store::open(path.clone()).unwrap();
+        assert_eq!(recovered.data.settings.accent, "#111111");
+        assert_eq!(read_state(&path).unwrap().settings.accent, "#111111");
+        assert_eq!(
+            fs::read_to_string(&backup).unwrap(),
+            "{broken latest backup"
+        );
+        let prefix = path.file_stem().unwrap().to_string_lossy();
+        for entry in fs::read_dir(path.parent().unwrap()).unwrap().flatten() {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(&format!("{prefix}.corrupt-"))
+            {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&backup);
+        let _ = fs::remove_file(&previous);
+    }
+
+    #[test]
+    fn failed_staging_write_preserves_committed_primary_and_both_backups() {
+        let path = temp_file("staging-failure");
+        let mut store = Store::open(path.clone()).unwrap();
+        for accent in ["#111111", "#222222", "#333333"] {
+            store
+                .transact(|state| {
+                    state.settings.accent = accent.into();
+                    Ok(())
+                })
+                .unwrap();
+        }
+        let backup = path.with_extension("json.bak");
+        let previous = path.with_extension("json.bak.prev");
+        let before = (
+            fs::read(&path).unwrap(),
+            fs::read(&backup).unwrap(),
+            fs::read(&previous).unwrap(),
+        );
+        // Make the staging path a directory to force a deterministic write error
+        // without changing permissions or touching production data.
+        let staging = path.with_extension("json.tmp");
+        fs::create_dir(&staging).unwrap();
+        assert!(store
+            .transact(|state| {
+                state.settings.accent = "#ffffff".into();
+                Ok(())
+            })
+            .is_err());
+        assert_eq!(store.data.settings.accent, "#333333");
+        assert_eq!(fs::read(&path).unwrap(), before.0);
+        assert_eq!(fs::read(&backup).unwrap(), before.1);
+        assert_eq!(fs::read(&previous).unwrap(), before.2);
+        fs::remove_dir(&staging).unwrap();
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&backup);
+        let _ = fs::remove_file(&previous);
     }
 
     #[test]

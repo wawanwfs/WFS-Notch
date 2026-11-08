@@ -1,3 +1,10 @@
+## 0.27.0 — Workstream I: two-generation local recovery and safer rotation
+
+- Local `state.json` writes now rotate the previous `state.json.bak` into `state.json.bak.prev`, retaining one additional **local** recovery generation rather than deleting the older snapshot before the primary is safely rotated. No external storage or telemetry is added.
+- Startup recovery uses the most recent readable committed fallback first (`.json.bak`, then `.json.bak.prev`). An invalid primary is archived with a unique timestamp before a recovery copy; corrupted backup files are not erased. An uncommitted `.json.tmp` is never interpreted as saved user data.
+- Additional Windows Rust regression proves three committed generations, fallback when both primary/latest backup are corrupt, and deterministic staging-write rollback retaining all three committed files. Existing notes, tasks, calendar metadata, privacy settings and reminder retry journals remain in the serialized AppData.
+- This improves crash-recovery resilience but does NOT prove power-loss atomicity or native NSIS 0.15–0.17 in-place upgrade behavior on real Windows 10/11, which remain NOT TESTED.
+
 ## 0.26.0 — Workstream E: accessibility preferences and interface density
 
 - Native local Settings now persist `comfortable`/`compact` interface density, an independent minimal-motion override and optional high-contrast palette. Defaults preserve old-state layout and are backwards-compatible with previous JSON/backups. No OS settings, external network, note/task content or notifications are changed by these controls.

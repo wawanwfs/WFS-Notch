@@ -9,7 +9,7 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.26.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.27.0 source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware placement with unique bounded monitor-name persistence (legacy coordinate fallback), opt-in Win32 foreground fullscreen guard (excluding spanning windows) and display hotplug polling; real Win10/11 device/hover/pass-through and RDP QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
@@ -47,7 +47,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Buddy | Gap | Independent animated character |
 | Mouse cursors | Gap | Windows cursor pack and restore |
 | Native autostart/tray | Implemented | Windows runner compilation; behavioral device test pending |
-| Data backup | Partial | Local JSON snapshots/restore; portable import/export missing |
+| Data backup | Partial | Local JSON snapshots/restore plus two generations of local rollback state and corruption fallback; portable import/export, native installer upgrade acceptance and cross-device migration still missing |
 | Self-update | Gap | Signed updater, portable notification |
 
 ## Phase 18–19 weighted score (38 categories)
