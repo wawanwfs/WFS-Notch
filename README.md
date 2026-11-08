@@ -51,9 +51,9 @@ For a static browser preview, open `src/index.html`. Browser mode is not an emul
 
 Native notifications are off by default, and their titles are hidden until the user opts in. The notification pause option affects only WFS Notch. All user data remains on the device except features where the user explicitly requests third-party weather or opens an external link. No public tunnel or remote shell is deployed.
 
-**Phase 12 development target: v0.12.0.** Windows CI builds and regression tests verify code quality and package creation, not real-device behavior or complete equivalence to any other product. This is a development release, unsigned and not independently certified on physical Windows machines.
+**Phase 13 development target: v0.13.0.** Windows CI builds and regression tests verify code quality and package creation, not real-device behavior or complete equivalence to any other product. This is a development release, unsigned and not independently certified on physical Windows machines.
 
-Read [Architecture](docs/architecture.md), [Security](docs/security.md), [Feature coverage](docs/feature-coverage.md), [Phase 12 Report](docs/PHASE12_REPORT.md), [Phase 13 Prompt](docs/NEXT_PHASE13_PROMPT.md), and [Roadmap](docs/roadmap.md).
+Read [Phase 13 Report](docs/PHASE13_REPORT.md), [Next Phase 14 Prompt](docs/NEXT_PHASE14_PROMPT.md), [Architecture](docs/architecture.md), [Security](docs/security.md), [Feature coverage](docs/feature-coverage.md), [Phase 12 Report](docs/PHASE12_REPORT.md), [Phase 13 Prompt](docs/NEXT_PHASE13_PROMPT.md), and [Roadmap](docs/roadmap.md).
 
 ## License
 
