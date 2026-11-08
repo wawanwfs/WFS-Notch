@@ -71,7 +71,6 @@ fn event_message(event: &CalendarEvent, details: bool) -> String {
     }
 }
 
-
 /// Reports the native WinRT toast setting for the WFS app identity.
 /// Desktop plugin permission_state() always returns Granted on Windows,
 /// which is not proof that Windows Settings permits showing toasts.
