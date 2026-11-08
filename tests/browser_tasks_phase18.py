@@ -43,6 +43,24 @@ with sync_playwright() as pw:
 
     page.locator("#expanded").wait_for(state="visible")
     page.get_by_role("button", name="Tasks", exact=True).click()
+    # The browser cannot simulate native Windows toast delivery or permission state.
+    assert page.evaluate("() => data.settings.task_due_reminders_enabled === false")
+    page.get_by_role("button", name="Settings", exact=True).click()
+    assert page.locator("#task-reminders-toggle").is_disabled()
+    assert not page.locator("#task-reminders-toggle").is_checked()
+    assert "browser preview never sends task toasts" in page.locator(
+        "#task-reminders-status").inner_text().lower()
+    page.evaluate("""async () => {
+      data = await previewInvoke('set_task_due_reminders', {enabled: true});
+      render();
+    }""")
+    assert page.locator("#task-reminders-toggle").is_checked()
+    assert page.locator("#task-reminders-toggle").is_disabled()
+    page.evaluate("""async () => {
+      data = await previewInvoke('set_task_due_reminders', {enabled: false});
+      render();
+    }""")
+    page.get_by_role("button", name="Tasks", exact=True).click()
     page.locator("#todo-input").fill("Prepare launch")
     page.locator("#todo-priority").select_option("high")
     page.locator("#todo-due").fill("2027-06-14T09:30")
