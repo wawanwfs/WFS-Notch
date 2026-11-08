@@ -86,6 +86,12 @@ with sync_playwright() as pw:
     page.locator("#panel-media.active").wait_for()
     assert page.locator("#media-track-title").inner_text() == "No active media session"
     assert "Browser preview" in page.locator("#media-track-source").inner_text()
+    assert page.locator("#media-player-picker").is_disabled(), "Browser must not fake Windows media sessions"
+    assert page.locator("#media-artwork").is_hidden(), "No artwork without a real Windows media session"
+    page.evaluate("renderMediaDetails({title:'Fixture', artwork_data_url:'data:image/svg+xml;base64,PHN2Zz4=', position_ms:0, duration_ms:1000, playback_status:'Paused'})")
+    assert page.locator("#media-artwork").is_hidden(), "Reject SVG and unknown image types"
+    page.evaluate("renderMediaDetails(null)")
+
     page.locator("#nav-notes").click()
     page.locator("#panel-notes.active").wait_for()
     page.locator("#note-search").focus()
