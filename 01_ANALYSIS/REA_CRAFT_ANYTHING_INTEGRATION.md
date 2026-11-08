@@ -18,7 +18,7 @@
 
 ## Windows 10/11 setup (no winget needed)
 
-1. Install official Node.js with an REA-supported version: **22.19+**, **24.11+**, or **26+**; ensure `node` and `npm` work in a new PowerShell window.
+1. Install official Node.js with an REA-supported version: **22.23.4+** (22.x), **24.22.1+** (24.x), or **26.12.1+** (26.x); ensure `node` and `npm` work in a new PowerShell window.
 2. In PowerShell, from the cloned WFS Notch root, run:
 
    ```powershell
