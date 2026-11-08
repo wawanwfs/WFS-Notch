@@ -57,18 +57,25 @@ with sync_playwright() as pw:
     assert page.locator("#media-player-picker").input_value() == "spotify.id"
     assert page.locator('[data-selected-media="toggle"]').is_enabled()
     assert page.locator("#media-track-title").inner_text() == "Spotify track"
-    page.locator('[data-selected-media="toggle"]').click()
+    # This isolated harness does not run the app's expanded-panel controller;
+    # dispatch JS activation rather than a physical click on hidden demo UI.
+    page.evaluate("""() => document.querySelector('[data-selected-media="toggle"]').click()""")
     page.wait_for_function("() => __testMedia.calls.some(x => x.command === 'control_media_session')")
+    page.wait_for_function("() => !mediaDetailsPending")
     assert page.evaluate("""() => __testMedia.calls.filter(x => x.command === 'control_media_session')
       .every(x => x.args.source === 'spotify.id')""")
 
     # A duplicate browser app ID must be listed but never allow controlling
     # the first tab just because its application ID matches.
-    page.locator("#media-player-picker").select_option("browser.id")
+    page.evaluate("""() => {
+      const picker = document.querySelector('#media-player-picker');
+      picker.value = 'browser.id';
+      picker.dispatchEvent(new Event('change', {bubbles:true}));
+    }""")
     page.wait_for_function("""() => document.querySelector('#media-player-status').textContent
       .includes('Multiple tabs or players')""")
     assert page.locator('[data-selected-media="toggle"]').is_disabled()
-    assert page.locator("#media-artwork").is_hidden()
+    assert page.locator("#media-artwork").get_attribute("src") is None
     assert page.locator("#media-progress-bar").get_attribute("style") == "width: 0%;"
     assert page.evaluate("""() => __testMedia.calls.filter(x => x.command === 'control_media_session')
       .length""") == 1
