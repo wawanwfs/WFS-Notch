@@ -1,3 +1,11 @@
+## 0.22.0 — Ambiguity-safe Windows GSMTC session controls (Batch Workstream D)
+
+- WinRT GSMTC SourceAppUserModelId is not a per-tab identity. Detect duplicates in up to 64 sessions, flag ambiguous entries, disable transport controls for that ID, and reject selected snapshots or controls rather than targeting an arbitrary first browser tab.
+- Refuse control and explicit-source reads when any Windows session identity cannot be verified. Check current transport capabilities immediately before sending a command; no microphone, media capture, network or privileged Windows API added.
+- Media panel explains ambiguous/disconnected sessions and never silently controls a different player. Ignore out-of-order selected-player snapshots and bound extrapolated progress to 10 seconds to prevent misleading progress after sleep/resume. Clear stale artwork/progress when selection becomes ambiguous.
+- Add Rust unit regression for multiple tabs sharing an app ID, and a Chromium fake-WinRT integration test for duplicate app controls, state, stale selection, and bounded progress. Physical Windows 10/11 Spotify, browser and Windows Media Player testing remains NOT TESTED.
+- Unsigned Windows x64 installers remain the default; fixed 38-feature REA parity remains 28.9% (Music Partial).
+
 ## 0.21.0 — Stable selected-monitor identity and legacy-safe fallback (Phase 18C)
 
 - Identify selected Windows/Tauri monitors with a bounded, local unique device name when available instead of relying on virtual-desktop origin coordinates. Moving a named monitor to another edge, swapping primary, or adjusting DPI no longer changes this saved selector as long as the OS reports the same unique name.
