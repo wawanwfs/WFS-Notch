@@ -10,6 +10,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use sysinfo::System;
+mod all_day;
 mod calendar_ics;
 mod display;
 mod extra;
@@ -72,11 +73,17 @@ struct Note {
 struct CalendarEvent {
     id: String,
     title: String,
-    // UTC unix milliseconds; the UI displays the user's local timezone.
+    // Timed event: UTC instant. All-day event: UTC-midnight storage anchor ONLY;
+    // consumers must use the civil dates below, not the machine timezone.
     starts_at_ms: u64,
     remind_minutes: Option<u32>,
     description: String,
     created_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    all_day: Option<all_day::AllDaySpan>,
+    // The normalized local source event ID, common to materialized occurrences.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    series_uid: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -205,6 +212,14 @@ impl AppData {
                 && event.description.chars().count() <= 2000
                 && (946684800000..=4102444800000).contains(&event.starts_at_ms)
                 && matches!(event.remind_minutes, None | Some(0 | 5 | 15 | 30 | 60))
+                && event.all_day.as_ref().is_none_or(|span| {
+                    span.valid()
+                        && span.utc_midnight_ms().ok() == Some(event.starts_at_ms)
+                        && event.remind_minutes.is_none()
+                })
+                && event.series_uid.as_ref().is_none_or(|uid| {
+                    !uid.is_empty() && uid.len() <= 180 && !uid.contains(['\r', '\n'])
+                })
         });
         if ![900, 1500, 2700, 3600].contains(&self.focus.duration_seconds) {
             self.focus = FocusState::default();
@@ -495,6 +510,8 @@ fn add_event(
             remind_minutes,
             description,
             created_ms: now_ms(),
+            all_day: None,
+            series_uid: None,
         });
         Ok(())
     })
@@ -520,6 +537,7 @@ fn update_event(
         event.starts_at_ms = starts_at_ms;
         event.remind_minutes = remind_minutes;
         event.description = description;
+        event.all_day = None; // An explicitly timed edit converts the occurrence to timed.
         Ok(())
     })
 }
@@ -534,6 +552,99 @@ fn remove_event(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, S
         }
         Ok(())
     })
+}
+
+// New all-day events use date-only spans, never the device's midnight timezone.
+fn parse_all_day_span(start_date: &str, end_date_exclusive: &str) -> Result<all_day::AllDaySpan, String> {
+    all_day::AllDaySpan::new(
+        all_day::parse_iso_date(start_date)?,
+        all_day::parse_iso_date(end_date_exclusive)?,
+    )
+}
+
+#[tauri::command]
+fn add_all_day_event(
+    store: State<'_, Mutex<Store>>,
+    title: String,
+    start_date: String,
+    end_date_exclusive: String,
+    description: String,
+) -> Result<AppData, String> {
+    let span = parse_all_day_span(&start_date, &end_date_exclusive)?;
+    let starts_at_ms = span.utc_midnight_ms()?;
+    validate_event(&title, &description, starts_at_ms, None)?;
+    with_store(store, move |data| {
+        data.events.push(CalendarEvent {
+            id: new_id(),
+            title: title.trim().to_owned(),
+            starts_at_ms,
+            remind_minutes: None,
+            description,
+            created_ms: now_ms(),
+            all_day: Some(span),
+            series_uid: None,
+        });
+        Ok(())
+    })
+}
+
+#[tauri::command]
+fn update_all_day_event(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    title: String,
+    start_date: String,
+    end_date_exclusive: String,
+    description: String,
+) -> Result<AppData, String> {
+    let span = parse_all_day_span(&start_date, &end_date_exclusive)?;
+    let starts_at_ms = span.utc_midnight_ms()?;
+    validate_event(&title, &description, starts_at_ms, None)?;
+    with_store(store, move |data| {
+        let event = data.events.iter_mut().find(|entry| entry.id == id)
+            .ok_or("Event not found")?;
+        event.title = title.trim().to_owned();
+        event.starts_at_ms = starts_at_ms;
+        event.remind_minutes = None;
+        event.description = description;
+        event.all_day = Some(span);
+        Ok(())
+    })
+}
+
+fn event_series_id(data: &AppData, id: &str) -> Result<String, String> {
+    let event = data.events.iter().find(|entry| entry.id == id)
+        .ok_or("Calendar event not found")?;
+    event.series_uid.clone().ok_or("This is not an imported recurring series".into())
+}
+
+// Change only safe shared metadata; never silently shift source instants or
+// rewrite the RRULE. Editing one occurrence retains its distinct event ID.
+fn update_series_title(data: &mut AppData, id: &str, title: &str) -> Result<(), String> {
+    let series = event_series_id(data, id)?;
+    if title.trim().is_empty() || title.chars().count() > 200 {
+        return Err("Series title must contain 1–200 characters".into());
+    }
+    for event in data.events.iter_mut().filter(|entry| entry.series_uid.as_deref() == Some(series.as_str())) {
+        event.title = title.trim().to_owned();
+    }
+    Ok(())
+}
+
+fn remove_series(data: &mut AppData, id: &str) -> Result<(), String> {
+    let series = event_series_id(data, id)?;
+    data.events.retain(|event| event.series_uid.as_deref() != Some(series.as_str()));
+    Ok(())
+}
+
+#[tauri::command]
+fn update_event_series_title(store: State<'_, Mutex<Store>>, id: String, title: String) -> Result<AppData, String> {
+    with_store(store, move |data| update_series_title(data, &id, &title))
+}
+
+#[tauri::command]
+fn remove_event_series(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
+    with_store(store, move |data| remove_series(data, &id))
 }
 
 // Only app-generated backup identifiers are accepted; caller paths are never evaluated.
@@ -864,6 +975,10 @@ fn main() {
             add_event,
             update_event,
             remove_event,
+            add_all_day_event,
+            update_all_day_event,
+            update_event_series_title,
+            remove_event_series,
             calendar_ics::import_ics,
             calendar_ics::export_ics,
             create_backup,
@@ -942,6 +1057,8 @@ mod tests {
                     title: "Ship features".into(),
                     done: false,
                     created_ms: now_ms(),
+                    all_day: None,
+                    series_uid: None,
                 });
                 Ok(())
             })
@@ -996,6 +1113,41 @@ mod tests {
         assert!(validate_event("valid", "", 1_800_000_000_000, Some(7)).is_err());
         assert!(validate_event("valid", "", 1_800_000_000_000, Some(15)).is_ok());
         assert!(validate_event("valid", "", 999, None).is_err());
+    }
+
+    #[test]
+    fn legacy_calendar_json_migrates_with_optional_date_and_series_metadata() {
+        let previous = r#"{"id":"legacy","title":"Old","starts_at_ms":1800000000000,"remind_minutes":15,"description":"","created_ms":1}"#;
+        let event: CalendarEvent = serde_json::from_str(previous).unwrap();
+        assert!(event.all_day.is_none());
+        assert!(event.series_uid.is_none());
+        assert_eq!(event.remind_minutes, Some(15));
+        let span = parse_all_day_span("2028-02-29", "2028-03-02").unwrap();
+        assert!(span.valid());
+        assert!(parse_all_day_span("2027-06-14", "2027-06-14").is_err());
+    }
+
+    #[test]
+    fn updating_and_removing_recurring_series_are_atomic_and_scoped() {
+        let mut state = AppData::default();
+        for (id, series_uid) in [
+            ("ics:series:1800000000000", Some("ics:series")),
+            ("ics:series:1800086400000", Some("ics:series")),
+            ("standalone", None),
+        ] {
+            state.events.push(CalendarEvent {
+                id: id.into(), title: "Before".into(), starts_at_ms: 1_800_000_000_000,
+                remind_minutes: None, description: String::new(), created_ms: 0,
+                all_day: None, series_uid: series_uid.map(str::to_owned),
+            });
+        }
+        assert!(update_series_title(&mut state, "standalone", "No").is_err());
+        assert!(remove_series(&mut state, "missing").is_err());
+        update_series_title(&mut state, "ics:series:1800000000000", "After").unwrap();
+        assert_eq!(state.events.iter().filter(|event| event.title == "After").count(), 2);
+        remove_series(&mut state, "ics:series:1800000000000").unwrap();
+        assert_eq!(state.events.len(), 1);
+        assert_eq!(state.events[0].id, "standalone");
     }
 
     #[test]
