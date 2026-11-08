@@ -24,8 +24,8 @@ with sync_playwright() as playwright:
     page = context.new_page()
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
-    html = (UI / 'index.html').read_text().replace('<script src="app.js" defer></script>', '').replace('<script src="modules.js" defer></script>', '')
-    html = html.replace('<link rel="stylesheet" href="styles.css">', '')
+    html = (UI / 'index.html').read_text().replace('<script src="app.js" defer></script>', '').replace('<script src="features/modules.js" defer></script>', '')
+    html = html.replace('<link rel="stylesheet" href="styles/base.css">', '')
     encoded_logo = base64.b64encode((UI / 'assets' / 'wfs-notch-mark.svg').read_bytes()).decode('ascii')
     html = html.replace('src="assets/wfs-notch-mark.svg"', f'src="data:image/svg+xml;base64,{encoded_logo}"')
     page.set_content(html)
@@ -38,7 +38,7 @@ with sync_playwright() as playwright:
         clear: () => { for (const k of Object.keys(store)) delete store[k]; }
       }});
     }""")
-    page.add_style_tag(content=(UI / 'styles.css').read_text())
+    page.add_style_tag(content=(UI / 'styles/base.css').read_text())
     page.add_script_tag(content=(UI / 'app.js').read_text())
     page.locator('#expanded').wait_for(state='visible', timeout=5000)
     assert page.locator('#task-count').inner_text() == '0'

@@ -1,4 +1,4 @@
-"""Phase 3 Chromium preview tests. This does NOT validate Windows/Rust."""
+"""Calendar and system Chromium preview tests. This does NOT validate Windows/Rust."""
 from pathlib import Path
 import base64
 from shutil import which
@@ -16,14 +16,14 @@ with sync_playwright() as pw:
     exceptions = []
     page.on('pageerror', lambda error: exceptions.append(str(error)))
     page.on('dialog', lambda dialog: dialog.accept())
-    html = (UI / 'index.html').read_text().replace('<link rel="stylesheet" href="styles.css">', '').replace('<script src="app.js" defer></script>', '').replace('<script src="modules.js" defer></script>', '')
+    html = (UI / 'index.html').read_text().replace('<link rel="stylesheet" href="styles/base.css">', '').replace('<script src="app.js" defer></script>', '').replace('<script src="features/modules.js" defer></script>', '')
     logo = base64.b64encode((UI / 'assets' / 'wfs-notch-mark.svg').read_bytes()).decode()
     html = html.replace('src="assets/wfs-notch-mark.svg"', f'src="data:image/svg+xml;base64,{logo}"')
     page.set_content(html)
     page.evaluate('''() => { const data = {}; Object.defineProperty(window, 'localStorage', { configurable:true, value:{
       getItem:k => data[k] ?? null, setItem:(k,v) => {data[k] = String(v)}, removeItem:k => {delete data[k]}
     }}); }''')
-    page.add_style_tag(content=(UI / 'styles.css').read_text())
+    page.add_style_tag(content=(UI / 'styles/base.css').read_text())
     page.add_script_tag(content=(UI / 'app.js').read_text())
     page.locator('#expanded').wait_for(state='visible')
 

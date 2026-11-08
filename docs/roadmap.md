@@ -1,18 +1,15 @@
 # Development roadmap
 
-Baseline: v0.9.0, Windows Rust + Tauri 2. Current release: v0.10.0 development.
+Current baseline: **v0.10.x development**. Priorities are product behavior and testable Windows integration rather than documentation volume.
 
-## Next priorities
-1. Consolidate source layout as a product, without numbered folders or research notes.
-2. Opt-in native Windows toast notifications **from WFS Notch itself**, default off; no OS notification scraping.
-3. More reliable Windows GSMTC playback session selection and explicit transport controls; album artwork remains pending.
-4. Real fullscreen, multi-monitor disconnect/reconnect and mixed-DPI testing on Windows 10/11.
-5. Polish spacing, hover/transition timing, accessibility and visual screenshots.
+## Next milestones
 
-## Progress measurement
+1. Native Windows 10/11 device smoke test: 1–3 monitors, 100/125/150% DPI, fullscreen and hot-unplug/reconnect.
+2. Notifications: validate Windows toast permission prompts, delivery failure UX, lock-screen privacy and WFS-only pause mode. Third-party notification interception is not implemented.
+3. Media: reliably select GSMTC sessions, confirm artwork decoding, media progress and playback controls in Spotify/browser/Windows Media Player.
+4. UI accessibility and polished notch animations, no focus stealing in fullscreen, keyboard-first workflows.
+5. Calendar recurrence/TZID, file shelf, clipboard history with explicit consent, and native device controls.
 
-Reference feature ledger contains 38 feature groups. The v0.9.0 baseline has 3 implemented, 16 partial and 19 gaps. Weighted development estimate: **(3 + 16×0.5) / 38 = 28.9%**. This *planning score* is not a measure of visual similarity, production readiness, runtime coverage, or official feature equivalence.
+## Progress scoring
 
-## Completion criteria
-
-All CI checks PASS; Windows native smoke tests; privacy/accessibility review; change review; reproducible installer; original WFS assets only. Do not assert 100% parity without independent behavioral evidence.
+See `docs/feature-coverage.md` for the 38 feature groups. Each category is 1 (implemented in source), 0.5 (partial), or 0 (gap). The percentage is a project planning estimate, **not** verified visual or behavioral parity. Native interactive tests and reference observation are separate gates.

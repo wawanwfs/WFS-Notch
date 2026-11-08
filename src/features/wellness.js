@@ -1,6 +1,6 @@
 'use strict';
 // Additional independent original modules, based on observed reference behavior.
-let parityInitialized = false;
+let wellnessInitialized = false;
 let countdownSeenComplete = false;
 let flashcardNoteId = '';
 let flashcardIndex = 0;
@@ -183,8 +183,8 @@ async function fetchWeather(city) {
   }
 }
 function initParity() {
-  if (parityInitialized) return;
-  parityInitialized = true;
+  if (wellnessInitialized) return;
+  wellnessInitialized = true;
   $$('[data-health]').forEach(button => button.addEventListener('click', () => {
     void mutation('health_action', {day: localDay(), action: button.dataset.health});
   }));

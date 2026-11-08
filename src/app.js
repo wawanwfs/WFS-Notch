@@ -9,7 +9,7 @@ const defaults = () => ({
   todos: [], notes: [], events: [], habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
-  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, always_on_top: true },
+  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, always_on_top: true },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
 });
 let data = defaults();
@@ -207,6 +207,7 @@ function previewInvoke(command, args = {}) {
     case 'set_hover_to_open': state.settings.hover_to_open = args.enabled; break;
     case 'set_pin_open': state.settings.pin_open = args.enabled; break;
     case 'set_notch_on_top': state.settings.always_on_top = args.enabled; break;
+    case 'set_notifications_paused': state.settings.notifications_paused = Boolean(args.paused); break;
     case 'set_notification_preferences':
       state.settings.notifications_enabled = args.enabled;
       state.settings.notifications_show_details = Boolean(args.enabled && args.showDetails);
@@ -490,7 +491,7 @@ function checkReminders(now = Date.now()) {
     if (now >= due && now < due + 10 * 60000 && !reminderSeen.has(event.id)) {
       reminderSeen.add(event.id);
       showInfo(`Calendar reminder: ${event.title} · ${eventDate(event.starts_at_ms)}`);
-      if (nativeInvoke && data.settings.notifications_enabled) {
+      if (nativeInvoke && data.settings.notifications_enabled && !data.settings.notifications_paused) {
         void invoke('notify_due_event', { id: event.id }).catch(showError);
       }
       break; // Show at most one reminder at a time.
@@ -512,7 +513,9 @@ function renderSettings() {
   $('#notifications-toggle').checked = Boolean(data.settings.notifications_enabled);
   $('#notification-details-toggle').checked = Boolean(data.settings.notifications_show_details);
   $('#notification-details-toggle').disabled = !data.settings.notifications_enabled;
-  $('#notification-test').disabled = !nativeInvoke || !data.settings.notifications_enabled;
+  $('#notifications-pause-toggle').checked = Boolean(data.settings.notifications_paused);
+  $('#notifications-pause-toggle').disabled = !data.settings.notifications_enabled;
+  $('#notification-test').disabled = !nativeInvoke || !data.settings.notifications_enabled || Boolean(data.settings.notifications_paused);
   const pinButton = $('#pin-button');
   pinButton.setAttribute('aria-pressed', String(data.settings.pin_open));
   pinButton.classList.toggle('on', data.settings.pin_open);
@@ -693,6 +696,7 @@ function bind() {
   $('#on-top-toggle').addEventListener('change', event => void mutation('set_notch_on_top', { enabled: event.target.checked }));
   $('#notifications-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: event.target.checked, showDetails: event.target.checked && $('#notification-details-toggle').checked }));
   $('#notification-details-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: $('#notifications-toggle').checked, showDetails: event.target.checked }));
+  $('#notifications-pause-toggle').addEventListener('change', event => void mutation('set_notifications_paused', { paused: event.target.checked }));
   $('#notification-test').addEventListener('click', async () => {
     if (!nativeInvoke || !data.settings.notifications_enabled) return;
     try {

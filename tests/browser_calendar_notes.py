@@ -1,4 +1,4 @@
-"""Browser preview parity test for the monthly calendar and Notes search.
+"""Browser regression test for the monthly calendar and Notes search.
 Native import/export is tested in Rust unit tests, not faked in browser preview.
 """
 import base64
@@ -35,9 +35,9 @@ with sync_playwright() as pw:
         removeItem: k => { delete data[k]; }
       }});
     }""")
-    for name in ["styles.css", "calendar_plus.css", "system_details.css", "media_sessions.css"]:
+    for name in ["styles/base.css", "styles/calendar.css", "styles/system.css", "styles/media.css"]:
         page.add_style_tag(content=(UI / name).read_text(encoding="utf-8"))
-    for name in ["app.js", "modules.js", "parity.js", "calendar_plus.js", "system_details.js", "media_sessions.js"]:
+    for name in ["app.js", "features/modules.js", "features/wellness.js", "features/calendar.js", "features/system.js", "features/media.js"]:
         page.add_script_tag(content=(UI / name).read_text(encoding="utf-8"))
     page.locator("#expanded").wait_for(state="visible")
 
