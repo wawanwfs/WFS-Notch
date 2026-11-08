@@ -83,8 +83,12 @@ fn read_session_with_source(
         .map_err(|error| format!("Cannot access Windows media sessions: {error}"))?;
     let session = if let Some(requested) = requested_source {
         let sessions = manager.GetSessions().map_err(|e| e.to_string())?;
+        let count = sessions.Size().map_err(|e| e.to_string())?;
+        if count > 64 {
+            return Err("Too many Windows media sessions to select safely".into());
+        }
         let mut selected = None;
-        for i in 0..sessions.Size().map_err(|e| e.to_string())?.min(64) {
+        for i in 0..count {
             let Ok(candidate) = sessions.GetAt(i) else {
                 continue;
             };
@@ -95,8 +99,10 @@ fn read_session_with_source(
                 .as_deref()
                 == Some(requested)
             {
+                if selected.is_some() {
+                    return Err("Multiple Windows sessions share this app ID; selection is ambiguous".into());
+                }
                 selected = Some(candidate);
-                break;
             }
         }
         match selected {
@@ -186,7 +192,7 @@ fn read_session_with_source(_source: Option<&str>) -> Result<Option<ActiveMediaS
 pub async fn get_media_session_by_source(
     source: String,
 ) -> Result<Option<ActiveMediaSnapshot>, String> {
-    if source.is_empty() || source.len() > 256 {
+    if source.is_empty() || source.len() > 256 || source.chars().any(char::is_control) {
         return Err("Invalid media source".into());
     }
     tauri::async_runtime::spawn_blocking(move || read_session_with_source(Some(&source)))
@@ -244,6 +250,9 @@ pub struct MediaSessionChoice {
     can_toggle: bool,
     can_next: bool,
     can_previous: bool,
+    // An AUMID can represent several tabs/instances. No action may guess
+    // which instance should receive a command.
+    ambiguous: bool,
 }
 
 fn valid_control(action: &str) -> bool {
@@ -261,7 +270,10 @@ fn read_media_choices() -> Result<Vec<MediaSessionChoice>, String> {
         .join()
         .map_err(|e| format!("Cannot read Windows sessions: {e}"))?;
     let view = manager.GetSessions().map_err(|e| e.to_string())?;
-    let count = view.Size().map_err(|e| e.to_string())?.min(24);
+    let count = view.Size().map_err(|e| e.to_string())?;
+    if count > 64 {
+        return Err("Too many Windows media sessions to enumerate safely".into());
+    }
     let mut result = Vec::new();
     for index in 0..count {
         let Ok(session) = view.GetAt(index) else {
@@ -271,12 +283,17 @@ fn read_media_choices() -> Result<Vec<MediaSessionChoice>, String> {
             .SourceAppUserModelId()
             .map(|s| s.to_string())
             .unwrap_or_default();
-        if source.is_empty()
-            || source.len() > 256
-            || result
-                .iter()
-                .any(|item: &MediaSessionChoice| item.source == source)
+        if source.is_empty() || source.len() > 256 || source.chars().any(char::is_control) {
+            continue;
+        }
+        if let Some(existing) = result
+            .iter_mut()
+            .find(|item: &&mut MediaSessionChoice| item.source == source)
         {
+            existing.ambiguous = true;
+            existing.can_toggle = false;
+            existing.can_next = false;
+            existing.can_previous = false;
             continue;
         }
         let properties = session
@@ -329,6 +346,7 @@ fn read_media_choices() -> Result<Vec<MediaSessionChoice>, String> {
                 .as_ref()
                 .and_then(|c| c.IsPreviousEnabled().ok())
                 .unwrap_or(false),
+            ambiguous: false,
         });
     }
     Ok(result)
@@ -354,15 +372,26 @@ fn apply_media_control(source: &str, action: &str) -> Result<bool, String> {
         .join()
         .map_err(|e| format!("Cannot read Windows sessions: {e}"))?;
     let view = manager.GetSessions().map_err(|e| e.to_string())?;
-    for index in 0..view.Size().map_err(|e| e.to_string())?.min(64) {
+    let count = view.Size().map_err(|e| e.to_string())?;
+    if count > 64 {
+        return Err("Too many Windows media sessions to control safely".into());
+    }
+    let mut chosen = None;
+    for index in 0..count {
         let session = view.GetAt(index).map_err(|e| e.to_string())?;
         let id = session
             .SourceAppUserModelId()
             .map(|v| v.to_string())
             .unwrap_or_default();
-        if id != source {
-            continue;
+        if id == source {
+            if chosen.is_some() {
+                return Err("Multiple Windows media sessions share this app ID; action refused".into());
+            }
+            chosen = Some(session);
         }
+    }
+    let session = chosen.ok_or("Selected Windows media session was disconnected")?;
+    {
         // Query controls again on the *current* session, not stale UI metadata.
         let controls = session
             .GetPlaybackInfo()
@@ -390,7 +419,6 @@ fn apply_media_control(source: &str, action: &str) -> Result<bool, String> {
             .join()
             .map_err(|e| format!("Media player did not respond: {e}"));
     }
-    Err("The selected media player is no longer available".into())
 }
 
 #[cfg(not(windows))]
@@ -400,7 +428,7 @@ fn apply_media_control(_source: &str, _action: &str) -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn control_media_session(source: String, action: String) -> Result<bool, String> {
-    if source.is_empty() || source.len() > 256 || !valid_control(&action) {
+    if source.is_empty() || source.len() > 256 || source.chars().any(char::is_control) || !valid_control(&action) {
         return Err("Invalid media player or playback action".into());
     }
     tauri::async_runtime::spawn_blocking(move || apply_media_control(&source, &action))
