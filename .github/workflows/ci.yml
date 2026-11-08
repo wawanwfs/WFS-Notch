@@ -29,7 +29,7 @@ jobs:
       - name: Verify actor and commit metadata
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-        run: python3 04_TESTS/verify_push_identity.py
+        run: python3 tests/verify_push_identity.py
 
   browser-audit:
     name: Browser regression / static audit
@@ -51,41 +51,41 @@ jobs:
           python -m pip install --disable-pip-version-check 'playwright==1.56.0'
           python -m playwright install --with-deps chromium
       - name: JavaScript syntax
-        run: node --check 02_APP/ui/app.js
+        run: node --check src/app.js
       - name: Phase 4 JavaScript syntax
-        run: node --check 02_APP/ui/modules.js
-      - name: REA parity JavaScript syntax
-        run: node --check 02_APP/ui/parity.js
+        run: node --check src/modules.js
+      - name: Feature JavaScript syntax
+        run: node --check src/parity.js
       - name: Structural and metadata audit
-        run: python 04_TESTS/static_audit.py
+        run: python tests/static_audit.py
       - name: Phase 2 browser regression
-        run: python 04_TESTS/browser_smoke.py
+        run: python tests/browser_smoke.py
       - name: Phase 3 browser integration
-        run: python 04_TESTS/browser_phase3.py
+        run: python tests/browser_phase3.py
       - name: Phase 4 functional UI integration
-        run: python 04_TESTS/browser_phase4.py
-      - name: Phase 5 REA parity browser regression
-        run: python 04_TESTS/browser_parity.py
+        run: python tests/browser_phase4.py
+      - name: Feature browser regression
+        run: python tests/browser_parity.py
       - name: Calendar month and Notes search regression
-        run: python 04_TESTS/browser_calendar_plus.py
+        run: python tests/browser_calendar_plus.py
       - name: Calendar UI JavaScript syntax
-        run: node --check 02_APP/ui/calendar_plus.js
+        run: node --check src/calendar_plus.js
       - name: System details JavaScript syntax
-        run: node --check 02_APP/ui/system_details.js
+        run: node --check src/system_details.js
       - name: Media sessions JavaScript syntax
-        run: node --check 02_APP/ui/media_sessions.js
+        run: node --check src/media_sessions.js
       - name: UX accessibility JavaScript syntax
-        run: node --check 02_APP/ui/ux_polish.js
+        run: node --check src/ux_polish.js
       - name: Multi-monitor UI JavaScript syntax
-        run: node --check 02_APP/ui/display_ui.js
+        run: node --check src/display_ui.js
       - name: Desktop UX 760x470 browser regression
-        run: python 04_TESTS/browser_ux_polish.py
+        run: python tests/browser_ux_polish.py
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: WFSNotch-browser-evidence
-          path: 06_EVIDENCE/browser-*.png
+          path: test-results/browser-*.png
           retention-days: 14
           if-no-files-found: warn
 
@@ -104,35 +104,18 @@ jobs:
       - name: Rust build cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: 02_APP/src-tauri
-      - name: Validate REA and Craft setup scripts without executing downloads
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($script in @('03_TOOLS/Install-REA-Craft-Windows.ps1', '03_TOOLS/Audit-Reference-With-REA.ps1')) {
-            $tokens = $null
-            $parseErrors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path -LiteralPath $script).Path,
-              [ref]$tokens, [ref]$parseErrors
-            ) | Out-Null
-            if ($parseErrors.Count -gt 0) {
-              $parseErrors | ForEach-Object { Write-Error "$script : $($_.Message)" }
-              throw "PowerShell syntax failed: $script"
-            }
-            Write-Host "PASS: $script"
-          }
+          workspaces: src-tauri
       - name: Run Rust unit tests
-        working-directory: 02_APP/src-tauri
+        working-directory: src-tauri
         shell: pwsh
         run: cargo test --all-targets --verbose
       - name: Rust Clippy diagnostics
-        working-directory: 02_APP/src-tauri
+        working-directory: src-tauri
         shell: pwsh
         if: success() || failure()
         run: cargo clippy --all-targets -- -D warnings
       - name: Verify Rust source format
-        working-directory: 02_APP/src-tauri
+        working-directory: src-tauri
         shell: pwsh
         if: success() || failure()
         run: cargo fmt --all -- --check
@@ -152,17 +135,17 @@ jobs:
       - name: Rust build cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: 02_APP/src-tauri
+          workspaces: src-tauri
       - name: Build Windows installer with official Tauri action
         uses: tauri-apps/tauri-action@v1
         with:
-          projectPath: 02_APP
+          projectPath: .
           uploadWorkflowArtifacts: true
       - name: Check generated installer and build hashes
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $directory = '02_APP/src-tauri/target/release/bundle/nsis'
+          $directory = 'src-tauri/target/release/bundle/nsis'
           $installers = @(Get-ChildItem $directory -Filter '*.exe' -File -ErrorAction Stop)
           if ($installers.Count -lt 1) { throw 'No NSIS installer was produced' }
           New-Item -ItemType Directory -Force -Path 'build-evidence' | Out-Null
@@ -182,6 +165,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: WFSNotch-Windows-x64-portable-unsigned
-          path: 02_APP/src-tauri/target/release/wfs-notch.exe
+          path: src-tauri/target/release/wfs-notch.exe
           retention-days: 30
           if-no-files-found: error
