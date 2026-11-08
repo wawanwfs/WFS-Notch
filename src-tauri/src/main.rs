@@ -173,6 +173,9 @@ struct AppData {
     reminder_deliveries: HashMap<String, u128>,
     // Local-only ICS cancellation markers; reimport never silently restores deleted events.
     calendar_tombstones: HashSet<String>,
+    // Versioned normalized ICS source metadata. Legacy flatten-only JSON
+    // deserializes to an empty map; no rules are guessed from old event data.
+    calendar_series: HashMap<String, calendar_ics::SeriesSource>,
     habits: Vec<extra::Habit>,
     quick_links: Vec<extra::QuickLink>,
     health: wellness::HealthState,
@@ -231,8 +234,9 @@ impl AppData {
         self.calendar_tombstones.retain(|uid| {
             uid.starts_with("ics:") && uid.len() <= 240 && !uid.chars().any(char::is_control)
         });
-        // Never truncate cancellation markers silently: retain all safe ones
-        // from existing state. New insertions are capped in mutation commands.
+        self.calendar_series.retain(|key, series| series.valid(key));
+        // Never truncate cancellation markers or source rules silently:
+        // retain safe entries; new insertions are capped at mutation time.
         if ![900, 1500, 2700, 3600].contains(&self.focus.duration_seconds) {
             self.focus = FocusState::default();
         }
@@ -581,6 +585,11 @@ fn update_event(
         event.description = description;
         event.all_day = None; // An explicitly timed edit converts the occurrence to timed.
         event.ends_at_ms = ends_at_ms;
+        let series = event.series_uid.clone();
+        let id = event.id.clone();
+        if let Some(meta) = series.and_then(|uid| state.calendar_series.get_mut(&uid)) {
+            meta.modified_occurrence_ids.insert(id);
+        }
         Ok(())
     })
 }
@@ -665,6 +674,11 @@ fn update_all_day_event(
         event.description = description;
         event.all_day = Some(span);
         event.ends_at_ms = None;
+        let series = event.series_uid.clone();
+        let id = event.id.clone();
+        if let Some(meta) = series.and_then(|uid| data.calendar_series.get_mut(&uid)) {
+            meta.modified_occurrence_ids.insert(id);
+        }
         Ok(())
     })
 }
@@ -695,6 +709,9 @@ fn update_series_title(data: &mut AppData, id: &str, title: &str) -> Result<(), 
     {
         event.title = title.trim().to_owned();
     }
+    if let Some(meta) = data.calendar_series.get_mut(&series) {
+        meta.title = title.trim().to_owned();
+    }
     Ok(())
 }
 
@@ -703,6 +720,7 @@ fn remove_series(data: &mut AppData, id: &str) -> Result<(), String> {
     remember_calendar_cancellation(data, &series)?;
     data.events
         .retain(|event| event.series_uid.as_deref() != Some(series.as_str()));
+    data.calendar_series.remove(&series);
     Ok(())
 }
 
