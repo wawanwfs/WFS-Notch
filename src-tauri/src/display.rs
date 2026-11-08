@@ -40,9 +40,49 @@ struct Placement {
     y: i32,
 }
 
-fn monitor_id(monitor: &tauri::Monitor) -> String {
+// A unique Windows/Tauri monitor name (often a DISPLAY device identifier)
+// persists when the user rearranges screens or changes DPI. A duplicate,
+// empty or unsafe name is not authoritative: retain the old origin fallback.
+fn persisted_monitor_id(name: Option<&str>, x: i32, y: i32, unique_name: bool) -> String {
+    if let Some(name) = name {
+        let value = format!("name:{name}");
+        if unique_name && valid_monitor_preference(&value) {
+            return value;
+        }
+    }
+    format!("origin:{x}:{y}")
+}
+
+pub(crate) fn valid_monitor_preference(value: &str) -> bool {
+    if value == DEFAULT_MONITOR {
+        return true;
+    }
+    if value.len() > 80 || value.chars().any(char::is_control) {
+        return false;
+    }
+    if let Some(name) = value.strip_prefix("name:") {
+        return !name.trim().is_empty() && name == name.trim();
+    }
+    if let Some(origin) = value.strip_prefix("origin:") {
+        let mut values = origin.split(':');
+        return values.next().is_some_and(|x| x.parse::<i32>().is_ok())
+            && values.next().is_some_and(|y| y.parse::<i32>().is_ok())
+            && values.next().is_none();
+    }
+    false
+}
+
+fn monitor_id(monitor: &tauri::Monitor, monitors: &[tauri::Monitor]) -> String {
+    let name = monitor.name().map(String::as_str);
+    let unique = name.is_some_and(|wanted| {
+        monitors
+            .iter()
+            .filter(|other| other.name().is_some_and(|candidate| candidate == wanted))
+            .count()
+            == 1
+    });
     let position = monitor.position();
-    format!("origin:{}:{}", position.x, position.y)
+    persisted_monitor_id(name, position.x, position.y, unique)
 }
 
 fn select_monitor(
@@ -55,7 +95,7 @@ fn select_monitor(
     } else {
         monitors
             .iter()
-            .find(|monitor| monitor_id(monitor) == preference)
+            .find(|monitor| monitor_id(monitor, &monitors) == preference)
             .cloned()
     };
     if preferred.is_some() {
@@ -299,18 +339,17 @@ pub fn get_display_options(
         .data
         .settings
         .clone();
+    let available = window.available_monitors().map_err(|e| e.to_string())?;
     let primary_id = window
         .primary_monitor()
         .map_err(|e| e.to_string())?
         .as_ref()
-        .map(monitor_id);
+        .map(|monitor| monitor_id(monitor, &available));
     let (active, using_fallback) = select_monitor(&window, &settings.monitor_id)?;
-    let mut displays = window
-        .available_monitors()
-        .map_err(|e| e.to_string())?
-        .into_iter()
+    let mut displays = available
+        .iter()
         .map(|monitor| DisplayOption {
-            id: monitor_id(&monitor),
+            id: monitor_id(monitor, &available),
             name: monitor
                 .name()
                 .cloned()
@@ -318,7 +357,7 @@ pub fn get_display_options(
             width: monitor.size().width,
             height: monitor.size().height,
             scale_factor: monitor.scale_factor(),
-            is_primary: primary_id.as_deref() == Some(monitor_id(&monitor).as_str()),
+            is_primary: primary_id.as_deref() == Some(monitor_id(monitor, &available).as_str()),
         })
         .collect::<Vec<_>>();
     displays.sort_by(|a, b| a.id.cmp(&b.id));
@@ -326,7 +365,10 @@ pub fn get_display_options(
         displays,
         monitor_id: settings.monitor_id,
         margin_px: settings.top_margin_px,
-        active_monitor_id: active.as_ref().map(monitor_id).unwrap_or_default(),
+        active_monitor_id: active
+            .as_ref()
+            .map(|monitor| monitor_id(monitor, &available))
+            .unwrap_or_default(),
         using_fallback,
     })
 }
@@ -342,11 +384,10 @@ pub fn set_display_preference(
         return Err("Top margin must be between 0 and 120 logical pixels".into());
     }
     if monitor_id != DEFAULT_MONITOR {
-        let connected = window
-            .available_monitors()
-            .map_err(|e| e.to_string())?
+        let available = window.available_monitors().map_err(|e| e.to_string())?;
+        let connected = available
             .iter()
-            .any(|monitor| self::monitor_id(monitor) == monitor_id);
+            .any(|monitor| self::monitor_id(monitor, &available) == monitor_id);
         if !connected {
             return Err("Selected display is disconnected. Select Primary display instead.".into());
         }
@@ -366,6 +407,30 @@ pub fn set_display_preference(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn monitor_name_identity_survives_origin_and_dpi_rearrangement() {
+        let original = persisted_monitor_id(Some(r"\\.\DISPLAY2"), -1920, 0, true);
+        let moved = persisted_monitor_id(Some(r"\\.\DISPLAY2"), 1920, -200, true);
+        assert_eq!(original, moved);
+        assert_eq!(original, "name:\\\\.\\DISPLAY2");
+        assert!(valid_monitor_preference(&original));
+        assert!(valid_monitor_preference("primary"));
+    }
+
+    #[test]
+    fn duplicate_or_unnamed_monitors_keep_legacy_coordinate_identity() {
+        assert_eq!(persisted_monitor_id(Some("Duplicated"), -1920, -1080, false),
+            "origin:-1920:-1080");
+        assert_eq!(persisted_monitor_id(None, 1920, 0, false), "origin:1920:0");
+        assert_eq!(persisted_monitor_id(Some(""), 0, 0, true), "origin:0:0");
+        assert_eq!(persisted_monitor_id(Some("Unsafe\nName"), 0, 0, true), "origin:0:0");
+        assert!(valid_monitor_preference("origin:-1920:0"));
+        assert!(!valid_monitor_preference("origin:0:0:1"));
+        assert!(!valid_monitor_preference("name:"));
+        assert!(!valid_monitor_preference("name:bad\nname"));
+        assert!(!valid_monitor_preference("unexpected"));
+    }
 
     #[test]
     fn geometry_centers_and_preserves_negative_virtual_origins() {
