@@ -1,3 +1,11 @@
+## 0.23.0 — Guarded one-time local series day shift (Batch Workstream A)
+
+- New Tauri preview/apply commands let users move **existing** imported recurrence occurrences by a whole-day offset (-365..-1 or +1..+365), with a preview count, old/new bounds, reminder count, exact-start conflicts and an expiring-by-state freshness token; explicit user confirmation required.
+- Only source-backed, individually unedited true all-day DATE or explicitly UTC timed recurrence instances qualify. IANA TZID/floating times, previously edited instances, canceled whole series, invalid bounds and unsupported recurrence overrides fail closed to avoid DST or data-loss surprises.
+- Shift is transactional across all existing local instances, preserves event IDs, titles, descriptions, exclusive ends, original cancellation markers and reminder ledger history. The original RFC5545 RRULE remains historical: moved instances are marked locally modified and ICS export flattens them instead of falsely exporting the unshifted RRULE or resurrecting canceled events.
+- New Rust tests for UTC shifts, stale preview rejection, leap-day/exclusive all-day spans, cancellation preservation, edited/TZID refusals and date bounds; new browser UI regression for preview/cancel and honest native-only scope. Does NOT claim complete schedule editing, RECURRENCE-ID overrides or real native Windows calendar UI QA.
+- Windows x64 unsigned NSIS/portable and Chromium screenshot CI gate required. The original 38-category REA weighted parity stays **28.9%**; Calendar remains Partial.
+
 ## 0.22.0 — Ambiguity-safe Windows GSMTC session controls (Batch Workstream D)
 
 - WinRT GSMTC SourceAppUserModelId is not a per-tab identity. Detect duplicates in up to 64 sessions, flag ambiguous entries, disable transport controls for that ID, and reject selected snapshots or controls rather than targeting an arbitrary first browser tab.
