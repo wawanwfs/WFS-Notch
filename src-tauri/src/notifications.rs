@@ -71,7 +71,55 @@ fn event_message(event: &CalendarEvent, details: bool) -> String {
     }
 }
 
+
+/// Reports the native WinRT toast setting for the WFS app identity.
+/// Desktop plugin permission_state() always returns Granted on Windows,
+/// which is not proof that Windows Settings permits showing toasts.
+#[derive(Serialize)]
+pub struct WindowsNotificationPermission {
+    status: String,
+    source: &'static str,
+}
+
+fn describe_native_setting(value: i32) -> &'static str {
+    match value {
+        0 => "enabled",
+        1 => "disabled_for_application",
+        2 => "disabled_for_user",
+        3 => "disabled_by_policy",
+        4 => "disabled_by_manifest",
+        _ => "unknown",
+    }
+}
+
+#[cfg(windows)]
+fn native_permission_status() -> String {
+    use windows::UI::Notifications::ToastNotificationManager;
+    let id = windows::core::HSTRING::from("id.wfs.notch");
+    match ToastNotificationManager::CreateToastNotifierWithId(&id)
+        .and_then(|notifier| notifier.Setting())
+    {
+        Ok(setting) => describe_native_setting(setting.0).to_owned(),
+        Err(_) => "unavailable".into(), // e.g. portable/no Start shortcut
+    }
+}
+#[cfg(not(windows))]
+fn native_permission_status() -> String {
+    "unavailable".into()
+}
+
+#[tauri::command]
+pub fn get_windows_notification_permission() -> WindowsNotificationPermission {
+    WindowsNotificationPermission {
+        status: native_permission_status(),
+        source: "Windows ToastNotifier.Setting; Focus Assist may still suppress toasts",
+    }
+}
+
 fn show(app: &AppHandle, title: &str, body: &str) -> Result<(), String> {
+    if native_permission_status().starts_with("disabled_") {
+        return Err("Windows notification permission is disabled".into());
+    }
     app.notification()
         .builder()
         .title(title)
@@ -328,6 +376,14 @@ mod tests {
         assert!(!event_due(&appointment, 3_900_000)); // stale after resume
         let changed = event(3_660_000, Some(60));
         assert!(needs_delivery(&changed, &settings, 60_000, &after_restart));
+    }
+
+    #[test]
+    fn permission_status_mapping_does_not_assume_granted() {
+        assert_eq!(describe_native_setting(0), "enabled");
+        assert_eq!(describe_native_setting(1), "disabled_for_application");
+        assert_eq!(describe_native_setting(3), "disabled_by_policy");
+        assert_eq!(describe_native_setting(99), "unknown");
     }
 
     #[test]
