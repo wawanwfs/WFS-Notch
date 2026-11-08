@@ -289,10 +289,7 @@ impl AppData {
         if !self.settings.notifications_enabled {
             self.settings.notifications_show_details = false;
         }
-        if self.settings.monitor_id != display::DEFAULT_MONITOR
-            && (!self.settings.monitor_id.starts_with("origin:")
-                || self.settings.monitor_id.len() > 80)
-        {
+        if !display::valid_monitor_preference(&self.settings.monitor_id) {
             self.settings.monitor_id = display::DEFAULT_MONITOR.into();
         }
         if self.settings.accent.len() != 7
