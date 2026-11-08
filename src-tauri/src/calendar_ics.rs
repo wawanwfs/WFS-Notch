@@ -2,7 +2,10 @@
 //! UTC, IANA TZID, and explicit user-selected floating timezones are resolved to UTC.
 //! Simple daily/weekly recurrence is materialized as stable local event occurrences.
 //! All-day dates, complex RRULE and unsupported recurrence metadata fail closed.
-use crate::{ics_time::CalendarStart, new_id, now_ms, validate_event, with_store, AppData, CalendarEvent, Store};
+use crate::{
+    ics_time::CalendarStart, new_id, now_ms, validate_event, with_store, AppData, CalendarEvent,
+    Store,
+};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -268,11 +271,8 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                             if event.start.is_some() {
                                 return Err("Duplicate DTSTART".into());
                             }
-                            event.start = Some(CalendarStart::parse(
-                                full_key,
-                                value,
-                                floating_timezone,
-                            )?);
+                            event.start =
+                                Some(CalendarStart::parse(full_key, value, floating_timezone)?);
                         }
                         "RRULE" => {
                             if event.recurrence.is_some() {
@@ -411,7 +411,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:meeting-2027@example.org\nSUMMARY:Jakarta meeting\nDTSTART;TZID=Asia/Jakarta:20270614T113000\nEND:VEVENT\nEND:VCALENDAR";
         let first = parse_ics(ics, None).unwrap();
         assert_eq!(first.len(), 1);
-        assert_eq!(first[0].starts_at_ms, utc_to_ms("20270614T043000Z").unwrap());
+        assert_eq!(
+            first[0].starts_at_ms,
+            utc_to_ms("20270614T043000Z").unwrap()
+        );
         let second = parse_ics(ics, None).unwrap();
         assert_eq!(first[0].id, second[0].id);
         // No new JSON state schema: exported occurrences remain UTC.
@@ -426,7 +429,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:float@example.org\nSUMMARY:Local appointment\nDTSTART:20270614T113000\nEND:VEVENT\nEND:VCALENDAR";
         assert!(parse_ics(ics, None).unwrap_err().contains("Floating"));
         let imported = parse_ics(ics, Some("Asia/Jakarta")).unwrap();
-        assert_eq!(imported[0].starts_at_ms, utc_to_ms("20270614T043000Z").unwrap());
+        assert_eq!(
+            imported[0].starts_at_ms,
+            utc_to_ms("20270614T043000Z").unwrap()
+        );
     }
 
     #[test]
@@ -435,8 +441,10 @@ mod tests {
         let one = parse_ics(ics, None).unwrap();
         let two = parse_ics(ics, None).unwrap();
         assert_eq!(one.len(), 3);
-        assert_eq!(one.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
-                   two.iter().map(|e| e.id.as_str()).collect::<Vec<_>>());
+        assert_eq!(
+            one.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            two.iter().map(|e| e.id.as_str()).collect::<Vec<_>>()
+        );
         assert_eq!(one[0].starts_at_ms, utc_to_ms("20270313T143000Z").unwrap());
         assert_eq!(one[1].starts_at_ms, utc_to_ms("20270314T133000Z").unwrap());
         assert_eq!(one[2].starts_at_ms, utc_to_ms("20270315T133000Z").unwrap());
