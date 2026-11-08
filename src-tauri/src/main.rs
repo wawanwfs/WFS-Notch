@@ -13,6 +13,7 @@ mod calendar_ics;
 mod display;
 mod extra;
 mod media_sessions;
+mod notifications;
 mod parity;
 mod system_details;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
@@ -26,6 +27,9 @@ struct Settings {
     pin_open: bool,
     monitor_id: String,
     top_margin_px: u32,
+    notifications_enabled: bool,
+    notifications_show_details: bool,
+    always_on_top: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -35,6 +39,9 @@ impl Default for Settings {
             pin_open: false,
             monitor_id: display::DEFAULT_MONITOR.into(),
             top_margin_px: 12,
+            notifications_enabled: false,
+            notifications_show_details: false,
+            always_on_top: true,
         }
     }
 }
@@ -199,6 +206,9 @@ impl AppData {
             .remaining_seconds
             .min(self.focus.duration_seconds);
         self.settings.top_margin_px = self.settings.top_margin_px.min(display::MAX_MARGIN);
+        if !self.settings.notifications_enabled {
+            self.settings.notifications_show_details = false;
+        }
         if self.settings.monitor_id != display::DEFAULT_MONITOR
             && (!self.settings.monitor_id.starts_with("origin:")
                 || self.settings.monitor_id.len() > 80)
@@ -723,12 +733,14 @@ fn close_app(app: tauri::AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
             fs::create_dir_all(&directory)?;
             let store = Store::open(directory.join("state.json")).map_err(std::io::Error::other)?;
             app.manage(Mutex::new(store));
             app.manage(Mutex::new(System::new_all()));
+            app.manage(notifications::SentNotices::default());
             let tray_menu = MenuBuilder::new(app)
                 .text("show", "Show WFS Notch")
                 .text("quit", "Exit WFS Notch")
@@ -761,6 +773,7 @@ fn main() {
                     .settings
                     .clone();
                 display::place_notch(&window, &settings, false).map_err(std::io::Error::other)?;
+                window.set_always_on_top(settings.always_on_top)?;
             }
             Ok(())
         })
@@ -789,6 +802,9 @@ fn main() {
             get_system_snapshot,
             system_details::get_system_details,
             media_sessions::get_active_media_session,
+            notifications::set_notification_preferences,
+            notifications::notify_test,
+            notifications::notify_due_event,
             set_accent,
             set_hover_to_open,
             set_pin_open,
