@@ -10,3 +10,7 @@
 ## Known limits
 
 Unverified Windows hardware behavior, unsigned installer, no independent penetration test, and limited privacy controls on external services requested by the user. Some focus/calendar reminders are in-app only unless the native app is running.
+
+## Windows installer reproducibility
+
+CI fetches the official NSIS 3.13 bundle and Tauri NSIS utility DLL only from Tauri's own GitHub Releases/API, checks their upstream-pinned SHA-1 digests, and uses the per-user Tauri cache. This is an integrity match to Tauri's bundled pins, **not** a replacement for code signing or stronger artifact attestations. Downloads are retried to mitigate GitHub CDN 504 errors; unsigned installers remain explicitly labeled.
