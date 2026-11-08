@@ -36,7 +36,6 @@ impl ReminderRetry {
     }
 }
 
-
 #[derive(Serialize)]
 pub struct ReminderSchedulerStatus {
     enabled: bool,
@@ -231,20 +230,25 @@ where
         // Commit the unreserve + retry atomically; if this transaction fails,
         // the original durable reservation survives and blocks replay.
         guard.transact(|data| {
-            data.reminder_retries.retain(|_, retry| retry.expires_at_ms > now);
+            data.reminder_retries
+                .retain(|_, retry| retry.expires_at_ms > now);
             if !data.reminder_retries.contains_key(&key)
                 && data.reminder_retries.len() >= MAX_RETRY_ENTRIES
             {
                 return Err("Reminder retry journal is full; send not repeated".into());
             }
-            let attempts = data.reminder_retries.get(&key)
-                .map_or(1, |previous| previous.attempts.saturating_add(1).min(MAX_RETRY_ATTEMPTS));
-            let delay = RETRY_DELAYS_MS[usize::from(attempts - 1)];
-            data.reminder_retries.insert(key.clone(), ReminderRetry {
-                attempts,
-                retry_after_ms: now.saturating_add(delay),
-                expires_at_ms: expires_at,
+            let attempts = data.reminder_retries.get(&key).map_or(1, |previous| {
+                previous.attempts.saturating_add(1).min(MAX_RETRY_ATTEMPTS)
             });
+            let delay = RETRY_DELAYS_MS[usize::from(attempts - 1)];
+            data.reminder_retries.insert(
+                key.clone(),
+                ReminderRetry {
+                    attempts,
+                    retry_after_ms: now.saturating_add(delay),
+                    expires_at_ms: expires_at,
+                },
+            );
             data.reminder_deliveries.remove(&key);
             Ok(())
         })?;
@@ -338,10 +342,18 @@ pub fn get_reminder_scheduler_status(
             .values()
             .filter(|expiry| **expiry > now)
             .count(),
-        pending_retry_count: guard.data.reminder_retries.values()
-            .filter(|entry| entry.expires_at_ms > now && entry.attempts < MAX_RETRY_ATTEMPTS).count(),
-        suppressed_after_failures_count: guard.data.reminder_retries.values()
-            .filter(|entry| entry.expires_at_ms > now && entry.attempts >= MAX_RETRY_ATTEMPTS).count(),
+        pending_retry_count: guard
+            .data
+            .reminder_retries
+            .values()
+            .filter(|entry| entry.expires_at_ms > now && entry.attempts < MAX_RETRY_ATTEMPTS)
+            .count(),
+        suppressed_after_failures_count: guard
+            .data
+            .reminder_retries
+            .values()
+            .filter(|entry| entry.expires_at_ms > now && entry.attempts >= MAX_RETRY_ATTEMPTS)
+            .count(),
         max_sender_attempts: MAX_RETRY_ATTEMPTS,
     })
 }
@@ -590,7 +602,8 @@ mod tests {
         assert_eq!(store.lock().unwrap().data.reminder_retries.len(), 1);
         assert!(!deliver_with(&store, "event-1", 1_799_999_700_100, |_, _| {
             panic!("bounded backoff must block immediate retry")
-        }).unwrap());
+        })
+        .unwrap());
         assert!(
             deliver_with(&store, "event-1", 1_799_999_720_000, |_, settings| {
                 assert!(!settings.notifications_show_details);
@@ -623,7 +636,8 @@ mod tests {
         for (index, timestamp) in attempts_at.iter().enumerate() {
             assert!(deliver_with(&store, "event-1", *timestamp, |_, _| {
                 Err("Private appointment should not appear in error logs".into())
-            }).is_err());
+            })
+            .is_err());
             let state = store.lock().unwrap();
             let retry = state.data.reminder_retries.values().next().unwrap();
             assert_eq!(retry.attempts, (index + 1) as u8);
@@ -632,20 +646,29 @@ mod tests {
             drop(state);
             assert!(!deliver_with(&store, "event-1", *timestamp + 1, |_, _| {
                 panic!("Retry blocked before deadline")
-            }).unwrap());
+            })
+            .unwrap());
         }
         assert!(!deliver_with(&store, "event-1", base + 280_000, |_, _| {
             panic!("Three failed attempts should suppress further sends")
-        }).unwrap());
-        assert_eq!(due_event_ids(&store.lock().unwrap().data, base + 280_000).len(), 0);
+        })
+        .unwrap());
+        assert_eq!(
+            due_event_ids(&store.lock().unwrap().data, base + 280_000).len(),
+            0
+        );
         let restored = Mutex::new(Store::open(path.clone()).unwrap());
         assert!(!deliver_with(&restored, "event-1", base + 280_000, |_, _| {
             panic!("Recovered retry journal must suppress replay")
-        }).unwrap());
+        })
+        .unwrap());
         let current = restored.lock().unwrap().data.clone();
         let mut backed_up = AppData::default();
         crate::preserve_reminder_history(&mut backed_up, &current);
-        assert_eq!(backed_up.reminder_retries.values().next().unwrap().attempts, 3);
+        assert_eq!(
+            backed_up.reminder_retries.values().next().unwrap().attempts,
+            3
+        );
         backed_up.events = current.events;
         backed_up.settings = current.settings;
         assert!(due_event_ids(&backed_up, base + 280_000).is_empty());
@@ -661,17 +684,23 @@ mod tests {
         let base = 1_799_999_700_000_u128;
         assert!(deliver_with(&store, "event-1", base, |_, _| Err("rejected".into())).is_err());
         assert_eq!(store.lock().unwrap().data.reminder_retries.len(), 1);
-        assert!(deliver_with(&store, "event-1", base + 20_000, |event, settings| {
-            assert_eq!(event_message(event, settings.notifications_show_details),
-                "You have an upcoming calendar event. Open WFS Notch to view it.");
-            Ok(())
-        }).unwrap());
+        assert!(
+            deliver_with(&store, "event-1", base + 20_000, |event, settings| {
+                assert_eq!(
+                    event_message(event, settings.notifications_show_details),
+                    "You have an upcoming calendar event. Open WFS Notch to view it."
+                );
+                Ok(())
+            })
+            .unwrap()
+        );
         assert!(store.lock().unwrap().data.reminder_retries.is_empty());
         assert_eq!(store.lock().unwrap().data.reminder_deliveries.len(), 1);
         let restored = Mutex::new(Store::open(path.clone()).unwrap());
         assert!(!deliver_with(&restored, "event-1", base + 60_000, |_, _| {
             panic!("Confirmed enqueue must stay suppressed after restart")
-        }).unwrap());
+        })
+        .unwrap());
         drop(restored);
         drop(store);
         let _ = std::fs::remove_file(&path);
@@ -680,18 +709,45 @@ mod tests {
 
     #[test]
     fn retry_parser_validation_and_defensive_backup_merge_preserve_privacy() {
-        let valid = ReminderRetry { attempts: 2, retry_after_ms: 1_800_000_000_000, expires_at_ms: 1_802_000_000_000 };
+        let valid = ReminderRetry {
+            attempts: 2,
+            retry_after_ms: 1_800_000_000_000,
+            expires_at_ms: 1_802_000_000_000,
+        };
         assert!(valid.valid());
-        assert!(!ReminderRetry { attempts: 0, ..valid.clone() }.valid());
-        assert!(!ReminderRetry { attempts: 4, ..valid.clone() }.valid());
-        assert!(!ReminderRetry { retry_after_ms: valid.expires_at_ms + 1, ..valid.clone() }.valid());
+        assert!(!ReminderRetry {
+            attempts: 0,
+            ..valid.clone()
+        }
+        .valid());
+        assert!(!ReminderRetry {
+            attempts: 4,
+            ..valid.clone()
+        }
+        .valid());
+        assert!(!ReminderRetry {
+            retry_after_ms: valid.expires_at_ms + 1,
+            ..valid.clone()
+        }
+        .valid());
         let mut current = AppData::default();
-        current.reminder_retries.insert("opaque-event-key".into(), valid.clone());
+        current
+            .reminder_retries
+            .insert("opaque-event-key".into(), valid.clone());
         let mut recovered = AppData::default();
-        recovered.reminder_retries.insert("opaque-event-key".into(),
-            ReminderRetry { attempts: 1, retry_after_ms: valid.retry_after_ms - 60_000, expires_at_ms: valid.expires_at_ms - 60_000 });
+        recovered.reminder_retries.insert(
+            "opaque-event-key".into(),
+            ReminderRetry {
+                attempts: 1,
+                retry_after_ms: valid.retry_after_ms - 60_000,
+                expires_at_ms: valid.expires_at_ms - 60_000,
+            },
+        );
         crate::preserve_reminder_history(&mut recovered, &current);
-        assert_eq!(recovered.reminder_retries.get("opaque-event-key"), Some(&valid));
+        assert_eq!(
+            recovered.reminder_retries.get("opaque-event-key"),
+            Some(&valid)
+        );
         let json = serde_json::to_string(&recovered).unwrap();
         assert!(!json.contains("Private appointment"));
     }
