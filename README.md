@@ -1,6 +1,6 @@
 > **Reverse Engineering toolchain:** [REA (official)](https://github.com/morluto/rea), [Craft Anything](https://github.com/storytold/craft-anything), and [LeanREA](https://github.com/aicodeking/leanrea) can be used as complementary research tools. Windows opt-in setup and private reference analysis scripts: [REA + Craft Anything integration guide](01_ANALYSIS/REA_CRAFT_ANYTHING_INTEGRATION.md). Tools have not been run against the reference in this GitHub CI environment; no 100% parity is claimed.
 
-# WFS Notch — Phase 8 / v0.8.0 (development)
+# WFS Notch — Phase 9 / v0.9.0 (development)
 
 **GitHub CI / publisher instructions:** [README_GITHUB.md](README_GITHUB.md). GitHub Actions builds Windows x64 installers; CI results are available in the repository Actions tab. Successful CI is not a native Windows user-interaction parity test.
 
@@ -8,6 +8,12 @@
 
 **Status:** v0.8.0 development release. Browser regression and Windows build CI track code quality, but native desktop user-interaction and visual parity still need validation. Unsigned installer; not a 100% Poni replacement or production-certified.
 WFS Notch is an original implementation built with a Rust + Tauri 2 backend and an HTML/CSS/JavaScript WebView front end. It does not redistribute or modify the supplied Poni binaries. It targets Windows 10/11 x64.
+
+## Phase 9 — persistent multi-monitor notch placement
+
+The Settings panel now queries connected monitors directly from Tauri/Rust and offers automatic **Primary display** or a selected display. A **0–120 logical-pixel top gap** scales correctly with Windows DPI; monitor positions may be negative. Preferences persist in the user's existing local JSON state and are restored at startup and on notch expansion. If a saved display is unplugged, placement falls back to the primary display and exposes a warning instead of using off-screen coordinates. A reconnect or changed display layout may require reselection because monitor identifiers are based on screen positions.
+
+The browser preview displays **no simulated monitor data**. Automated geometry/unit and browser tests are provided, but independent runtime tests on Windows 10/11 with 1–3 monitors and mixed DPI remain necessary. See [feature progress report](01_ANALYSIS/FEATURE_PROGRESS_V090.md) for grounded progress measurement.
 
 ## Phase 8 — native Windows now playing + accessibility polish
 
