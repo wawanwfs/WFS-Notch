@@ -1163,6 +1163,8 @@ mod tests {
                     remind_minutes: Some(15),
                     description: "Plan".into(),
                     created_ms: now_ms(),
+                    all_day: None,
+                    series_uid: None,
                 });
                 Ok(())
             })
@@ -1193,6 +1195,8 @@ mod tests {
             remind_minutes: Some(5),
             description: String::new(),
             created_ms: 0,
+            all_day: None,
+            series_uid: None,
         });
         preserve_reminder_history(&mut old_backup, &current);
         assert_eq!(
