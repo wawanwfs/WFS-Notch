@@ -454,8 +454,11 @@ function cancelEventEdit() {
 function renderCalendar() {
   const events = [...data.events].sort((a, b) => a.starts_at_ms - b.starts_at_ms);
   $('#calendar-count').textContent = `${events.length} EVENT${events.length === 1 ? '' : 'S'}`;
-  const upcoming = events.find(item => item.starts_at_ms >= Date.now() - 60000);
-  $('#next-event').textContent = upcoming ? `${upcoming.title} · ${eventDate(upcoming.starts_at_ms)}` : 'No upcoming events';
+  const localDay = asLocalInput(Date.now()).slice(0, 10);
+  const upcoming = events.find(item => item.all_day
+    ? item.all_day.end_date_exclusive > localDay
+    : item.starts_at_ms >= Date.now() - 60000);
+  $('#next-event').textContent = upcoming ? upcoming.title + ' · ' + eventDisplayDate(upcoming) : 'No upcoming events';
   const list = $('#event-list');
   list.replaceChildren();
   if (!events.length) {
@@ -463,19 +466,27 @@ function renderCalendar() {
     return;
   }
   for (const event of events) {
-    const line = node('div', 'event-item' + (event.starts_at_ms < Date.now() ? ' past' : ''));
-    const date = node('time', 'event-date', eventDate(event.starts_at_ms));
-    date.dateTime = new Date(event.starts_at_ms).toISOString();
+    const past = event.all_day ? event.all_day.end_date_exclusive <= localDay : event.starts_at_ms < Date.now();
+    const line = node('div', 'event-item' + (past ? ' past' : ''));
+    const date = node('time', 'event-date', eventDisplayDate(event));
+    date.dateTime = event.all_day ? event.all_day.start_date : new Date(event.starts_at_ms).toISOString();
     const info = node('div', 'event-info');
     info.append(node('b', '', event.title));
-    info.append(node('small', '', event.remind_minutes == null ? 'Reminder off' : `${event.remind_minutes === 0 ? 'At event time' : `${event.remind_minutes} min before`}`));
+    info.append(node('small', '', event.all_day ? 'All day · no midnight reminder'
+      : (event.remind_minutes == null ? 'Reminder off' : (event.remind_minutes === 0 ? 'At event time' : String(event.remind_minutes) + ' min before')));
     const edit = node('button', 'text-button', 'Edit');
     edit.type = 'button';
     edit.setAttribute('aria-label', `Edit event: ${event.title}`);
     edit.addEventListener('click', () => {
+      cancelEventEdit();
       selectedEventId = event.id;
       $('#event-title').value = event.title;
       $('#event-time').value = asLocalInput(event.starts_at_ms);
+      if (event.all_day) {
+        $('#event-start-date').value = event.all_day.start_date;
+        $('#event-end-date').value = event.all_day.end_date_exclusive;
+        setAllDayEditor(true);
+      }
       $('#event-remind').value = event.remind_minutes == null ? 'off' : String(event.remind_minutes);
       $('#event-submit').textContent = 'Save changes';
       $('#event-cancel').hidden = false;
@@ -489,6 +500,30 @@ function renderCalendar() {
       if (await mutation('remove_event', { id: event.id }) && selectedEventId === event.id) cancelEventEdit();
     });
     line.append(date, info, edit, remove);
+    if (event.series_uid) {
+      const rename = node('button', 'text-button', 'Rename series');
+      rename.type = 'button';
+      rename.setAttribute('aria-label', 'Rename entire series: ' + event.title);
+      rename.addEventListener('click', () => {
+        cancelEventEdit();
+        selectedSeriesEventId = event.id;
+        $('#event-title').value = event.title;
+        $('#event-time').disabled = true;
+        $('#event-time').required = false;
+        $('#event-all-day').disabled = true;
+        $('#event-submit').textContent = 'Rename entire series';
+        $('#event-cancel').hidden = false;
+        $('#event-title').focus();
+      });
+      const deleteSeries = node('button', 'text-button', 'Delete series');
+      deleteSeries.type = 'button';
+      deleteSeries.setAttribute('aria-label', 'Delete entire series: ' + event.title);
+      deleteSeries.addEventListener('click', async () => {
+        if (!window.confirm('Delete all local occurrences of this imported series? Re-import can restore them.')) return;
+        if (await mutation('remove_event_series', {id: event.id})) cancelEventEdit();
+      });
+      line.append(rename, deleteSeries);
+    }
     list.append(line);
   }
 }
