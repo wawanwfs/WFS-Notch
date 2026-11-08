@@ -57,6 +57,15 @@ with sync_playwright() as pw:
         }""")
         for name in css_files:
             page.add_style_tag(content=(UI / name).read_text(encoding="utf-8"))
+        # Browser preview normally fixes its notch at 760px and centers it.
+        # Model Tauri's actual resize-to-monitor path for 560px viewports.
+        page.add_style_tag(content="""
+          body.preview {padding-top:0!important;}
+          body.preview .notch {
+            width:min(760px,100vw)!important;
+            height:min(470px,100vh)!important;
+          }
+        """)
         for name in js_files:
             page.add_script_tag(content=(UI / name).read_text(encoding="utf-8"))
         page.locator("#expanded").wait_for(state="visible")
