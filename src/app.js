@@ -9,7 +9,7 @@ const defaults = () => ({
   todos: [], notes: [], events: [], habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
-  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12 },
+  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, always_on_top: true },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
 });
 let data = defaults();
@@ -206,6 +206,11 @@ function previewInvoke(command, args = {}) {
     case 'set_accent': state.settings.accent = args.accent; break;
     case 'set_hover_to_open': state.settings.hover_to_open = args.enabled; break;
     case 'set_pin_open': state.settings.pin_open = args.enabled; break;
+    case 'set_notch_on_top': state.settings.always_on_top = args.enabled; break;
+    case 'set_notification_preferences':
+      state.settings.notifications_enabled = args.enabled;
+      state.settings.notifications_show_details = Boolean(args.enabled && args.showDetails);
+      break;
     case 'set_focus_duration': {
       if (![15, 25, 45, 60].includes(args.minutes)) throw new Error('Invalid focus preset');
       focus.duration_seconds = args.minutes * 60;
@@ -477,7 +482,7 @@ async function refreshTelemetry() {
   finally { telemetryPending = false; telemetryLastAt = Date.now(); }
 }
 function checkReminders(now = Date.now()) {
-  // In-app reminders only. This is not an OS toast or a background scheduler.
+  // In-app reminder remains available; native OS toast requires explicit opt-in.
   if (document.hidden) return;
   for (const event of data.events) {
     if (event.remind_minutes == null) continue;
@@ -485,6 +490,9 @@ function checkReminders(now = Date.now()) {
     if (now >= due && now < due + 10 * 60000 && !reminderSeen.has(event.id)) {
       reminderSeen.add(event.id);
       showInfo(`Calendar reminder: ${event.title} · ${eventDate(event.starts_at_ms)}`);
+      if (nativeInvoke && data.settings.notifications_enabled) {
+        void invoke('notify_due_event', { id: event.id }).catch(showError);
+      }
       break; // Show at most one reminder at a time.
     }
   }
@@ -500,6 +508,11 @@ function renderSettings() {
   });
   $('#hover-toggle').checked = data.settings.hover_to_open;
   $('#pin-toggle').checked = data.settings.pin_open;
+  $('#on-top-toggle').checked = data.settings.always_on_top !== false;
+  $('#notifications-toggle').checked = Boolean(data.settings.notifications_enabled);
+  $('#notification-details-toggle').checked = Boolean(data.settings.notifications_show_details);
+  $('#notification-details-toggle').disabled = !data.settings.notifications_enabled;
+  $('#notification-test').disabled = !nativeInvoke || !data.settings.notifications_enabled;
   const pinButton = $('#pin-button');
   pinButton.setAttribute('aria-pressed', String(data.settings.pin_open));
   pinButton.classList.toggle('on', data.settings.pin_open);
@@ -677,6 +690,19 @@ function bind() {
   $$('.swatch').forEach(button => button.addEventListener('click', () => void mutation('set_accent', { accent: button.dataset.color })));
   $('#hover-toggle').addEventListener('change', event => void mutation('set_hover_to_open', { enabled: event.target.checked }));
   $('#pin-toggle').addEventListener('change', event => void mutation('set_pin_open', { enabled: event.target.checked }));
+  $('#on-top-toggle').addEventListener('change', event => void mutation('set_notch_on_top', { enabled: event.target.checked }));
+  $('#notifications-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: event.target.checked, showDetails: event.target.checked && $('#notification-details-toggle').checked }));
+  $('#notification-details-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: $('#notifications-toggle').checked, showDetails: event.target.checked }));
+  $('#notification-test').addEventListener('click', async () => {
+    if (!nativeInvoke || !data.settings.notifications_enabled) return;
+    try {
+      await invoke('notify_test');
+      $('#notification-status').textContent = 'Test requested. Check Windows notification settings if no toast appears.';
+    } catch (error) {
+      $('#notification-status').textContent = 'Windows notification could not be delivered.';
+      showError(error);
+    }
+  });
   $('#pin-button').addEventListener('click', () => void mutation('set_pin_open', { enabled: !data.settings.pin_open }));
   $$('[data-minutes]').forEach(button => button.addEventListener('click', () => void mutation('set_focus_duration', { minutes: Number(button.dataset.minutes) })));
   $('#timer-start').addEventListener('click', () => void mutation('focus_toggle'));
