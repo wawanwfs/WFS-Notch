@@ -29,8 +29,17 @@ function renderCalendarPlus() {
         }
       }
     } else {
-      const key = calendarLocalKey(new Date(event.starts_at_ms));
-      countByDay.set(key, (countByDay.get(key) || 0) + 1);
+      // For exclusive timed ranges, count every local civil day intersecting
+      // [start,end). Local midnight boundaries handle DST 23/25-hour days.
+      const end = event.ends_at_ms ?? (event.starts_at_ms + 1);
+      for (let day = 1; day <= lastDay; day++) {
+        const begins = new Date(year, month, day).getTime();
+        const nextDay = new Date(year, month, day + 1).getTime();
+        if (event.starts_at_ms < nextDay && end > begins) {
+          const key = calendarLocalKey(new Date(year, month, day, 12));
+          countByDay.set(key, (countByDay.get(key) || 0) + 1);
+        }
+      }
     }
   }
   document.querySelector('#calendar-month-title').textContent =
@@ -101,6 +110,15 @@ function initCalendarPlus() {
   });
   document.querySelector('#note-search').addEventListener('input', () => renderNotes());
   const status = document.querySelector('#ics-status');
+  document.querySelector('#ics-clear-cancellations').addEventListener('click', async () => {
+    const count = Array.isArray(data.calendar_tombstones) ? data.calendar_tombstones.length : 0;
+    if (!count) { showInfo('No locally canceled ICS events to reset.'); return; }
+    if (!window.confirm('Allow previously deleted imported ICS events and series to appear on your NEXT explicit import? This only clears local cancellation markers.')) return;
+    if (await mutation('clear_calendar_cancellations')) {
+      status.textContent = 'ICS cancellations reset. Previously deleted items will only return after you explicitly reimport their calendar.';
+      showInfo(status.textContent);
+    }
+  });
   if (!nativeInvoke) {
     status.textContent = 'ICS import/export requires the native Windows Rust app. Monthly calendar and note search work in browser preview.';
   }
@@ -118,7 +136,7 @@ function initCalendarPlus() {
       data = await invoke('import_ics', {icsText: text, floatingTimezone: floatingTimezone || null});
       render();
       const imported = data.events.length - before;
-      status.textContent = imported + ' new event(s) imported (recurrence flattened to UTC). Existing UIDs skipped.';
+      status.textContent = imported + ' new event(s) imported (recurrence flattened to independent occurrences). Duplicate or canceled UIDs skipped.';
       showInfo(status.textContent);
     } catch (error) {
       status.textContent = 'Import not applied. Check the IANA timezone, DST ambiguity, rule support and event size.';
