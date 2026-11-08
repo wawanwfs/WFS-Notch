@@ -63,3 +63,8 @@ Read [Phase 13 Report](docs/PHASE15_REPORT.md), [Next Phase 14 Prompt](docs/NEXT
 ## License
 
 No open-source license has been granted yet. Rights are reserved by the repository owner until a license is published.
+
+
+## Continued development (Phase 28+)
+
+The [Phase 28 autonomous master execution prompt](docs/NEXT_PHASE28_MASTER_PROMPT.md) records the verified v0.27.0 baseline, artifact links, unfinished A–J workstreams and independent PR/CI acceptance gates. The [full historical accelerated backlog](docs/NEXT_ACCELERATED_BATCH_PROMPT.md) remains available. Browser screenshots and GitHub Actions packaging are **not** evidence of native Win10/11 interactive behavior; local verification is documented in `scripts/phase16-native-acceptance.ps1`.

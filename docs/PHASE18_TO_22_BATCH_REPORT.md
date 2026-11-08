@@ -113,3 +113,14 @@ PR [#29](https://github.com/wawanwfs/WFS-Notch/pull/29) merged to main `077859e1
 ## Phase27I — robust local state recovery PR candidate
 
 Feature branch `feat/phase27i-state-recovery-retention` adds two retained local recovery generations, guarded fallback and deterministic forced-staging-error rollback tests. **Candidate only** until its own Windows CI and exact-main CI pass. Not a claim that native NSIS upgrades from older versions have been tested.
+
+## Phase 26E + Phase 27I — independently verified final main, 8 Nov 2026
+
+| Workstream | Pull request | Exact merged main SHA | Final main GitHub Actions | Source and test evidence |
+| --- | --- | --- | --- | --- |
+| E — persisted visual accessibility preferences | [#29](https://github.com/wawanwfs/WFS-Notch/pull/29) | `077859e1b3eb72ef3c5e5a06c0823ee4f755bb06` | [42535776621](https://github.com/wawanwfs/WFS-Notch/actions/runs/42535776621) PASS | Rust persistence/migration, compact/comfortable density, opt-in high contrast and local motion suppression, safe reset, browser UI; **89 Rust tests** |
+| I — local crash-recovery retention | [#30](https://github.com/wawanwfs/WFS-Notch/pull/30) | `e3c7ed2445e857f3e9b7c4c2d6619cfebf58ac93` | [42536439574](https://github.com/wawanwfs/WFS-Notch/actions/runs/42536439574) PASS | Two generations `state.json.bak` and `state.json.bak.prev`, corrupt primary+latest recovery and deterministic staging failure regression; **91 Rust tests** |
+
+**Exact final-main v0.27.0 artifact evidence:** [unsigned NSIS](https://github.com/wawanwfs/WFS-Notch/actions/runs/42536439574/artifacts/13639940555), [unsigned portable](https://github.com/wawanwfs/WFS-Notch/actions/runs/42536439574/artifacts/13639303801), [installer SHA256 manifest](https://github.com/wawanwfs/WFS-Notch/actions/runs/42536439574/artifacts/13639791400), [browser screenshot evidence](https://github.com/wawanwfs/WFS-Notch/actions/runs/42536439574/artifacts/13638928435). Artifacts may expire per GitHub retention. GitHub Actions runner test != real local Win10/11 acceptance. No signed updater, Windows installation/upgrade acceptance, real GSMTC media player, toast visibility, mixed DPI monitor/hotplug/RDP or native screen reader QA has been performed. Keep all explicitly **NOT TESTED**.
+
+Do not count these as two additional reference categories completed: fixed 38-category parity remains 3 Implemented, 16 Partial and 19 Gap (**28.9%**). Proceed to [NEXT_PHASE28_MASTER_PROMPT.md](NEXT_PHASE28_MASTER_PROMPT.md) for the next accelerated multi-PR workstreams.
