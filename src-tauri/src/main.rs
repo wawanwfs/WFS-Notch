@@ -870,7 +870,29 @@ fn plan_series_shift(
     uid.hash(&mut hasher);
     days.hash(&mut hasher);
     source.dtstart.hash(&mut hasher);
+    source.dtend.hash(&mut hasher);
+    source.duration.hash(&mut hasher);
     source.rrule.hash(&mut hasher);
+    source.exdates.hash(&mut hasher);
+    source.rdates.hash(&mut hasher);
+    // A preview also reports exact-start conflicts with OTHER events.
+    // Include these in the guard: a newly added/removed/re-dated unrelated
+    // event makes the old collision report stale and forces a fresh preview.
+    let mut outsiders = state
+        .events
+        .iter()
+        .filter(|event| event.series_uid.as_deref() != Some(uid.as_str()))
+        .collect::<Vec<_>>();
+    outsiders.sort_by(|a, b| a.id.cmp(&b.id));
+    for other in outsiders {
+        other.id.hash(&mut hasher);
+        other.starts_at_ms.hash(&mut hasher);
+    }
+    let mut tombstones = state.calendar_tombstones.iter().collect::<Vec<_>>();
+    tombstones.sort();
+    for key in tombstones {
+        key.hash(&mut hasher);
+    }
     let mut moved = Vec::with_capacity(members.len());
     let mut same_start_conflicts = 0_usize;
     for existing in &members {
@@ -1713,6 +1735,11 @@ mod tests {
         assert_eq!(plan.first_new_ms, before[0].starts_at_ms + 86_400_000);
         assert!(shift_series_after_preview(&mut data, &id, 1, "outdated").is_err());
         assert_eq!(&data.events[..3], before.as_slice());
+        let mut late = data.events[3].clone();
+        late.id = "late-exact-start-collision".into();
+        data.events.push(late);
+        assert!(shift_series_after_preview(&mut data, &id, 1, &plan.fingerprint).is_err());
+        data.events.pop();
         shift_series_after_preview(&mut data, &id, 1, &plan.fingerprint).unwrap();
         for (before, after) in before.iter().zip(&data.events[..3]) {
             assert_eq!(before.id, after.id);
