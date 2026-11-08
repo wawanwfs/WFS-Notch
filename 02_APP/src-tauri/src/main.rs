@@ -703,7 +703,7 @@ fn focus_reset(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
 
 #[tauri::command]
 fn set_expanded(
-    window: tauri::Window,
+    window: tauri::WebviewWindow,
     store: State<'_, Mutex<Store>>,
     expanded: bool,
 ) -> Result<(), String> {
@@ -752,7 +752,7 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
-            if let Some(window) = app.get_window("main") {
+            if let Some(window) = app.get_webview_window("main") {
                 let settings = app
                     .state::<Mutex<Store>>()
                     .lock()
