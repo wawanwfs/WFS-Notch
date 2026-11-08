@@ -857,6 +857,7 @@ fn main() {
             get_system_snapshot,
             system_details::get_system_details,
             media_sessions::get_active_media_session,
+            media_sessions::get_media_session_by_source,
             media_sessions::list_media_sessions,
             media_sessions::control_media_session,
             notifications::set_notification_preferences,
