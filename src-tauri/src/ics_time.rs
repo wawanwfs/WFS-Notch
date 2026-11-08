@@ -61,16 +61,17 @@ impl CalendarStart {
         // All-day dates require a persisted all-day flag and end-date semantics.
         // Treating DATE as midnight timed events would silently change meaning.
         if is_date || (value.len() == 8 && value.bytes().all(|b| b.is_ascii_digit())) {
-            return Err("All-day VALUE=DATE events are not supported yet; no silent midnight conversion".into());
+            return Err(
+                "All-day VALUE=DATE events are not supported yet; no silent midnight conversion"
+                    .into(),
+            );
         }
         let utc = value.ends_with('Z');
         if utc && zone.is_some() {
             return Err("DTSTART cannot combine UTC Z and TZID".into());
         }
         if utc {
-            let body = value
-                .strip_suffix('Z')
-                .ok_or("Malformed UTC DTSTART")?;
+            let body = value.strip_suffix('Z').ok_or("Malformed UTC DTSTART")?;
             return Ok(Self {
                 local: local_datetime(body)?,
                 zone: None,
@@ -134,7 +135,9 @@ impl CalendarStart {
                 break;
             }
             if occurrences.len() >= MAX_OCCURRENCES {
-                return Err("RRULE would import more than 250 occurrences; refuse partial import".into());
+                return Err(
+                    "RRULE would import more than 250 occurrences; refuse partial import".into(),
+                );
             }
             occurrences.push(instant);
         }
@@ -159,9 +162,7 @@ impl Recurrence {
         let mut until: Option<u64> = None;
         let mut found = HashSet::new();
         for section in text.split(';') {
-            let (key, raw) = section
-                .split_once('=')
-                .ok_or("Malformed RRULE parameter")?;
+            let (key, raw) = section.split_once('=').ok_or("Malformed RRULE parameter")?;
             let key = key.to_ascii_uppercase();
             if !found.insert(key.clone()) {
                 return Err("Duplicate RRULE parameter".into());
@@ -191,7 +192,11 @@ impl Recurrence {
                             .map_err(|_| "RRULE UNTIL is outside the supported range")?,
                     );
                 }
-                _ => return Err(format!("Unsupported RRULE part {key}; nothing was imported")),
+                _ => {
+                    return Err(format!(
+                        "Unsupported RRULE part {key}; nothing was imported"
+                    ))
+                }
             }
         }
         let frequency = freq.ok_or("RRULE must specify FREQ")?;
@@ -199,7 +204,9 @@ impl Recurrence {
             "DAILY" => 1_i64,
             "WEEKLY" => 7_i64,
             _ => {
-                return Err("Only simple DAILY/WEEKLY RRULE without BYDAY/BYMONTH is supported".into())
+                return Err(
+                    "Only simple DAILY/WEEKLY RRULE without BYDAY/BYMONTH is supported".into(),
+                )
             }
         };
         if count.is_none() && until.is_none() {
@@ -219,55 +226,76 @@ mod tests {
 
     fn ms(timestamp: &str) -> u64 {
         let without_z = timestamp.strip_suffix('Z').unwrap();
-        local_datetime(without_z).unwrap().and_utc().timestamp_millis() as u64
+        local_datetime(without_z)
+            .unwrap()
+            .and_utc()
+            .timestamp_millis() as u64
     }
 
     #[test]
     fn jakarta_iana_time_and_explicit_floating_policy() {
-        let zoned = CalendarStart::parse(
-            "DTSTART;TZID=Asia/Jakarta",
-            "20270614T113000",
-            None,
-        ).unwrap();
-        assert_eq!(zoned.occurrences(None).unwrap(), vec![ms("20270614T043000Z")]);
+        let zoned =
+            CalendarStart::parse("DTSTART;TZID=Asia/Jakarta", "20270614T113000", None).unwrap();
+        assert_eq!(
+            zoned.occurrences(None).unwrap(),
+            vec![ms("20270614T043000Z")]
+        );
         assert!(CalendarStart::parse("DTSTART", "20270614T113000", None).is_err());
-        let floating = CalendarStart::parse(
-            "DTSTART", "20270614T113000", Some("Asia/Jakarta"),
-        ).unwrap();
-        assert_eq!(floating.occurrences(None).unwrap(), zoned.occurrences(None).unwrap());
-        assert!(CalendarStart::parse("DTSTART;TZID=Unknown/Zone", "20270614T113000", None).is_err());
-        assert!(CalendarStart::parse("DTSTART;TZID=Asia/Jakarta", "20270614T043000Z", None).is_err());
+        let floating =
+            CalendarStart::parse("DTSTART", "20270614T113000", Some("Asia/Jakarta")).unwrap();
+        assert_eq!(
+            floating.occurrences(None).unwrap(),
+            zoned.occurrences(None).unwrap()
+        );
+        assert!(
+            CalendarStart::parse("DTSTART;TZID=Unknown/Zone", "20270614T113000", None).is_err()
+        );
+        assert!(
+            CalendarStart::parse("DTSTART;TZID=Asia/Jakarta", "20270614T043000Z", None).is_err()
+        );
     }
 
     #[test]
     fn dst_ambiguous_and_nonexistent_local_times_are_refused() {
-        let missing = CalendarStart::parse(
-            "DTSTART;TZID=America/New_York", "20270314T023000", None,
-        ).unwrap();
-        assert!(missing.occurrences(None).unwrap_err().contains("Nonexistent"));
-        let ambiguous = CalendarStart::parse(
-            "DTSTART;TZID=America/New_York", "20271107T013000", None,
-        ).unwrap();
-        assert!(ambiguous.occurrences(None).unwrap_err().contains("Ambiguous"));
-        let before = CalendarStart::parse(
-            "DTSTART;TZID=America/New_York", "20270314T013000", None,
-        ).unwrap();
-        assert_eq!(before.occurrences(None).unwrap(), vec![ms("20270314T063000Z")]);
+        let missing =
+            CalendarStart::parse("DTSTART;TZID=America/New_York", "20270314T023000", None).unwrap();
+        assert!(missing
+            .occurrences(None)
+            .unwrap_err()
+            .contains("Nonexistent"));
+        let ambiguous =
+            CalendarStart::parse("DTSTART;TZID=America/New_York", "20271107T013000", None).unwrap();
+        assert!(ambiguous
+            .occurrences(None)
+            .unwrap_err()
+            .contains("Ambiguous"));
+        let before =
+            CalendarStart::parse("DTSTART;TZID=America/New_York", "20270314T013000", None).unwrap();
+        assert_eq!(
+            before.occurrences(None).unwrap(),
+            vec![ms("20270314T063000Z")]
+        );
     }
 
     #[test]
     fn recurrence_keeps_wall_time_across_dst_boundary() {
-        let start = CalendarStart::parse(
-            "DTSTART;TZID=America/New_York", "20270313T093000", None,
-        ).unwrap();
-        assert_eq!(start.occurrences(Some("FREQ=DAILY;COUNT=3")).unwrap(), vec![
-            ms("20270313T143000Z"),
-            ms("20270314T133000Z"),
-            ms("20270315T133000Z"),
-        ]);
+        let start =
+            CalendarStart::parse("DTSTART;TZID=America/New_York", "20270313T093000", None).unwrap();
+        assert_eq!(
+            start.occurrences(Some("FREQ=DAILY;COUNT=3")).unwrap(),
+            vec![
+                ms("20270313T143000Z"),
+                ms("20270314T133000Z"),
+                ms("20270315T133000Z"),
+            ]
+        );
         let weekly = CalendarStart::parse("DTSTART", "20270614T113000Z", None).unwrap();
-        assert_eq!(weekly.occurrences(Some("FREQ=WEEKLY;INTERVAL=2;COUNT=2")).unwrap(),
-            vec![ms("20270614T113000Z"), ms("20270628T113000Z")]);
+        assert_eq!(
+            weekly
+                .occurrences(Some("FREQ=WEEKLY;INTERVAL=2;COUNT=2"))
+                .unwrap(),
+            vec![ms("20270614T113000Z"), ms("20270628T113000Z")]
+        );
     }
 
     #[test]
@@ -275,11 +303,27 @@ mod tests {
         let start = CalendarStart::parse("DTSTART", "20270614T113000Z", None).unwrap();
         assert!(start.occurrences(Some("FREQ=DAILY")).is_err());
         assert!(start.occurrences(Some("FREQ=DAILY;COUNT=251")).is_err());
-        assert!(start.occurrences(Some("FREQ=DAILY;UNTIL=20991231T235959Z")).is_err());
+        assert!(start
+            .occurrences(Some("FREQ=DAILY;UNTIL=20991231T235959Z"))
+            .is_err());
         assert!(start.occurrences(Some("FREQ=MONTHLY;COUNT=2")).is_err());
-        assert!(start.occurrences(Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=3")).is_err());
-        assert_eq!(start.occurrences(Some("FREQ=DAILY;UNTIL=20270615T110000Z")).unwrap().len(),1);
-        assert_eq!(start.occurrences(Some("FREQ=DAILY;COUNT=2;UNTIL=20270615T200000Z")).unwrap().len(),2);
+        assert!(start
+            .occurrences(Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=3"))
+            .is_err());
+        assert_eq!(
+            start
+                .occurrences(Some("FREQ=DAILY;UNTIL=20270615T110000Z"))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            start
+                .occurrences(Some("FREQ=DAILY;COUNT=2;UNTIL=20270615T200000Z"))
+                .unwrap()
+                .len(),
+            2
+        );
     }
 
     #[test]
