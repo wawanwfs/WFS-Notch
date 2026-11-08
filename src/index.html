@@ -185,6 +185,16 @@
             <div class="media-time"><span id="media-position">—</span><span id="media-playback-state">Unavailable</span><span id="media-duration">—</span></div>
             <button type="button" class="text-button" id="media-refresh">Refresh track</button>
           </div>
+          <div class="selected-player" aria-labelledby="selected-player-heading">
+            <label id="selected-player-heading" for="media-player-picker">Control a specific Windows media player</label>
+            <select id="media-player-picker" aria-label="Select Windows media session" disabled><option value="">No active players detected</option></select>
+            <div class="selected-player-actions">
+              <button class="secondary" type="button" data-selected-media="previous" disabled>Previous</button>
+              <button class="secondary" type="button" data-selected-media="toggle" disabled>Play / Pause</button>
+              <button class="secondary" type="button" data-selected-media="next" disabled>Next</button>
+            </div>
+            <p id="media-player-status" class="event-hint" role="status">Available only in the installed Windows app; no player simulation.</p>
+          </div>
           <div class="media-pad">
             <button type="button" data-media="previous" aria-label="Previous track">⏮</button>
             <button type="button" data-media="play_pause" class="media-primary" aria-label="Play or pause">⏯</button>
@@ -196,7 +206,7 @@
             <button type="button" data-media="mute">Mute / unmute</button>
             <button type="button" data-media="volume_up">+ Volume</button>
           </div>
-          <p class="event-hint">Track title, artist, album, session and position are read from Windows GSMTC only while this panel is open. Album art, synchronized lyrics and playlists are not implemented yet. Media buttons send standard Windows media keys and playback depends on your media app.</p>
+          <p class="event-hint">Track title, artist, album, session and position are read from Windows GSMTC only while this panel is open. Album art, synchronized lyrics and playlists are not implemented yet. The selected-player controls target the chosen Windows media app; the separate large buttons send global media keys.</p>
         </section>
         <section class="panel" id="panel-tools">
           <div class="section-heading"><div><h2>Quick tools</h2><p>Small utilities built into the notch.</p></div><span class="section-pill">OFFLINE</span></div>
