@@ -1,13 +1,20 @@
 > **Reverse Engineering toolchain:** [REA (official)](https://github.com/morluto/rea), [Craft Anything](https://github.com/storytold/craft-anything), and [LeanREA](https://github.com/aicodeking/leanrea) can be used as complementary research tools. Windows opt-in setup and private reference analysis scripts: [REA + Craft Anything integration guide](01_ANALYSIS/REA_CRAFT_ANYTHING_INTEGRATION.md). Tools have not been run against the reference in this GitHub CI environment; no 100% parity is claimed.
 
-# WFS Notch — Phase 7 / v0.7.0 (development)
+# WFS Notch — Phase 8 / v0.8.0 (development)
 
 **GitHub CI / publisher instructions:** [README_GITHUB.md](README_GITHUB.md). GitHub Actions builds Windows x64 installers; CI results are available in the repository Actions tab. Successful CI is not a native Windows user-interaction parity test.
 
 ![WFS Notch original brand](05_BRANDING/WFS_Notch_Logo_Preview.png)
 
-**Status:** v0.6.0 source is under CI and feature review. Rust/Windows compilation and browser regressions must be checked on this commit. The installer is unsigned and the product is NOT a 100% Poni replacement or production-certified.\n
+**Status:** v0.8.0 development release. Browser regression and Windows build CI track code quality, but native desktop user-interaction and visual parity still need validation. Unsigned installer; not a 100% Poni replacement or production-certified.
 WFS Notch is an original implementation built with a Rust + Tauri 2 backend and an HTML/CSS/JavaScript WebView front end. It does not redistribute or modify the supplied Poni binaries. It targets Windows 10/11 x64.
+
+## Phase 8 — native Windows now playing + accessibility polish
+
+- The Media panel reads current Windows GSMTC track title, artist, album, playback state, position and duration from a **read-only native Rust command**. Refresh runs only while the panel is active. Media key buttons are unchanged.
+- Browser preview intentionally shows no fabricated track metadata. Availability depends on supported Windows media sessions; album cover, lyrics and multiple-player selection remain on the gap tracker.
+- New keyboard shortcuts and visual refinements improve navigation, focus indicators and reduced-motion support. This is an **original WFS design**, not a 1:1 copy of proprietary UI assets.
+- Merge requires passing browser regression, Rust tests/Clippy/rustfmt and Windows NSIS build. A successful build does not establish native desktop parity.
 
 ## Phase 7 — native disk/network monitoring
 
