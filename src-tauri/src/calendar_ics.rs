@@ -524,6 +524,8 @@ mod tests {
             remind_minutes: Some(15),
             description: "Notes; second line".into(),
             created_ms: 0,
+            all_day: None,
+            series_uid: None,
         };
         let serialized = serialize_ics(&[event]).unwrap();
         let parsed = parse_ics(&serialized, None).unwrap();
@@ -607,6 +609,8 @@ mod tests {
             description: String::new(),
             remind_minutes: Some(15),
             created_ms: 0,
+            all_day: None,
+            series_uid: None,
         });
         merge_imported_events(&mut state, parsed.clone()).unwrap();
         assert_eq!(state.events.len(), 4);
