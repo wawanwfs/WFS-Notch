@@ -32,6 +32,7 @@ struct Settings {
     notifications_show_details: bool,
     notifications_paused: bool,
     always_on_top: bool,
+    auto_lower_fullscreen: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -45,6 +46,7 @@ impl Default for Settings {
             notifications_show_details: false,
             notifications_paused: false,
             always_on_top: true,
+            auto_lower_fullscreen: false,
         }
     }
 }
@@ -700,9 +702,15 @@ fn set_notch_on_top(
         .data
         .settings
         .always_on_top;
-    window
-        .set_always_on_top(enabled)
-        .map_err(|error| error.to_string())?;
+    let settings = store
+        .lock()
+        .map_err(|_| "Storage lock unavailable".to_owned())?
+        .data
+        .settings
+        .clone();
+    let mut updated = settings;
+    updated.always_on_top = enabled;
+    display::sync_topmost(&window, &updated)?;
     match with_store(store, |data| {
         data.settings.always_on_top = enabled;
         Ok(())
@@ -741,6 +749,20 @@ fn focus_reset(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
         state.focus.reset();
         Ok(())
     })
+}
+
+#[tauri::command]
+fn set_fullscreen_auto(
+    window: tauri::WebviewWindow,
+    store: State<'_, Mutex<Store>>,
+    enabled: bool,
+) -> Result<AppData, String> {
+    let snapshot = with_store(store, |data| {
+        data.settings.auto_lower_fullscreen = enabled;
+        Ok(())
+    })?;
+    display::sync_topmost(&window, &snapshot.settings)?;
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -805,8 +827,9 @@ fn main() {
                     .settings
                     .clone();
                 display::place_notch(&window, &settings, false).map_err(std::io::Error::other)?;
-                window.set_always_on_top(settings.always_on_top)?;
+                display::sync_topmost(&window, &settings).map_err(std::io::Error::other)?;
             }
+            display::start_guard(app.handle().clone())?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -846,6 +869,7 @@ fn main() {
             set_hover_to_open,
             set_pin_open,
             set_notch_on_top,
+            set_fullscreen_auto,
             set_focus_duration,
             focus_toggle,
             focus_reset,
