@@ -474,8 +474,11 @@ function renderCalendar() {
     date.dateTime = event.all_day ? event.all_day.start_date : new Date(event.starts_at_ms).toISOString();
     const info = node('div', 'event-info');
     info.append(node('b', '', event.title));
-    info.append(node('small', '', event.all_day ? 'All day · no midnight reminder'
-      : (event.remind_minutes == null ? 'Reminder off' : (event.remind_minutes === 0 ? 'At event time' : String(event.remind_minutes) + ' min before')));
+    const reminderLabel = event.all_day ? 'All day · no midnight reminder'
+      : event.remind_minutes == null ? 'Reminder off'
+      : event.remind_minutes === 0 ? 'At event time'
+      : String(event.remind_minutes) + ' min before';
+    info.append(node('small', '', reminderLabel));
     const edit = node('button', 'text-button', 'Edit');
     edit.type = 'button';
     edit.setAttribute('aria-label', `Edit event: ${event.title}`);
