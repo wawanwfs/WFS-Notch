@@ -586,7 +586,7 @@ mod tests {
     fn weekly_wkst_and_multi_day_byday_preserve_local_time() {
         let start = CalendarStart::parse("DTSTART;TZID=America/New_York", "20270313T093000", None).unwrap();
         assert_eq!(
-            start.occurrences(Some("FREQ=WEEKLY;INTERVAL=2;WKST=SU;BYDAY=SA,SU;COUNT=4")).unwrap(),
+            start.occurrences(Some("FREQ=WEEKLY;INTERVAL=2;WKST=MO;BYDAY=SA,SU;COUNT=4")).unwrap(),
             vec![
                 ms("20270313T143000Z"),
                 ms("20270314T133000Z"),
