@@ -256,7 +256,7 @@ fn parse_timed_duration(raw: &str) -> Result<u64, String> {
         || (in_time && !seen.iter().any(|unit| matches!(unit, 'H' | 'M' | 'S'))) {
         return Err("DURATION must be positive and at most 366 days".into());
     }
-    seconds.checked_mul(1000).ok_or("DURATION overflow".into())
+    seconds.checked_mul(1000).ok_or_else(|| "DURATION overflow".to_owned())
 }
 
 fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<CalendarEvent>, String> {
@@ -354,7 +354,9 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                             .transpose()?
                     };
                     if let Some(ms) = elapsed {
-                        validate_timed_end(original_start, original_start.checked_add(ms))?;
+                        let end = original_start.checked_add(ms)
+                            .ok_or("Timed end timestamp overflow")?;
+                        validate_timed_end(original_start, Some(end))?;
                     }
                     elapsed
                 } else { None };
