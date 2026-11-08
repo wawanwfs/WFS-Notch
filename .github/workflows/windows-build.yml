@@ -97,6 +97,23 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: 02_APP/src-tauri
+      - name: Validate REA and Craft setup scripts without executing downloads
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($script in @('03_TOOLS/Install-REA-Craft-Windows.ps1', '03_TOOLS/Audit-Reference-With-REA.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $script).Path,
+              [ref]$tokens, [ref]$parseErrors
+            ) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error "$script : $($_.Message)" }
+              throw "PowerShell syntax failed: $script"
+            }
+            Write-Host "PASS: $script"
+          }
       - name: Run Rust unit tests
         working-directory: 02_APP/src-tauri
         shell: pwsh
