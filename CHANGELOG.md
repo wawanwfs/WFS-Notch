@@ -1,3 +1,12 @@
+## 0.11.0 — Native calendar reminder scheduling (development)
+
+- Moved scheduling of WFS-owned Windows calendar reminder to a Rust worker that keeps running while the notch UI is hidden or collapsed (application must remain running).
+- Unified scheduled and manual reminders behind the same privacy checks and in-memory per-occurrence deduplication.
+- Added status command showing upcoming reminder count and pause/consent status without revealing event titles; browser preview does not fabricate a native scheduler.
+- Added Rust tests for late delivery windows, rescheduling, pause/opt-out, reminder redaction and expiration.
+- Kept existing opted-in notifications, media controls, monitor placement and WFS branding intact.
+- Remaining: real Windows toast permission/delivery tests, durable ledger across app restart, Windows fullscreen/hot-plug QA and more complete reference feature coverage.
+
 ## 0.10.1 — Product layout and private notification pause (development)
 
 - Rebuilt the source tree as a conventional Rust/Tauri application, with domain-level feature and style modules.

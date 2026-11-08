@@ -233,6 +233,11 @@
             <div class="settings-row"><div><b>Pause desktop reminders</b><small>Do Not Disturb for WFS Notch only; your Windows-wide settings are not changed.</small></div><label class="toggle-label"><input id="notifications-pause-toggle" type="checkbox"><span>Paused</span></label></div>
             <button class="secondary" id="notification-test" type="button">Send test notification</button>
             <p class="event-hint" id="notification-status" role="status">Toasts require the installed Windows desktop app and Windows notification permissions.</p>
+            <div class="settings-row">
+              <div><b>Background reminder service</b><small>Runs while WFS Notch is open in the tray, even if the panel is hidden. No Windows service is installed.</small></div>
+              <button type="button" id="notification-scheduler-refresh" class="secondary">Check status</button>
+            </div>
+            <p class="event-hint" id="notification-scheduler-status" role="status" aria-live="polite">Native reminder status is available only in the installed Windows desktop app.</p>
           </div>
           <div class="display-options" aria-labelledby="display-options-title">
             <div class="settings-row">

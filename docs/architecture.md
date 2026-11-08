@@ -8,7 +8,7 @@ WFS Notch is a **Tauri 2 Windows desktop application** with a static HTML/CSS/JS
 
 ## Native application
 
-`src-tauri/src/main.rs` owns Tauri initialization and local application state. Domain modules provide calendar/ICS, notes/tasks, wellness, Windows media sessions, notifications, display positioning and read-only system inventory. Tauri command handlers are registered centrally; the client does not directly access OS credentials or the filesystem.
+`src-tauri/src/main.rs` owns Tauri initialization and local application state. Domain modules provide calendar/ICS, notes/tasks, wellness, Windows media sessions, notifications, display positioning and read-only system inventory. `notifications.rs` runs an independent 20-second Rust worker while the process is alive; it reads only the local calendar and sends opt-in reminders through the Tauri notification plugin, even when the WebView is hidden. Tauri command handlers are registered centrally; the client does not directly access OS credentials or the filesystem.
 
 Local state is written to app-specific storage using a backup and temporary file; migrations use Serde defaults for older settings. No third-party binary code or extracted proprietary assets are part of the application.
 
