@@ -11,6 +11,7 @@ use std::{
 };
 use sysinfo::System;
 mod calendar_ics;
+mod ics_time;
 mod display;
 mod extra;
 mod media_sessions;
