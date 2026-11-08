@@ -6,7 +6,7 @@ const nativeInvoke = window.__TAURI__?.core?.invoke;
 const previewKey = 'wfs-notch-browser-preview-v2';
 const previewBackupsKey = 'wfs-notch-browser-backups-v3';
 const defaults = () => ({
-  todos: [], notes: [], events: [], habits: [], quick_links: [],
+  todos: [], notes: [], events: [], calendar_tombstones: [], habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
   settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, always_on_top: true, auto_lower_fullscreen: false },
@@ -31,6 +31,11 @@ let isExpanded = false;
 let windowQueue = Promise.resolve();
 let writeQueue = Promise.resolve();
 
+function validTimedEnd(start, end) {
+  return end == null || (Number.isSafeInteger(end) && end > start &&
+    end <= 4102444800000 && end - start <= 366 * 86400000);
+}
+
 function focusView(focus, current = Date.now()) {
   const remaining = focus.ends_at_ms == null
     ? focus.remaining_seconds
@@ -51,6 +56,7 @@ function previewInvoke(command, args = {}) {
   state.settings = { ...defaults().settings, ...state.settings };
   state.focus = { ...defaults().focus, ...state.focus };
   state.events = Array.isArray(state.events) ? state.events : [];
+  state.calendar_tombstones = Array.isArray(state.calendar_tombstones) ? state.calendar_tombstones : [];
   state.habits = Array.isArray(state.habits) ? state.habits : [];
   state.quick_links = Array.isArray(state.quick_links) ? state.quick_links : [];
   state.health = { ...defaults().health, ...state.health };
@@ -121,7 +127,9 @@ function previewInvoke(command, args = {}) {
       const title = String(args.title || '').trim();
       if (!title || title.length > 200 || !Number.isFinite(args.startsAtMs) || args.startsAtMs < 946684800000 || args.startsAtMs > 4102444800000) throw new Error('Invalid event title/date');
       if (![null, 0, 5, 15, 30, 60].includes(args.remindMinutes)) throw new Error('Invalid reminder');
-      state.events.push({ id: nextId(), title, starts_at_ms: args.startsAtMs, remind_minutes: args.remindMinutes, description: args.description || '', created_ms: Date.now() });
+      if (!validTimedEnd(args.startsAtMs, args.endsAtMs)) throw new Error('Timed end must be after start and within 366 days');
+      if (String(args.description || '').length > 2000) throw new Error('Description exceeds 2000 characters');
+      state.events.push({ id: nextId(), title, starts_at_ms: args.startsAtMs, ends_at_ms: args.endsAtMs ?? null, remind_minutes: args.remindMinutes, description: args.description || '', created_ms: Date.now() });
       break;
     }
     case 'update_event': {
@@ -130,11 +138,20 @@ function previewInvoke(command, args = {}) {
       const title = String(args.title || '').trim();
       if (!title || title.length > 200 || !Number.isFinite(args.startsAtMs) || args.startsAtMs < 946684800000 || args.startsAtMs > 4102444800000) throw new Error('Invalid event title/date');
       if (![null, 0, 5, 15, 30, 60].includes(args.remindMinutes)) throw new Error('Invalid reminder');
-      Object.assign(item, {title, starts_at_ms: args.startsAtMs, remind_minutes: args.remindMinutes, description: args.description || '', all_day: null});
+      if (!validTimedEnd(args.startsAtMs, args.endsAtMs)) throw new Error('Timed end must be after start and within 366 days');
+      if (String(args.description || '').length > 2000) throw new Error('Description exceeds 2000 characters');
+      Object.assign(item, {title, starts_at_ms: args.startsAtMs, ends_at_ms: args.endsAtMs ?? null, remind_minutes: args.remindMinutes, description: args.description || '', all_day: null});
       break;
     }
     case 'remove_event': {
-      if (!state.events.some(item => item.id === args.id)) throw new Error('Event not found');
+      const found = state.events.find(item => item.id === args.id);
+      if (!found) throw new Error('Event not found');
+      if (found.id.startsWith('ics:') || found.series_uid) {
+        if (!state.calendar_tombstones.includes(found.id)) {
+          if (state.calendar_tombstones.length >= 4096) throw new Error('Cancellation ledger full');
+          state.calendar_tombstones.push(found.id);
+        }
+      }
       state.events = state.events.filter(item => item.id !== args.id); break;
     }
     case 'add_all_day_event':
@@ -150,12 +167,12 @@ function previewInvoke(command, args = {}) {
       const span = {start_date: start, end_date_exclusive: end};
       if (command === 'add_all_day_event') {
         state.events.push({id: nextId(), title, starts_at_ms: Date.parse(start + 'T00:00:00Z'),
-          remind_minutes: null, description: args.description || '', created_ms: Date.now(), all_day: span, series_uid: null});
+          remind_minutes: null, description: args.description || '', created_ms: Date.now(), all_day: span, series_uid: null, ends_at_ms: null});
       } else {
         const item = state.events.find(entry => entry.id === args.id);
         if (!item) throw new Error('Event not found');
         Object.assign(item, {title, starts_at_ms: Date.parse(start + 'T00:00:00Z'),
-          remind_minutes: null, description: args.description || '', all_day: span});
+          remind_minutes: null, description: args.description || '', all_day: span, ends_at_ms: null});
       }
       break;
     }
@@ -169,10 +186,15 @@ function previewInvoke(command, args = {}) {
         if (!title || title.length > 200) throw new Error('Invalid series title');
         members.forEach(item => { item.title = title; });
       } else {
+        if (!state.calendar_tombstones.includes(current.series_uid)) {
+          if (state.calendar_tombstones.length >= 4096) throw new Error('Cancellation ledger full');
+          state.calendar_tombstones.push(current.series_uid);
+        }
         state.events = state.events.filter(item => item.series_uid !== current.series_uid);
       }
       break;
     }
+    case 'clear_calendar_cancellations': state.calendar_tombstones = []; break;
     case 'add_habit': {
       const title = String(args.title || '').trim();
       if (!title || title.length > 120) throw new Error('Invalid habit name');
@@ -423,6 +445,8 @@ function setAllDayEditor(enabled) {
   $('#event-all-day-fields').hidden = !enabled;
   $('#event-time').hidden = enabled;
   $('#event-time').required = !enabled;
+  $('#event-end-time').hidden = enabled;
+  $('#event-end-time-label').hidden = enabled;
   $('#event-remind').disabled = enabled;
   if (enabled) $('#event-remind').value = 'off';
   if (enabled && !$('#event-start-date').value) {
@@ -435,7 +459,9 @@ function setAllDayEditor(enabled) {
   }
 }
 function eventDisplayDate(event) {
-  if (!event.all_day) return eventDate(event.starts_at_ms);
+  if (!event.all_day) return event.ends_at_ms
+    ? eventDate(event.starts_at_ms) + ' – ' + eventDate(event.ends_at_ms)
+    : eventDate(event.starts_at_ms);
   const end = new Date(Date.parse(event.all_day.end_date_exclusive + 'T00:00:00Z') - 86400000)
     .toISOString().slice(0, 10);
   return event.all_day.start_date === end ? end + ' · All day'
@@ -447,6 +473,8 @@ function cancelEventEdit() {
   $('#event-submit').textContent = 'Add event';
   $('#event-cancel').hidden = true;
   $('#event-title').value = '';
+  $('#event-description').value = '';
+  $('#event-end-time').value = '';
   $('#event-time').disabled = false;
   $('#event-all-day').disabled = false;
   setAllDayEditor(false);
@@ -459,7 +487,7 @@ function renderCalendar() {
   const localDay = asLocalInput(Date.now()).slice(0, 10);
   const upcoming = events.find(item => item.all_day
     ? item.all_day.end_date_exclusive > localDay
-    : item.starts_at_ms >= Date.now() - 60000);
+    : (item.ends_at_ms ?? item.starts_at_ms + 60000) >= Date.now() - 60000);
   $('#next-event').textContent = upcoming ? upcoming.title + ' · ' + eventDisplayDate(upcoming) : 'No upcoming events';
   const list = $('#event-list');
   list.replaceChildren();
@@ -468,7 +496,8 @@ function renderCalendar() {
     return;
   }
   for (const event of events) {
-    const past = event.all_day ? event.all_day.end_date_exclusive <= localDay : event.starts_at_ms < Date.now();
+    const past = event.all_day ? event.all_day.end_date_exclusive <= localDay
+      : (event.ends_at_ms ?? event.starts_at_ms) < Date.now();
     const line = node('div', 'event-item' + (past ? ' past' : ''));
     const date = node('time', 'event-date', eventDisplayDate(event));
     date.dateTime = event.all_day ? event.all_day.start_date : new Date(event.starts_at_ms).toISOString();
@@ -486,7 +515,9 @@ function renderCalendar() {
       cancelEventEdit();
       selectedEventId = event.id;
       $('#event-title').value = event.title;
+      $('#event-description').value = event.description || '';
       $('#event-time').value = asLocalInput(event.starts_at_ms);
+      $('#event-end-time').value = event.ends_at_ms == null ? '' : asLocalInput(event.ends_at_ms);
       if (event.all_day) {
         $('#event-start-date').value = event.all_day.start_date;
         $('#event-end-date').value = event.all_day.end_date_exclusive;
@@ -524,7 +555,7 @@ function renderCalendar() {
       deleteSeries.type = 'button';
       deleteSeries.setAttribute('aria-label', 'Delete entire series: ' + event.title);
       deleteSeries.addEventListener('click', async () => {
-        if (!window.confirm('Delete all local occurrences of this imported series? Re-import can restore them.')) return;
+        if (!window.confirm('Delete all occurrences of this imported series? WFS will remember the cancellation and skip it on future imports until you explicitly reset ICS cancellation history.')) return;
         if (await mutation('remove_event_series', {id: event.id})) cancelEventEdit();
       });
       line.append(rename, deleteSeries);
@@ -744,8 +775,7 @@ function bind() {
       }
       return;
     }
-    const prior = selectedEventId && data.events.find(entry => entry.id === selectedEventId);
-    const description = prior?.description || '';
+    const description = $('#event-description').value;
     if ($('#event-all-day').checked) {
       const startDate = $('#event-start-date').value;
       const endDateExclusive = $('#event-end-date').value;
@@ -760,12 +790,16 @@ function bind() {
       return;
     }
     const startsAtMs = new Date($('#event-time').value).getTime();
-    if (!Number.isFinite(startsAtMs)) { showError('Choose a valid date and time'); return; }
+    const endRaw = $('#event-end-time').value;
+    const endsAtMs = endRaw ? new Date(endRaw).getTime() : null;
+    if (!Number.isFinite(startsAtMs) || !validTimedEnd(startsAtMs, endsAtMs)) {
+      showError('Enter valid timed start/end dates. End must be later and at most 366 days after start.'); return;
+    }
     const remind = $('#event-remind').value;
     const mode = selectedEventId ? 'update_event' : 'add_event';
     if (await mutation(mode, {
       ...(selectedEventId ? { id: selectedEventId } : {}),
-      title, startsAtMs, description,
+      title, startsAtMs, endsAtMs, description,
       remindMinutes: remind === 'off' ? null : Number(remind),
     })) {
       cancelEventEdit();

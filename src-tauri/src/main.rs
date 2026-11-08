@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
@@ -84,6 +84,9 @@ struct CalendarEvent {
     // The normalized local source event ID, common to materialized occurrences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     series_uid: Option<String>,
+    // Timed UTC exclusive end. Absent for legacy events and all-day spans.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ends_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -168,6 +171,8 @@ struct AppData {
     events: Vec<CalendarEvent>,
     // Local, title-free, persistent reservation ledger. Kept in state.json atomically.
     reminder_deliveries: HashMap<String, u128>,
+    // Local-only ICS cancellation markers; reimport never silently restores deleted events.
+    calendar_tombstones: HashSet<String>,
     habits: Vec<extra::Habit>,
     quick_links: Vec<extra::QuickLink>,
     health: wellness::HealthState,
@@ -216,11 +221,18 @@ impl AppData {
                     span.valid()
                         && span.utc_midnight_ms().ok() == Some(event.starts_at_ms)
                         && event.remind_minutes.is_none()
+                        && event.ends_at_ms.is_none()
                 })
+                && validate_timed_end(event.starts_at_ms, event.ends_at_ms).is_ok()
                 && event.series_uid.as_ref().is_none_or(|uid| {
                     !uid.is_empty() && uid.len() <= 180 && !uid.contains(['\r', '\n'])
                 })
         });
+        self.calendar_tombstones.retain(|uid| {
+            uid.starts_with("ics:") && uid.len() <= 240 && !uid.chars().any(char::is_control)
+        });
+        // Never truncate cancellation markers silently: retain all safe ones
+        // from existing state. New insertions are capped in mutation commands.
         if ![900, 1500, 2700, 3600].contains(&self.focus.duration_seconds) {
             self.focus = FocusState::default();
         }
@@ -493,15 +505,42 @@ fn validate_event(
     Ok(())
 }
 
+// Calendar time bounds apply to both local editor updates and ICS imports.
+const MAX_TIMED_SPAN_MS: u64 = 366 * 24 * 60 * 60 * 1000;
+fn validate_timed_end(start: u64, end: Option<u64>) -> Result<(), String> {
+    if let Some(end) = end {
+        if end <= start || end > 4_102_444_800_000 || end - start > MAX_TIMED_SPAN_MS {
+            return Err(
+                "Timed end must be exclusive, after start, and within 366 days/2100".into(),
+            );
+        }
+    }
+    Ok(())
+}
+fn remember_calendar_cancellation(data: &mut AppData, key: &str) -> Result<(), String> {
+    if !key.starts_with("ics:") || key.len() > 240 || key.chars().any(char::is_control) {
+        return Err("Invalid imported calendar cancellation identifier".into());
+    }
+    if !data.calendar_tombstones.contains(key) && data.calendar_tombstones.len() >= 4096 {
+        return Err(
+            "Calendar cancellation ledger is full; clear canceled ICS history first".into(),
+        );
+    }
+    data.calendar_tombstones.insert(key.to_owned());
+    Ok(())
+}
+
 #[tauri::command]
 fn add_event(
     store: State<'_, Mutex<Store>>,
     title: String,
     starts_at_ms: u64,
+    ends_at_ms: Option<u64>,
     remind_minutes: Option<u32>,
     description: String,
 ) -> Result<AppData, String> {
     validate_event(&title, &description, starts_at_ms, remind_minutes)?;
+    validate_timed_end(starts_at_ms, ends_at_ms)?;
     with_store(store, |state| {
         state.events.push(CalendarEvent {
             id: new_id(),
@@ -512,6 +551,7 @@ fn add_event(
             created_ms: now_ms(),
             all_day: None,
             series_uid: None,
+            ends_at_ms,
         });
         Ok(())
     })
@@ -523,10 +563,12 @@ fn update_event(
     id: String,
     title: String,
     starts_at_ms: u64,
+    ends_at_ms: Option<u64>,
     remind_minutes: Option<u32>,
     description: String,
 ) -> Result<AppData, String> {
     validate_event(&title, &description, starts_at_ms, remind_minutes)?;
+    validate_timed_end(starts_at_ms, ends_at_ms)?;
     with_store(store, |state| {
         let event = state
             .events
@@ -538,6 +580,7 @@ fn update_event(
         event.remind_minutes = remind_minutes;
         event.description = description;
         event.all_day = None; // An explicitly timed edit converts the occurrence to timed.
+        event.ends_at_ms = ends_at_ms;
         Ok(())
     })
 }
@@ -545,11 +588,17 @@ fn update_event(
 #[tauri::command]
 fn remove_event(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
     with_store(store, |state| {
-        let old = state.events.len();
-        state.events.retain(|event| event.id != id);
-        if old == state.events.len() {
-            return Err("Event not found".into());
+        let item = state
+            .events
+            .iter()
+            .find(|event| event.id == id)
+            .ok_or("Event not found")?;
+        let tombstone =
+            (item.id.starts_with("ics:") || item.series_uid.is_some()).then(|| item.id.clone());
+        if let Some(key) = tombstone {
+            remember_calendar_cancellation(state, &key)?;
         }
+        state.events.retain(|event| event.id != id);
         Ok(())
     })
 }
@@ -586,6 +635,7 @@ fn add_all_day_event(
             created_ms: now_ms(),
             all_day: Some(span),
             series_uid: None,
+            ends_at_ms: None,
         });
         Ok(())
     })
@@ -614,6 +664,7 @@ fn update_all_day_event(
         event.remind_minutes = None;
         event.description = description;
         event.all_day = Some(span);
+        event.ends_at_ms = None;
         Ok(())
     })
 }
@@ -649,6 +700,7 @@ fn update_series_title(data: &mut AppData, id: &str, title: &str) -> Result<(), 
 
 fn remove_series(data: &mut AppData, id: &str) -> Result<(), String> {
     let series = event_series_id(data, id)?;
+    remember_calendar_cancellation(data, &series)?;
     data.events
         .retain(|event| event.series_uid.as_deref() != Some(series.as_str()));
     Ok(())
@@ -666,6 +718,15 @@ fn update_event_series_title(
 #[tauri::command]
 fn remove_event_series(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
     with_store(store, move |data| remove_series(data, &id))
+}
+
+// Explicitly allow re-importing canceled ICS events, with a UI confirmation.
+#[tauri::command]
+fn clear_calendar_cancellations(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
+    with_store(store, |data| {
+        data.calendar_tombstones.clear();
+        Ok(())
+    })
 }
 
 // Only app-generated backup identifiers are accepted; caller paths are never evaluated.
@@ -1000,6 +1061,7 @@ fn main() {
             update_all_day_event,
             update_event_series_title,
             remove_event_series,
+            clear_calendar_cancellations,
             calendar_ics::import_ics,
             calendar_ics::export_ics,
             create_backup,
@@ -1135,6 +1197,38 @@ mod tests {
     }
 
     #[test]
+    fn timed_end_validation_preserves_legacy_events_and_rejects_invalid_ranges() {
+        let start = 1_800_000_000_000_u64;
+        assert!(validate_timed_end(start, None).is_ok());
+        assert!(validate_timed_end(start, Some(start)).is_err());
+        assert!(validate_timed_end(start, Some(start - 1)).is_err());
+        assert!(validate_timed_end(start, Some(start + 60_000)).is_ok());
+        assert!(validate_timed_end(start, Some(start + MAX_TIMED_SPAN_MS)).is_ok());
+        assert!(validate_timed_end(start, Some(start + MAX_TIMED_SPAN_MS + 1)).is_err());
+        let legacy = r#"{"id":"old","title":"Old","starts_at_ms":1800000000000,"remind_minutes":null,"description":"","created_ms":1}"#;
+        let event: CalendarEvent = serde_json::from_str(legacy).unwrap();
+        assert!(event.ends_at_ms.is_none());
+        assert!(event.all_day.is_none());
+        assert!(event.series_uid.is_none());
+    }
+
+    #[test]
+    fn cancellation_marker_is_bounded_private_and_persists_without_titles() {
+        let mut state = AppData::default();
+        remember_calendar_cancellation(&mut state, "ics:series@example.org").unwrap();
+        remember_calendar_cancellation(&mut state, "ics:series@example.org").unwrap();
+        assert_eq!(state.calendar_tombstones.len(), 1);
+        assert!(remember_calendar_cancellation(&mut state, "local-event").is_err());
+        assert!(remember_calendar_cancellation(&mut state, "ics:malicious\nbody").is_err());
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(!json.contains("Private appointment"));
+        let restored: AppData = serde_json::from_str(&json).unwrap();
+        assert!(restored
+            .calendar_tombstones
+            .contains("ics:series@example.org"));
+    }
+
+    #[test]
     fn legacy_calendar_json_migrates_with_optional_date_and_series_metadata() {
         let previous = r#"{"id":"legacy","title":"Old","starts_at_ms":1800000000000,"remind_minutes":15,"description":"","created_ms":1}"#;
         let event: CalendarEvent = serde_json::from_str(previous).unwrap();
@@ -1163,6 +1257,7 @@ mod tests {
                 created_ms: 0,
                 all_day: None,
                 series_uid: series_uid.map(str::to_owned),
+                ends_at_ms: None,
             });
         }
         assert!(update_series_title(&mut state, "standalone", "No").is_err());
@@ -1196,6 +1291,7 @@ mod tests {
                     created_ms: now_ms(),
                     all_day: None,
                     series_uid: None,
+                    ends_at_ms: None,
                 });
                 Ok(())
             })
@@ -1228,6 +1324,7 @@ mod tests {
             created_ms: 0,
             all_day: None,
             series_uid: None,
+            ends_at_ms: None,
         });
         preserve_reminder_history(&mut old_backup, &current);
         assert_eq!(
