@@ -11,10 +11,10 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 
 | Reference feature | WFS Notch 0.10.0 | Remaining difference / evidence required |
 | --- | --- | --- |
-| Compact/expanded interactive notch | Partial | Selected-monitor positioning and top gap implemented with DPI-aware geometry; exact hover/pass-through/fullscreen handling and real 2–3 monitor QA pending |
+| Compact/expanded interactive notch | Partial | DPI-aware multi-monitor placement and manual always-on-top option; automatic fullscreen detection, exact hover/pass-through and real multi-monitor QA pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
 | Appearance / glass / animations | Partial | Accent + collapse; glass, frosted, 9 animations, layout editor missing |
-| Music & transport controls | Partial | Global media keys plus WinRT session title/artist/album/status/progress; album artwork, lyrics, player list and native device tests missing |
+| Music & transport controls | Partial | Global media keys, WinRT metadata, album artwork when available, player list, selected session controls and interpolated progress; lyrics and native device tests missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
 | Desktop calendar | Partial | Month grid, UTC ICS text import/export and local reminders; TZID/floating-date support, file picker, iCal subscriptions and Google/Outlook sync missing |
 | Todo | Partial | CRUD; reminders, recurring, natural language parsing, snooze missing |
@@ -31,7 +31,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Wi-Fi Controls | Gap | Windows adapter & network list APIs |
 | Bluetooth Controls | Gap | Windows radio/device APIs, pairing/battery |
 | Dashboard quick toggles | Gap | Wi-Fi, Bluetooth, Keep Awake, dark mode, brightness, mic |
-| Notifications | Gap | Windows listener, history, privacy, DND |
+| Notifications | Partial | Local WFS-owned Windows toast reminders opt-in with private titles by default; third-party OS NotificationListener, history, DND and native runtime tests missing |
 | HUD/OSD | Gap | Volume, brightness, keyboard state, airplane mode overlays |
 | Dock | Partial | Quick launch/links only, not running-app/taskbar dock |
 | Shelf/drop actions | Gap | File drops, ZIP, convert, safe send |
