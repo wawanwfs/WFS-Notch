@@ -242,7 +242,10 @@ impl AppData {
             if !matches!(todo.priority.as_str(), "low" | "normal" | "high") {
                 todo.priority = default_todo_priority();
             }
-            if todo.due_at_ms.is_some_and(|ms| !(946_684_800_000..=4_102_444_800_000).contains(&ms)) {
+            if todo
+                .due_at_ms
+                .is_some_and(|ms| !(946_684_800_000..=4_102_444_800_000).contains(&ms))
+            {
                 todo.due_at_ms = None;
             }
         }
@@ -467,7 +470,10 @@ fn update_todo(
 ) -> Result<AppData, String> {
     validate_todo_fields(&title, &priority, due_at_ms)?;
     with_store(store, |state| {
-        let todo = state.todos.iter_mut().find(|todo| todo.id == id)
+        let todo = state
+            .todos
+            .iter_mut()
+            .find(|todo| todo.id == id)
             .ok_or("Task not found")?;
         todo.title = title.trim().to_owned();
         todo.priority = priority;
@@ -1233,7 +1239,8 @@ mod tests {
             priority: "high".into(),
             due_at_ms: Some(1_900_000_000_000),
             ..todo
-        }).unwrap();
+        })
+        .unwrap();
         let restored: Todo = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.priority, "high");
         assert_eq!(restored.due_at_ms, Some(1_900_000_000_000));
@@ -1243,26 +1250,40 @@ mod tests {
     fn task_edit_transaction_preserves_id_completion_and_rollback() {
         let path = temp_file("task-edit");
         let mut store = Store::open(path.clone()).unwrap();
-        store.transact(|data| {
-            data.todos.push(Todo {
-                id: "task-1".into(), title: "Before".into(), done: true,
-                created_ms: 123, priority: "normal".into(), due_at_ms: None,
-            });
-            Ok(())
-        }).unwrap();
-        store.transact(|data| {
-            let todo = data.todos.iter_mut().find(|item| item.id == "task-1").unwrap();
-            validate_todo_fields("After", "high", Some(1_900_000_000_000))?;
-            todo.title = "After".into();
-            todo.priority = "high".into();
-            todo.due_at_ms = Some(1_900_000_000_000);
-            Ok(())
-        }).unwrap();
+        store
+            .transact(|data| {
+                data.todos.push(Todo {
+                    id: "task-1".into(),
+                    title: "Before".into(),
+                    done: true,
+                    created_ms: 123,
+                    priority: "normal".into(),
+                    due_at_ms: None,
+                });
+                Ok(())
+            })
+            .unwrap();
+        store
+            .transact(|data| {
+                let todo = data
+                    .todos
+                    .iter_mut()
+                    .find(|item| item.id == "task-1")
+                    .unwrap();
+                validate_todo_fields("After", "high", Some(1_900_000_000_000))?;
+                todo.title = "After".into();
+                todo.priority = "high".into();
+                todo.due_at_ms = Some(1_900_000_000_000);
+                Ok(())
+            })
+            .unwrap();
         let before = store.data.clone();
-        assert!(store.transact(|state| {
-            state.todos[0].title = "Would rollback".into();
-            Err("simulated persistence rejection".into())
-        }).is_err());
+        assert!(store
+            .transact(|state| {
+                state.todos[0].title = "Would rollback".into();
+                Err("simulated persistence rejection".into())
+            })
+            .is_err());
         assert_eq!(store.data.todos, before.todos);
         let loaded = Store::open(path.clone()).unwrap();
         assert_eq!(loaded.data.todos[0].title, "After");
