@@ -1,4 +1,9 @@
-## 0.8.0 — Native Windows media session metadata (validation pending)
+## 0.8.0 — Native Windows media session metadata and accessible UI polish (validation pending)
+
+- Added premium dark/champagne-gold UI refinement, focus states, responsive layout and reduced-motion support.
+- Added Left/Right/Home/End keyboard module navigation and Alt+1..7 shortcuts that do not override text input.
+- Added 760x470 browser regression for accessibility, visual styling and synthetic media-data avoidance.
+
 
 - Added read-only Windows GSMTC current-session title, artist, album, playback status, track position and duration in Rust.
 - Added native-only now-playing panel and media timeline; browser preview does not invent track titles.
