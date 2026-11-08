@@ -670,6 +670,7 @@ mod tests {
             created_ms: 0,
             all_day: None,
             series_uid: None,
+            ends_at_ms: None,
         };
         let serialized = serialize_ics(&[event]).unwrap();
         let parsed = parse_ics(&serialized, None).unwrap();
@@ -831,6 +832,7 @@ mod tests {
             created_ms: 0,
             all_day: None,
             series_uid: None,
+            ends_at_ms: None,
         });
         merge_imported_events(&mut state, parsed.clone()).unwrap();
         assert_eq!(state.events.len(), 4);
