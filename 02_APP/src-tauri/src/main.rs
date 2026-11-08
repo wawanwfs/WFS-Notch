@@ -760,8 +760,7 @@ fn main() {
                     .data
                     .settings
                     .clone();
-                display::place_notch(&window, &settings, false)
-                    .map_err(std::io::Error::other)?;
+                display::place_notch(&window, &settings, false).map_err(std::io::Error::other)?;
             }
             Ok(())
         })
