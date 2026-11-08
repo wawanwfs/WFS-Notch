@@ -861,7 +861,7 @@ mod tests {
     #[test]
     fn unsupported_rrule_override_and_timed_end_fail_atomically() {
         for suffix in [
-            "RRULE:FREQ=MONTHLY;COUNT=2\n",
+            "RRULE:FREQ=MONTHLY;BYSETPOS=1;COUNT=2\n",
             "RRULE:FREQ=DAILY;COUNT=251\n",
             "RRULE:FREQ=DAILY;COUNT=2\nRECURRENCE-ID:20270615T113000Z\n",
             "DTEND:20270614T103000Z\n",
@@ -993,6 +993,57 @@ mod tests {
         recovered.events.retain(|entry| entry.id != canceled_id);
         merge_imported_events(&mut recovered, incoming).unwrap();
         assert_eq!(recovered.events.len(), 2);
+    }
+
+    #[test]
+    fn source_series_metadata_keeps_rrule_exceptions_and_user_edits_across_json() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:source17@example.org\nSUMMARY:Imported plan\nDESCRIPTION:Private note\nDTSTART:20270614T113000Z\nDTEND:20270614T123000Z\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4\nEXDATE:20270616T113000Z\nRDATE:20270630T113000Z\nEND:VEVENT\nEND:VCALENDAR";
+        let (occurrences, sources) = parse_ics_bundle(input, None).unwrap();
+        assert_eq!(occurrences.len(), 4);
+        assert_eq!(sources.len(), 1);
+        let mut state = AppData::default();
+        merge_imported_events(&mut state, occurrences.clone()).unwrap();
+        for source in sources {
+            assert!(source.valid(&source.uid));
+            state.calendar_series.insert(source.uid.clone(), source);
+        }
+        let key = "ics:source17@example.org";
+        let source = state.calendar_series.get(key).unwrap();
+        assert_eq!(source.schema_version, 1);
+        assert_eq!(source.rrule.as_deref(), Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4"));
+        assert_eq!(source.exdates.len(), 1);
+        assert_eq!(source.rdates.len(), 1);
+        assert_eq!(source.dtend.as_ref().unwrap().1, "20270614T123000Z");
+        let changed = occurrences[1].id.clone();
+        state.events[1].description = "A user edit".to_owned();
+        state.calendar_series.get_mut(key).unwrap().modified_occurrence_ids.insert(changed);
+        let json = serde_json::to_string(&state).unwrap();
+        let mut restored: AppData = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.calendar_series.get(key), state.calendar_series.get(key));
+        merge_imported_events(&mut restored, occurrences).unwrap();
+        assert_eq!(restored.events.len(), 4);
+        assert_eq!(restored.events[1].description, "A user edit");
+        crate::update_series_title(&mut restored, &restored.events[0].id.clone(), "Retitled").unwrap();
+        assert_eq!(restored.calendar_series.get(key).unwrap().title, "Retitled");
+        crate::remove_series(&mut restored, &restored.events[0].id.clone()).unwrap();
+        assert!(restored.calendar_series.is_empty());
+        assert!(restored.calendar_tombstones.contains(key));
+    }
+
+    #[test]
+    fn complex_monthly_and_yearly_ics_are_bounded_and_export_flattens() {
+        let monthly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:monthly17@example.org\nSUMMARY:Every last Monday\nDTSTART:20270125T090000Z\nRRULE:FREQ=MONTHLY;BYDAY=-1MO;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
+        let (events, source) = parse_ics_bundle(monthly, None).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].starts_at_ms, utc_to_ms("20270125T090000Z").unwrap());
+        assert_eq!(events[1].starts_at_ms, utc_to_ms("20270222T090000Z").unwrap());
+        assert_eq!(events[2].starts_at_ms, utc_to_ms("20270329T090000Z").unwrap());
+        assert_eq!(source[0].rrule.as_deref(), Some("FREQ=MONTHLY;BYDAY=-1MO;COUNT=3"));
+        assert!(!serialize_ics(&events).unwrap().contains("RRULE:"));
+        let yearly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:leap17@example.org\nSUMMARY:Leap\nDTSTART;VALUE=DATE:20280229\nRRULE:FREQ=YEARLY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
+        let days = parse_ics(yearly, None).unwrap();
+        assert_eq!(days.iter().map(|e| e.all_day.as_ref().unwrap().start_date.as_str()).collect::<Vec<_>>(),
+            vec!["2028-02-29", "2032-02-29", "2036-02-29"]);
     }
 
     #[test]
