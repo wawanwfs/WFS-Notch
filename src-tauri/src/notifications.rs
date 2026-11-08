@@ -64,7 +64,6 @@ fn needs_delivery(
             .is_some_and(|expiry| *expiry > now)
 }
 
-
 fn reservation_expires_at(event: &CalendarEvent) -> u128 {
     u128::from(event.starts_at_ms).saturating_add(LEDGER_RETENTION_MS)
 }
@@ -153,12 +152,7 @@ fn show(app: &AppHandle, title: &str, body: &str) -> Result<(), String> {
 /// This is at-most-once enqueue, never proof of a visible Windows toast.
 /// Injected wall time + sender allow real Store transactions to be tested
 /// deterministically without running a Windows notification server.
-fn deliver_with<F>(
-    store: &Mutex<Store>,
-    id: &str,
-    now: u128,
-    sender: F,
-) -> Result<bool, String>
+fn deliver_with<F>(store: &Mutex<Store>, id: &str, now: u128, sender: F) -> Result<bool, String>
 where
     F: FnOnce(&CalendarEvent, &Settings) -> Result<(), String>,
 {
@@ -424,19 +418,17 @@ mod tests {
         assert!(needs_delivery(&changed, &settings, 60_000, &after_restart));
     }
 
-
     fn fixture_store(id: &str, time: u64) -> (Mutex<Store>, std::path::PathBuf) {
-        let path = std::env::temp_dir().join(format!(
-            "wfs-phase13-{}-{}.json",
-            crate::new_id(),
-            id
-        ));
+        let path =
+            std::env::temp_dir().join(format!("wfs-phase13-{}-{}.json", crate::new_id(), id));
         let mut store = Store::open(path.clone()).unwrap();
-        store.transact(|data| {
-            data.settings.notifications_enabled = true;
-            data.events.push(event(time, Some(5)));
-            Ok(())
-        }).unwrap();
+        store
+            .transact(|data| {
+                data.settings.notifications_enabled = true;
+                data.events.push(event(time, Some(5)));
+                Ok(())
+            })
+            .unwrap();
         (Mutex::new(store), path)
     }
 
@@ -457,7 +449,8 @@ mod tests {
         data.settings.notifications_paused = true;
         assert!(due_event_ids(&data, 700_000).is_empty());
         data.settings.notifications_paused = false;
-        data.reminder_deliveries.insert(delivery_key(&first), reservation_expires_at(&first));
+        data.reminder_deliveries
+            .insert(delivery_key(&first), reservation_expires_at(&first));
         assert!(due_event_ids(&data, 700_000).is_empty());
         assert!(due_event_ids(&data, 800_000).is_empty()); // clock moved backward
         data.events[0].starts_at_ms = 1_100_000; // edited schedule
@@ -473,27 +466,39 @@ mod tests {
         assert!(deliver_with(&store, "event-1", 1_799_999_700_000, |_, _| {
             sends += 1;
             Ok(())
-        }).unwrap());
+        })
+        .unwrap());
         assert_eq!(sends, 1);
         // Repeated polls and application restarts must not duplicate attempts.
         assert!(!deliver_with(&store, "event-1", 1_799_999_710_000, |_, _| {
             sends += 1;
             Ok(())
-        }).unwrap());
+        })
+        .unwrap());
         let reloaded = Mutex::new(Store::open(path.clone()).unwrap());
-        assert!(!deliver_with(&reloaded, "event-1", 1_799_999_700_000, |_, _| {
-            sends += 1;
-            Ok(())
-        }).unwrap());
+        assert!(
+            !deliver_with(&reloaded, "event-1", 1_799_999_700_000, |_, _| {
+                sends += 1;
+                Ok(())
+            })
+            .unwrap()
+        );
         assert_eq!(sends, 1);
-        reloaded.lock().unwrap().transact(|data| {
-            data.events[0].starts_at_ms = 1_800_000_100_000;
-            Ok(())
-        }).unwrap();
-        assert!(deliver_with(&reloaded, "event-1", 1_799_999_800_000, |_, _| {
-            sends += 1;
-            Ok(())
-        }).unwrap());
+        reloaded
+            .lock()
+            .unwrap()
+            .transact(|data| {
+                data.events[0].starts_at_ms = 1_800_000_100_000;
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            deliver_with(&reloaded, "event-1", 1_799_999_800_000, |_, _| {
+                sends += 1;
+                Ok(())
+            })
+            .unwrap()
+        );
         assert_eq!(sends, 2);
         drop(reloaded);
         drop(store);
@@ -506,19 +511,28 @@ mod tests {
         let (store, path) = fixture_store("failure", 1_800_000_000_000);
         assert!(deliver_with(&store, "event-1", 1_799_999_700_000, |_, _| {
             Err("OS notification disabled".into())
-        }).is_err());
+        })
+        .is_err());
         assert!(store.lock().unwrap().data.reminder_deliveries.is_empty());
-        assert!(deliver_with(&store, "event-1", 1_799_999_700_100, |_, settings| {
-            assert!(!settings.notifications_show_details);
-            Ok(())
-        }).unwrap());
-        store.lock().unwrap().transact(|data| {
-            data.settings.notifications_enabled = false;
-            Ok(())
-        }).unwrap();
+        assert!(
+            deliver_with(&store, "event-1", 1_799_999_700_100, |_, settings| {
+                assert!(!settings.notifications_show_details);
+                Ok(())
+            })
+            .unwrap()
+        );
+        store
+            .lock()
+            .unwrap()
+            .transact(|data| {
+                data.settings.notifications_enabled = false;
+                Ok(())
+            })
+            .unwrap();
         assert!(!deliver_with(&store, "event-1", 1_799_999_700_200, |_, _| {
             panic!("disabled consent must not call sender")
-        }).unwrap());
+        })
+        .unwrap());
         drop(store);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("json.bak"));
