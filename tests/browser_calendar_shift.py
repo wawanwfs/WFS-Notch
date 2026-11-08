@@ -49,7 +49,7 @@ with sync_playwright() as pw:
     assert page.locator("#calendar-shift-apply").is_disabled()
     page.locator("#calendar-shift-days").fill("3")
     page.get_by_role("button", name="Preview changes").click()
-    assert "requires native Windows" in page.locator("#calendar-shift-status").inner_text().lower()
+    assert "requires native windows" in page.locator("#calendar-shift-status").inner_text().lower()
     assert page.locator("#calendar-shift-apply").is_disabled()
     assert page.evaluate("() => data.events[0].starts_at_ms === Date.UTC(2027,5,14,9)")
     page.get_by_role("button", name="Cancel", exact=True).last.click()
