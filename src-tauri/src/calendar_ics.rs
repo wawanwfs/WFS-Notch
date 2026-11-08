@@ -69,10 +69,9 @@ impl SeriesSource {
             && self.exdates.len() <= 250
             && self.rdates.len() <= 250
             && self.modified_occurrence_ids.len() <= 250
-            && self
-                .modified_occurrence_ids
-                .iter()
-                .all(|key| key.starts_with(id) && key.len() <= 240 && !key.chars().any(char::is_control))
+            && self.modified_occurrence_ids.iter().all(|key| {
+                key.starts_with(id) && key.len() <= 240 && !key.chars().any(char::is_control)
+            })
     }
 }
 #[cfg(test)]
@@ -473,7 +472,10 @@ fn parse_ics_bundle(
                 let series_uid = is_series.then_some(base_id.clone());
                 if is_series {
                     let source_id = base_id.clone();
-                    if sources.iter().any(|item: &SeriesSource| item.uid == source_id) {
+                    if sources
+                        .iter()
+                        .any(|item: &SeriesSource| item.uid == source_id)
+                    {
                         return Err("Duplicate recurring source UID; no events imported".into());
                     }
                     let source = SeriesSource {
@@ -481,7 +483,10 @@ fn parse_ics_bundle(
                         uid: source_id.clone(),
                         title: title.clone(),
                         description: event.description.clone(),
-                        dtstart: event.start_property.clone().ok_or("Missing source DTSTART")?,
+                        dtstart: event
+                            .start_property
+                            .clone()
+                            .ok_or("Missing source DTSTART")?,
                         dtend: event.end_property.clone(),
                         duration: event.duration_property.clone(),
                         rrule: event.recurrence.clone(),
@@ -755,13 +760,16 @@ pub fn import_ics(
             if data.calendar_tombstones.contains(&source.uid) {
                 continue;
             }
-            if !data.calendar_series.contains_key(&source.uid) && data.calendar_series.len() >= 250 {
+            if !data.calendar_series.contains_key(&source.uid) && data.calendar_series.len() >= 250
+            {
                 return Err("Stored ICS series limit (250) exceeded".into());
             }
             // Preserve existing source and local per-occurrence edit markers on
             // reimport. Updating the source schedule requires a separate safe
             // explicit operation, not an accidental import side effect.
-            data.calendar_series.entry(source.uid.clone()).or_insert(source);
+            data.calendar_series
+                .entry(source.uid.clone())
+                .or_insert(source);
         }
         Ok(())
     })
@@ -1010,16 +1018,27 @@ mod tests {
         let key = "ics:source17@example.org";
         let source = state.calendar_series.get(key).unwrap();
         assert_eq!(source.schema_version, 1);
-        assert_eq!(source.rrule.as_deref(), Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4"));
+        assert_eq!(
+            source.rrule.as_deref(),
+            Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4")
+        );
         assert_eq!(source.exdates.len(), 1);
         assert_eq!(source.rdates.len(), 1);
         assert_eq!(source.dtend.as_ref().unwrap().1, "20270614T123000Z");
         let changed = occurrences[1].id.clone();
         state.events[1].description = "A user edit".to_owned();
-        state.calendar_series.get_mut(key).unwrap().modified_occurrence_ids.insert(changed);
+        state
+            .calendar_series
+            .get_mut(key)
+            .unwrap()
+            .modified_occurrence_ids
+            .insert(changed);
         let json = serde_json::to_string(&state).unwrap();
         let mut restored: AppData = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.calendar_series.get(key), state.calendar_series.get(key));
+        assert_eq!(
+            restored.calendar_series.get(key),
+            state.calendar_series.get(key)
+        );
         merge_imported_events(&mut restored, occurrences).unwrap();
         assert_eq!(restored.events.len(), 4);
         assert_eq!(restored.events[1].description, "A user edit");
@@ -1036,15 +1055,31 @@ mod tests {
         let monthly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:monthly17@example.org\nSUMMARY:Every last Monday\nDTSTART:20270125T090000Z\nRRULE:FREQ=MONTHLY;BYDAY=-1MO;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
         let (events, source) = parse_ics_bundle(monthly, None).unwrap();
         assert_eq!(events.len(), 3);
-        assert_eq!(events[0].starts_at_ms, utc_to_ms("20270125T090000Z").unwrap());
-        assert_eq!(events[1].starts_at_ms, utc_to_ms("20270222T090000Z").unwrap());
-        assert_eq!(events[2].starts_at_ms, utc_to_ms("20270329T090000Z").unwrap());
-        assert_eq!(source[0].rrule.as_deref(), Some("FREQ=MONTHLY;BYDAY=-1MO;COUNT=3"));
+        assert_eq!(
+            events[0].starts_at_ms,
+            utc_to_ms("20270125T090000Z").unwrap()
+        );
+        assert_eq!(
+            events[1].starts_at_ms,
+            utc_to_ms("20270222T090000Z").unwrap()
+        );
+        assert_eq!(
+            events[2].starts_at_ms,
+            utc_to_ms("20270329T090000Z").unwrap()
+        );
+        assert_eq!(
+            source[0].rrule.as_deref(),
+            Some("FREQ=MONTHLY;BYDAY=-1MO;COUNT=3")
+        );
         assert!(!serialize_ics(&events).unwrap().contains("RRULE:"));
         let yearly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:leap17@example.org\nSUMMARY:Leap\nDTSTART;VALUE=DATE:20280229\nRRULE:FREQ=YEARLY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
         let days = parse_ics(yearly, None).unwrap();
-        assert_eq!(days.iter().map(|e| e.all_day.as_ref().unwrap().start_date.as_str()).collect::<Vec<_>>(),
-            vec!["2028-02-29", "2032-02-29", "2036-02-29"]);
+        assert_eq!(
+            days.iter()
+                .map(|e| e.all_day.as_ref().unwrap().start_date.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2028-02-29", "2032-02-29", "2036-02-29"]
+        );
     }
 
     #[test]
