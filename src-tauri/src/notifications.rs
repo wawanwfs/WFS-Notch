@@ -3,11 +3,7 @@
 //! outside the local WFS Notch store. All user-facing content is redacted by default.
 use crate::{now_ms, with_store, AppData, CalendarEvent, Settings, Store};
 use serde::Serialize;
-use std::{
-    collections::HashMap,
-    sync::Mutex,
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Mutex, time::Duration};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
