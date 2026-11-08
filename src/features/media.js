@@ -127,7 +127,7 @@ function renderSelectedPlayers(sessions, systemCurrentSource) {
       picker.append(option);
     }
     const unambiguous = safe.filter(item => item.ambiguous !== true);
-    const preferred = unambiguous.some(item => item.source === previous) ? previous
+    const preferred = safe.some(item => item.source === previous) ? previous
       : unambiguous.some(item => item.source === systemCurrentSource) ? systemCurrentSource
       : unambiguous[0]?.source;
     picker.value = preferred || safe[0].source;
