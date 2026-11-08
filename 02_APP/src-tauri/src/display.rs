@@ -3,7 +3,7 @@
 use crate::{with_store, AppData, Settings, Store};
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::{PhysicalPosition, State, Window};
+use tauri::{PhysicalPosition, State, WebviewWindow};
 
 const COLLAPSED_WIDTH: f64 = 240.0;
 const COLLAPSED_HEIGHT: f64 = 48.0;
@@ -44,7 +44,7 @@ fn monitor_id(monitor: &tauri::Monitor) -> String {
     format!("origin:{}:{}", position.x, position.y)
 }
 
-fn select_monitor(window: &Window, preference: &str) -> Result<(Option<tauri::Monitor>, bool), String> {
+fn select_monitor(window: &WebviewWindow, preference: &str) -> Result<(Option<tauri::Monitor>, bool), String> {
     let monitors = window.available_monitors().map_err(|e| e.to_string())?;
     let preferred = if preference == DEFAULT_MONITOR {
         window.primary_monitor().map_err(|e| e.to_string())?
@@ -93,7 +93,7 @@ fn geometry(
     }
 }
 
-pub fn place_notch(window: &Window, settings: &Settings, expanded: bool) -> Result<(), String> {
+pub fn place_notch(window: &WebviewWindow, settings: &Settings, expanded: bool) -> Result<(), String> {
     let (monitor, _) = select_monitor(window, &settings.monitor_id)?;
     let Some(monitor) = monitor else {
         // No connected display could be reported (e.g. remote/virtual headless session).
@@ -127,7 +127,7 @@ pub fn place_notch(window: &Window, settings: &Settings, expanded: bool) -> Resu
 
 #[tauri::command]
 pub fn get_display_options(
-    window: Window,
+    window: WebviewWindow,
     store: State<'_, Mutex<Store>>,
 ) -> Result<DisplaySnapshot, String> {
     let settings = store
@@ -167,7 +167,7 @@ pub fn get_display_options(
 
 #[tauri::command]
 pub fn set_display_preference(
-    window: Window,
+    window: WebviewWindow,
     store: State<'_, Mutex<Store>>,
     monitor_id: String,
     margin_px: u32,
