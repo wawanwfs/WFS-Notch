@@ -1,3 +1,12 @@
+## 0.13.0 — Deterministic notification recovery & fullscreen QA (development)
+
+- Refactored WFS reminder dispatch into a production-used time-injected sender seam to deterministically exercise real Rust state transactions, restart, clock changes, edited/cancelled reminders, opt-out and notification-API failure retry without invoking Windows on test runners.
+- Retain delivery reservations for a bounded 30-day period, separating deduplication history from the five-minute reminder delivery grace; this improves backward clock-jump resilience but cannot provide unbounded or exactly-once guarantees.
+- Preserve the current reminder journal across local backup restore to prevent replaying already-enqueued calendar notifications after restoring older state.
+- Avoid mistakenly classifying a window stretched across multiple monitors as an exclusive fullscreen window; expand pure geometry regression for negative coordinates and 100/125/150% DPI.
+- Keep original WFS dark/champagne-gold design, application structure and privacy defaults; licensed lyrics, golden-image reference baselines and physical Windows 10/11 interactive QA remain outstanding.
+- 38-category weighting remains 3 Implemented, 16 Partial, 19 Gap = 28.9%.
+
 ## 0.12.0 — Windows reliability and native media refinement (development)
 
 - Added an at-most-once persistent WFS reminder reservation ledger in the existing Rust local state file, bounded sleep/resume catch-up, edited-event keys, failure retry and deterministic tests. Windows toast enqueue is not an end-user display receipt.

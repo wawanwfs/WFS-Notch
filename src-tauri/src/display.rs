@@ -209,10 +209,17 @@ fn active_fullscreen_on_monitor(_window: &WebviewWindow, _settings: &Settings) -
 // 2px margin tolerates Win32 invisible borders; small maximized apps do not
 // qualify because the taskbar leaves an uncovered strip.
 fn covers_monitor(window: (i32, i32, i32, i32), monitor: (i32, i32, i32, i32)) -> bool {
+    // A multi-monitor spanning window may contain the entire monitor without
+    // being an exclusive fullscreen surface. Reject oversized rectangles.
+    const INVISIBLE_BORDER_PX: i32 = 16;
     window.0 <= monitor.0.saturating_add(2)
         && window.1 <= monitor.1.saturating_add(2)
         && window.2 >= monitor.2.saturating_sub(2)
         && window.3 >= monitor.3.saturating_sub(2)
+        && window.0 >= monitor.0.saturating_sub(INVISIBLE_BORDER_PX)
+        && window.1 >= monitor.1.saturating_sub(INVISIBLE_BORDER_PX)
+        && window.2 <= monitor.2.saturating_add(INVISIBLE_BORDER_PX)
+        && window.3 <= monitor.3.saturating_add(INVISIBLE_BORDER_PX)
 }
 
 /// Reorder without activating/focusing the app; never call set_focus here.
@@ -388,6 +395,29 @@ mod tests {
         assert!(covers_monitor((-1922, -1, -1, 1081), (-1920, 0, 0, 1080)));
         assert!(!covers_monitor((0, 0, 1920, 1040), (0, 0, 1920, 1080)));
         assert!(!covers_monitor((1920, 0, 3840, 1080), (0, 0, 1920, 1080)));
+        // Windows may stretch ordinary applications across multiple displays.
+        // Those rectangles must not be treated as exclusive fullscreen.
+        assert!(!covers_monitor((-1920, 0, 1920, 1080), (0, 0, 1920, 1080)));
+        assert!(!covers_monitor((0, -1100, 1920, 1080), (0, 0, 1920, 1080)));
+        assert!(covers_monitor((-1920, 0, 0, 1080), (-1920, 0, 0, 1080)));
+        assert!(!covers_monitor((-1920, 0, 0, 1036), (-1920, 0, 0, 1080)));
+    }
+
+    #[test]
+    fn geometry_handles_secondary_monitors_and_three_dpi_scales() {
+        for scale in [1.0, 1.25, 1.5] {
+            // 1920 physical pixels; 760 logical pixels scaled by DPI.
+            let result = geometry(1920, 1080, scale, 12, true);
+            let measured = (result.logical_width * scale).round() as i32;
+            assert_eq!(result.x, (1920 - measured) / 2);
+            assert!(result.x >= 0);
+            assert!(result.y >= 0);
+            assert!(result.logical_height * scale <= 1080.0);
+            assert!((-1920_i32).saturating_add(result.x) < 0);
+        }
+        let tiny = geometry(640, 480, 1.5, 12, true);
+        assert!(tiny.logical_width <= (640.0 / 1.5));
+        assert!(tiny.logical_height <= (480.0 / 1.5));
     }
 
     #[test]

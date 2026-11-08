@@ -11,6 +11,10 @@ const POLL_INTERVAL: Duration = Duration::from_secs(20);
 // Resume catch-up is allowed until five minutes after the scheduled event.
 // A clock jump past this grace period does not flood the user with old reminders.
 const EVENT_GRACE_MS: u128 = 300_000;
+// Keep the reservation well beyond the five-minute delivery window, so
+// short backward clock jumps or restored calendar backups cannot replay it.
+// This remains a bounded best-effort guarantee, not exactly-once visibility.
+const LEDGER_RETENTION_MS: u128 = 30 * 24 * 60 * 60 * 1_000;
 
 #[derive(Serialize)]
 pub struct ReminderSchedulerStatus {
@@ -58,6 +62,23 @@ fn needs_delivery(
         && !already_sent
             .get(&delivery_key(event))
             .is_some_and(|expiry| *expiry > now)
+}
+
+fn reservation_expires_at(event: &CalendarEvent) -> u128 {
+    u128::from(event.starts_at_ms).saturating_add(LEDGER_RETENTION_MS)
+}
+
+/// Deterministic scheduler planner: no OS time or WinRT dependency.
+fn due_event_ids(data: &AppData, now: u128) -> Vec<String> {
+    if !can_notify(&data.settings) {
+        return Vec::new();
+    }
+    data.events
+        .iter()
+        .filter(|event| needs_delivery(event, &data.settings, now, &data.reminder_deliveries))
+        .map(|event| event.id.clone())
+        .take(256)
+        .collect()
 }
 
 fn event_message(event: &CalendarEvent, details: bool) -> String {
@@ -127,20 +148,22 @@ fn show(app: &AppHandle, title: &str, body: &str) -> Result<(), String> {
         .map_err(|error| format!("Windows notification unavailable: {error}"))
 }
 
-/// Reserve a reminder durably *before* asking Windows to enqueue the toast.
-/// This is at-most-once across restarts. A crash after reservation but before the
-/// platform accepts the toast may miss a reminder; Windows does not expose an
-/// atomic, cross-process acknowledgement for the notification queue.
-fn deliver_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool, String> {
+/// Reserve a reminder durably *before* calling the platform.
+/// This is at-most-once enqueue, never proof of a visible Windows toast.
+/// Injected wall time + sender allow real Store transactions to be tested
+/// deterministically without running a Windows notification server.
+fn deliver_with<F>(store: &Mutex<Store>, id: &str, now: u128, sender: F) -> Result<bool, String>
+where
+    F: FnOnce(&CalendarEvent, &Settings) -> Result<(), String>,
+{
     if id.is_empty() || id.len() > 160 {
         return Err("Invalid calendar reminder id".into());
     }
-    // Hold the same store lock for consent, reservation, and OS submission:
-    // preference changes cannot race with a just-queued reminder.
+    // Consent and write are protected by one lock: a preference change cannot
+    // race a notification already being queued on this application instance.
     let mut guard = store
         .lock()
         .map_err(|_| "Storage lock unavailable".to_owned())?;
-    let now = now_ms();
     let Some(event) = guard
         .data
         .events
@@ -148,28 +171,23 @@ fn deliver_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool
         .find(|event| event.id == id)
         .cloned()
     else {
-        return Ok(false);
+        return Ok(false); // Event deleted before dispatch.
     };
     let settings = guard.data.settings.clone();
     if !needs_delivery(&event, &settings, now, &guard.data.reminder_deliveries) {
         return Ok(false);
     }
     let key = delivery_key(&event);
-    let expires_at = u128::from(event.starts_at_ms).saturating_add(EVENT_GRACE_MS);
-    // Store::transact writes a temp + fsync + rename and reverts on save errors.
-    // Neither a process crash nor sleep/resume can lose a committed reservation.
+    let expires_at = reservation_expires_at(&event);
+    // Store::transact writes to an fsync'd temporary state and renames it.
     guard.transact(|data| {
-        data.reminder_deliveries.retain(|_, expiry| *expiry > now);
+        data.reminder_deliveries.retain(|_, until| *until > now);
         data.reminder_deliveries.insert(key.clone(), expires_at);
         Ok(())
     })?;
-    if let Err(error) = show(
-        app,
-        "WFS Notch · Calendar",
-        &event_message(&event, settings.notifications_show_details),
-    ) {
-        // The platform rejected the request: clear the reservation to permit
-        // another attempt on the next scheduler pass.
+    if let Err(error) = sender(&event, &settings) {
+        // OS API rejected the enqueue. Revert reservation so the native worker
+        // can retry on its next 20-second pass, assuming the event remains due.
         guard.transact(|data| {
             data.reminder_deliveries.remove(&key);
             Ok(())
@@ -177,6 +195,16 @@ fn deliver_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool
         return Err(error);
     }
     Ok(true)
+}
+
+fn deliver_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool, String> {
+    deliver_with(store, id, now_ms(), |event, settings| {
+        show(
+            app,
+            "WFS Notch · Calendar",
+            &event_message(event, settings.notifications_show_details),
+        )
+    })
 }
 
 /// Single scheduler pass; no window references or JS callbacks are involved.
@@ -187,18 +215,7 @@ fn poll_due_events(app: &AppHandle) -> Result<usize, String> {
         let guard = store
             .lock()
             .map_err(|_| "Storage lock unavailable".to_owned())?;
-        if !can_notify(&guard.data.settings) {
-            return Ok(0);
-        }
-        let now = now_ms();
-        guard
-            .data
-            .events
-            .iter()
-            .filter(|event| event_due(event, now))
-            .map(|event| event.id.clone())
-            .take(256)
-            .collect::<Vec<_>>()
+        due_event_ids(&guard.data, now_ms())
     };
     let mut delivered = 0;
     for id in due_ids {
@@ -399,6 +416,126 @@ mod tests {
         assert!(!event_due(&appointment, 3_900_000)); // stale after resume
         let changed = event(3_660_000, Some(60));
         assert!(needs_delivery(&changed, &settings, 60_000, &after_restart));
+    }
+
+    fn fixture_store(id: &str, time: u64) -> (Mutex<Store>, std::path::PathBuf) {
+        let path =
+            std::env::temp_dir().join(format!("wfs-phase13-{}-{}.json", crate::new_id(), id));
+        let mut store = Store::open(path.clone()).unwrap();
+        store
+            .transact(|data| {
+                data.settings.notifications_enabled = true;
+                data.events.push(event(time, Some(5)));
+                Ok(())
+            })
+            .unwrap();
+        (Mutex::new(store), path)
+    }
+
+    #[test]
+    fn scheduler_planner_respects_consent_edit_delete_and_clock() {
+        let settings = Settings {
+            notifications_enabled: true,
+            ..Settings::default()
+        };
+        let first = event(1_000_000, Some(5));
+        let mut data = AppData {
+            events: vec![first.clone()],
+            settings,
+            ..AppData::default()
+        };
+        assert!(due_event_ids(&data, 699_999).is_empty());
+        assert_eq!(due_event_ids(&data, 700_000), vec!["event-1"]);
+        data.settings.notifications_paused = true;
+        assert!(due_event_ids(&data, 700_000).is_empty());
+        data.settings.notifications_paused = false;
+        data.reminder_deliveries
+            .insert(delivery_key(&first), reservation_expires_at(&first));
+        assert!(due_event_ids(&data, 700_000).is_empty());
+        assert!(due_event_ids(&data, 800_000).is_empty()); // clock moved backward
+        data.events[0].starts_at_ms = 1_100_000; // edited schedule
+        assert_eq!(due_event_ids(&data, 800_000), vec!["event-1"]);
+        data.events.clear();
+        assert!(due_event_ids(&data, 800_000).is_empty());
+    }
+
+    #[test]
+    fn durable_enqueues_survive_restart_and_retry_on_sender_error() {
+        let (store, path) = fixture_store("replay", 1_800_000_000_000);
+        let mut sends = 0;
+        assert!(deliver_with(&store, "event-1", 1_799_999_700_000, |_, _| {
+            sends += 1;
+            Ok(())
+        })
+        .unwrap());
+        assert_eq!(sends, 1);
+        // Repeated polls and application restarts must not duplicate attempts.
+        assert!(!deliver_with(&store, "event-1", 1_799_999_710_000, |_, _| {
+            sends += 1;
+            Ok(())
+        })
+        .unwrap());
+        let reloaded = Mutex::new(Store::open(path.clone()).unwrap());
+        assert!(
+            !deliver_with(&reloaded, "event-1", 1_799_999_700_000, |_, _| {
+                sends += 1;
+                Ok(())
+            })
+            .unwrap()
+        );
+        assert_eq!(sends, 1);
+        reloaded
+            .lock()
+            .unwrap()
+            .transact(|data| {
+                data.events[0].starts_at_ms = 1_800_000_100_000;
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            deliver_with(&reloaded, "event-1", 1_799_999_800_000, |_, _| {
+                sends += 1;
+                Ok(())
+            })
+            .unwrap()
+        );
+        assert_eq!(sends, 2);
+        drop(reloaded);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn rejected_platform_send_releases_reservation_without_logging_titles() {
+        let (store, path) = fixture_store("failure", 1_800_000_000_000);
+        assert!(deliver_with(&store, "event-1", 1_799_999_700_000, |_, _| {
+            Err("OS notification disabled".into())
+        })
+        .is_err());
+        assert!(store.lock().unwrap().data.reminder_deliveries.is_empty());
+        assert!(
+            deliver_with(&store, "event-1", 1_799_999_700_100, |_, settings| {
+                assert!(!settings.notifications_show_details);
+                Ok(())
+            })
+            .unwrap()
+        );
+        store
+            .lock()
+            .unwrap()
+            .transact(|data| {
+                data.settings.notifications_enabled = false;
+                Ok(())
+            })
+            .unwrap();
+        assert!(!deliver_with(&store, "event-1", 1_799_999_700_200, |_, _| {
+            panic!("disabled consent must not call sender")
+        })
+        .unwrap());
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
     }
 
     #[test]

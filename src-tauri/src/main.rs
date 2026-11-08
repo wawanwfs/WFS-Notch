@@ -630,6 +630,19 @@ fn list_backups(store: State<'_, Mutex<Store>>) -> Result<Vec<BackupInfo>, Strin
     Ok(backups)
 }
 
+/// Rewinding user data must not rewind the notification-delivery history.
+/// The current local journal is authoritative for at-most-once attempts, while
+/// older backup entries may add history but never erase it.
+fn preserve_reminder_history(recovered: &mut AppData, existing: &AppData) {
+    for (key, until) in &existing.reminder_deliveries {
+        recovered
+            .reminder_deliveries
+            .entry(key.clone())
+            .and_modify(|entry| *entry = (*entry).max(*until))
+            .or_insert(*until);
+    }
+}
+
 #[tauri::command]
 fn restore_backup(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
     let mut locked = store
@@ -638,6 +651,7 @@ fn restore_backup(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData,
     let path = backup_path(&locked, &id)?;
     let mut recovered = read_state(&path)?;
     recovered.sanitize();
+    preserve_reminder_history(&mut recovered, &locked.data);
     // Restore is transactional and retains the previous state as state.json.bak.
     locked.transact(|state| {
         *state = recovered;
@@ -1004,6 +1018,37 @@ mod tests {
         assert_eq!(reloaded.data.events[0].title, "Team review");
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn backup_restore_cannot_replay_existing_reminder_reservations() {
+        let mut current = AppData::default();
+        current
+            .reminder_deliveries
+            .insert("event:1800000000000:5".into(), 1_802_592_000_000);
+        current
+            .reminder_deliveries
+            .insert("event-other:1800000000000:15".into(), 1_802_592_000_000);
+        let mut old_backup = AppData::default();
+        old_backup
+            .reminder_deliveries
+            .insert("event:1800000000000:5".into(), 1_800_000_300_000);
+        old_backup.events.push(CalendarEvent {
+            id: "event".into(),
+            title: "Private".into(),
+            starts_at_ms: 1_800_000_000_000,
+            remind_minutes: Some(5),
+            description: String::new(),
+            created_ms: 0,
+        });
+        preserve_reminder_history(&mut old_backup, &current);
+        assert_eq!(
+            old_backup.reminder_deliveries.get("event:1800000000000:5"),
+            Some(&1_802_592_000_000)
+        );
+        assert_eq!(old_backup.reminder_deliveries.len(), 2);
+        // Restore still restores event content without exposing it to the ledger.
+        assert_eq!(old_backup.events[0].title, "Private");
     }
 
     #[test]
