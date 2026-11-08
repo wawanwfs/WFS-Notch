@@ -19,8 +19,19 @@ function renderCalendarPlus() {
   const totalCells = Math.ceil((padding + lastDay) / 7) * 7;
   const countByDay = new Map();
   for (const event of data.events || []) {
-    const key = calendarLocalKey(new Date(event.starts_at_ms));
-    countByDay.set(key, (countByDay.get(key) || 0) + 1);
+    if (event.all_day) {
+      // DATE spans are civil dates, not local or UTC instant conversions.
+      // End date is exclusive; each covered date receives one calendar badge.
+      for (let day = 1; day <= lastDay; day++) {
+        const key = calendarLocalKey(new Date(year, month, day, 12));
+        if (key >= event.all_day.start_date && key < event.all_day.end_date_exclusive) {
+          countByDay.set(key, (countByDay.get(key) || 0) + 1);
+        }
+      }
+    } else {
+      const key = calendarLocalKey(new Date(event.starts_at_ms));
+      countByDay.set(key, (countByDay.get(key) || 0) + 1);
+    }
   }
   document.querySelector('#calendar-month-title').textContent =
     first.toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
@@ -59,9 +70,15 @@ function renderCalendarPlus() {
       calendarSelectedDay = key;
       const field = document.querySelector('#event-time');
       const previousTime = field.value.includes('T') ? field.value.split('T')[1] : '09:00';
-      field.value = key + 'T' + previousTime;
+      if (document.querySelector('#event-all-day').checked) {
+        document.querySelector('#event-start-date').value = key;
+        document.querySelector('#event-end-date').value = calendarLocalKey(new Date(year, month, date + 1, 12));
+        document.querySelector('#event-start-date').focus();
+      } else {
+        field.value = key + 'T' + previousTime;
+        field.focus();
+      }
       renderCalendarPlus();
-      field.focus();
     });
     container.append(button);
   }
