@@ -555,7 +555,10 @@ fn remove_event(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, S
 }
 
 // New all-day events use date-only spans, never the device's midnight timezone.
-fn parse_all_day_span(start_date: &str, end_date_exclusive: &str) -> Result<all_day::AllDaySpan, String> {
+fn parse_all_day_span(
+    start_date: &str,
+    end_date_exclusive: &str,
+) -> Result<all_day::AllDaySpan, String> {
     all_day::AllDaySpan::new(
         all_day::parse_iso_date(start_date)?,
         all_day::parse_iso_date(end_date_exclusive)?,
@@ -601,7 +604,10 @@ fn update_all_day_event(
     let starts_at_ms = span.utc_midnight_ms()?;
     validate_event(&title, &description, starts_at_ms, None)?;
     with_store(store, move |data| {
-        let event = data.events.iter_mut().find(|entry| entry.id == id)
+        let event = data
+            .events
+            .iter_mut()
+            .find(|entry| entry.id == id)
             .ok_or("Event not found")?;
         event.title = title.trim().to_owned();
         event.starts_at_ms = starts_at_ms;
@@ -613,9 +619,15 @@ fn update_all_day_event(
 }
 
 fn event_series_id(data: &AppData, id: &str) -> Result<String, String> {
-    let event = data.events.iter().find(|entry| entry.id == id)
+    let event = data
+        .events
+        .iter()
+        .find(|entry| entry.id == id)
         .ok_or("Calendar event not found")?;
-    event.series_uid.clone().ok_or("This is not an imported recurring series".into())
+    event
+        .series_uid
+        .clone()
+        .ok_or("This is not an imported recurring series".into())
 }
 
 // Change only safe shared metadata; never silently shift source instants or
@@ -625,7 +637,11 @@ fn update_series_title(data: &mut AppData, id: &str, title: &str) -> Result<(), 
     if title.trim().is_empty() || title.chars().count() > 200 {
         return Err("Series title must contain 1–200 characters".into());
     }
-    for event in data.events.iter_mut().filter(|entry| entry.series_uid.as_deref() == Some(series.as_str())) {
+    for event in data
+        .events
+        .iter_mut()
+        .filter(|entry| entry.series_uid.as_deref() == Some(series.as_str()))
+    {
         event.title = title.trim().to_owned();
     }
     Ok(())
@@ -633,12 +649,17 @@ fn update_series_title(data: &mut AppData, id: &str, title: &str) -> Result<(), 
 
 fn remove_series(data: &mut AppData, id: &str) -> Result<(), String> {
     let series = event_series_id(data, id)?;
-    data.events.retain(|event| event.series_uid.as_deref() != Some(series.as_str()));
+    data.events
+        .retain(|event| event.series_uid.as_deref() != Some(series.as_str()));
     Ok(())
 }
 
 #[tauri::command]
-fn update_event_series_title(store: State<'_, Mutex<Store>>, id: String, title: String) -> Result<AppData, String> {
+fn update_event_series_title(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    title: String,
+) -> Result<AppData, String> {
     with_store(store, move |data| update_series_title(data, &id, &title))
 }
 
@@ -1134,15 +1155,27 @@ mod tests {
             ("standalone", None),
         ] {
             state.events.push(CalendarEvent {
-                id: id.into(), title: "Before".into(), starts_at_ms: 1_800_000_000_000,
-                remind_minutes: None, description: String::new(), created_ms: 0,
-                all_day: None, series_uid: series_uid.map(str::to_owned),
+                id: id.into(),
+                title: "Before".into(),
+                starts_at_ms: 1_800_000_000_000,
+                remind_minutes: None,
+                description: String::new(),
+                created_ms: 0,
+                all_day: None,
+                series_uid: series_uid.map(str::to_owned),
             });
         }
         assert!(update_series_title(&mut state, "standalone", "No").is_err());
         assert!(remove_series(&mut state, "missing").is_err());
         update_series_title(&mut state, "ics:series:1800000000000", "After").unwrap();
-        assert_eq!(state.events.iter().filter(|event| event.title == "After").count(), 2);
+        assert_eq!(
+            state
+                .events
+                .iter()
+                .filter(|event| event.title == "After")
+                .count(),
+            2
+        );
         remove_series(&mut state, "ics:series:1800000000000").unwrap();
         assert_eq!(state.events.len(), 1);
         assert_eq!(state.events[0].id, "standalone");
