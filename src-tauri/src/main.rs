@@ -59,6 +59,27 @@ struct Todo {
     title: String,
     done: bool,
     created_ms: u128,
+    // Defaults preserve task records imported from v0.19 and earlier.
+    #[serde(default = "default_todo_priority")]
+    priority: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    due_at_ms: Option<u64>,
+}
+
+fn default_todo_priority() -> String {
+    "normal".into()
+}
+fn validate_todo_fields(title: &str, priority: &str, due_at_ms: Option<u64>) -> Result<(), String> {
+    if title.trim().is_empty() || title.trim().chars().count() > 200 {
+        return Err("Task title must contain 1–200 characters".into());
+    }
+    if !matches!(priority, "low" | "normal" | "high") {
+        return Err("Task priority must be low, normal or high".into());
+    }
+    if due_at_ms.is_some_and(|ms| !(946_684_800_000..=4_102_444_800_000).contains(&ms)) {
+        return Err("Task due date must be between year 2000 and 2100".into());
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -215,6 +236,14 @@ impl AppData {
             if habit.completed_dates.len() > 3660 {
                 let excess = habit.completed_dates.len() - 3660;
                 habit.completed_dates.drain(..excess);
+            }
+        }
+        for todo in &mut self.todos {
+            if !matches!(todo.priority.as_str(), "low" | "normal" | "high") {
+                todo.priority = default_todo_priority();
+            }
+            if todo.due_at_ms.is_some_and(|ms| !(946_684_800_000..=4_102_444_800_000).contains(&ms)) {
+                todo.due_at_ms = None;
             }
         }
         self.events.retain(|event| {
@@ -407,18 +436,42 @@ fn load_data(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
 }
 
 #[tauri::command]
-fn add_todo(store: State<'_, Mutex<Store>>, title: String) -> Result<AppData, String> {
-    let title = title.trim().to_owned();
-    if title.is_empty() || title.chars().count() > 200 {
-        return Err("Task title must contain 1–200 characters".into());
-    }
+fn add_todo(
+    store: State<'_, Mutex<Store>>,
+    title: String,
+    priority: Option<String>,
+    due_at_ms: Option<u64>,
+) -> Result<AppData, String> {
+    let priority = priority.unwrap_or_else(default_todo_priority);
+    validate_todo_fields(&title, &priority, due_at_ms)?;
     with_store(store, |state| {
         state.todos.push(Todo {
             id: new_id(),
-            title,
+            title: title.trim().to_owned(),
             done: false,
             created_ms: now_ms(),
+            priority,
+            due_at_ms,
         });
+        Ok(())
+    })
+}
+
+#[tauri::command]
+fn update_todo(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    title: String,
+    priority: String,
+    due_at_ms: Option<u64>,
+) -> Result<AppData, String> {
+    validate_todo_fields(&title, &priority, due_at_ms)?;
+    with_store(store, |state| {
+        let todo = state.todos.iter_mut().find(|todo| todo.id == id)
+            .ok_or("Task not found")?;
+        todo.title = title.trim().to_owned();
+        todo.priority = priority;
+        todo.due_at_ms = due_at_ms;
         Ok(())
     })
 }
@@ -1090,6 +1143,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             load_data,
             add_todo,
+            update_todo,
             toggle_todo,
             remove_todo,
             add_note,
@@ -1166,6 +1220,61 @@ mod tests {
     }
 
     #[test]
+    fn task_priority_due_migration_and_validation_are_backward_compatible() {
+        let old = r#"{"id":"legacy","title":"Existing task","done":false,"created_ms":1}"#;
+        let todo: Todo = serde_json::from_str(old).unwrap();
+        assert_eq!(todo.priority, "normal");
+        assert_eq!(todo.due_at_ms, None);
+        assert!(validate_todo_fields(" Ship release ", "high", Some(1_900_000_000_000)).is_ok());
+        assert!(validate_todo_fields("Task", "urgent", None).is_err());
+        assert!(validate_todo_fields(" ", "normal", None).is_err());
+        assert!(validate_todo_fields("Task", "low", Some(1)).is_err());
+        let json = serde_json::to_string(&Todo {
+            priority: "high".into(),
+            due_at_ms: Some(1_900_000_000_000),
+            ..todo
+        }).unwrap();
+        let restored: Todo = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.priority, "high");
+        assert_eq!(restored.due_at_ms, Some(1_900_000_000_000));
+    }
+
+    #[test]
+    fn task_edit_transaction_preserves_id_completion_and_rollback() {
+        let path = temp_file("task-edit");
+        let mut store = Store::open(path.clone()).unwrap();
+        store.transact(|data| {
+            data.todos.push(Todo {
+                id: "task-1".into(), title: "Before".into(), done: true,
+                created_ms: 123, priority: "normal".into(), due_at_ms: None,
+            });
+            Ok(())
+        }).unwrap();
+        store.transact(|data| {
+            let todo = data.todos.iter_mut().find(|item| item.id == "task-1").unwrap();
+            validate_todo_fields("After", "high", Some(1_900_000_000_000))?;
+            todo.title = "After".into();
+            todo.priority = "high".into();
+            todo.due_at_ms = Some(1_900_000_000_000);
+            Ok(())
+        }).unwrap();
+        let before = store.data.clone();
+        assert!(store.transact(|state| {
+            state.todos[0].title = "Would rollback".into();
+            Err("simulated persistence rejection".into())
+        }).is_err());
+        assert_eq!(store.data.todos, before.todos);
+        let loaded = Store::open(path.clone()).unwrap();
+        assert_eq!(loaded.data.todos[0].title, "After");
+        assert!(loaded.data.todos[0].done);
+        assert_eq!(loaded.data.todos[0].id, "task-1");
+        assert_eq!(loaded.data.todos[0].created_ms, 123);
+        assert_eq!(loaded.data.todos[0].priority, "high");
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
     fn persistence_roundtrip_and_legacy_migration() {
         let path = temp_file("roundtrip");
         fs::write(&path, r##"{"todos": [], "notes": [], "settings": {"accent":"#d6b77a", "hover_to_open": true}}"##).unwrap();
@@ -1181,6 +1290,8 @@ mod tests {
                     title: "Ship features".into(),
                     done: false,
                     created_ms: now_ms(),
+                    priority: "normal".into(),
+                    due_at_ms: None,
                 });
                 Ok(())
             })
@@ -1201,6 +1312,8 @@ mod tests {
                 title: "Nope".into(),
                 done: false,
                 created_ms: now_ms(),
+                priority: "normal".into(),
+                due_at_ms: None,
             });
             Err("simulated failure".into())
         });
