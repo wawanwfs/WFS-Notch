@@ -1,7 +1,9 @@
 //! Safe local iCalendar DTSTART and bounded RRULE conversion.
 //! Persisted events always contain UTC epoch milliseconds. We resolve IANA
 //! timezone rules on import; we never infer a floating timezone silently.
-use chrono::{Duration, LocalResult, NaiveDateTime, TimeZone};
+use chrono::{
+    Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Timelike, Weekday,
+};
 use chrono_tz::Tz;
 use std::collections::HashSet;
 
@@ -115,51 +117,145 @@ impl CalendarStart {
     }
 
     pub(super) fn occurrences(&self, rrule: Option<&str>) -> Result<Vec<u64>, String> {
-        let Some(rule) = rrule else {
+        let Some(text) = rrule else {
             return Ok(vec![self.instant(self.local)?]);
         };
-        let recurrence = Recurrence::parse(rule)?;
+        let rule = Recurrence::parse(text)?;
+        let start_day = self.local.date();
+        if !rule.matches(start_day, start_day)? {
+            return Err(
+                "RRULE filters do not include DTSTART; inconsistent series rejected".into(),
+            );
+        }
         let mut occurrences = Vec::new();
-        // If COUNT is omitted, test one extra occurrence to detect truncation.
-        let iterations = recurrence.count.unwrap_or(MAX_OCCURRENCES + 1);
-        for index in 0..iterations {
-            let days = (index as i64)
-                .checked_mul(recurrence.step_days)
-                .ok_or("Recurrence interval overflow")?;
-            let wall = self
-                .local
-                .checked_add_signed(Duration::days(days))
-                .ok_or("Recurrence exceeds valid dates")?;
-            let instant = self.instant(wall)?;
-            if recurrence.until.is_some_and(|limit| instant > limit) {
+        let mut finished_by_until = false;
+        // The app only accepts calendar dates 2000..2099. Scan at most 100
+        // years of civil days: bounded even for sparse leap-day/yearly rules.
+        for offset in 0..=(366 * 100_i64) {
+            let day = start_day
+                .checked_add_signed(Duration::days(offset))
+                .ok_or("RRULE date exceeds supported calendar range")?;
+            if day.year() > 2099 {
                 break;
             }
-            if occurrences.len() >= MAX_OCCURRENCES {
-                return Err(
-                    "RRULE would import more than 250 occurrences; refuse partial import".into(),
-                );
+            if !rule.matches(day, start_day)? {
+                continue;
+            }
+            let wall = day
+                .and_hms_opt(self.local.hour(), self.local.minute(), self.local.second())
+                .ok_or("Invalid recurrence wall-clock time")?;
+            let instant = self.instant(wall)?;
+            if rule.until.is_some_and(|limit| instant > limit) {
+                finished_by_until = true;
+                break;
+            }
+            if occurrences.len() == MAX_OCCURRENCES {
+                return Err("RRULE exceeds 250 occurrences; refuse partial import".into());
             }
             occurrences.push(instant);
+            if rule.count.is_some_and(|count| occurrences.len() == count) {
+                return Ok(occurrences);
+            }
         }
         if occurrences.is_empty() {
-            return Err("RRULE UNTIL occurs before DTSTART".into());
+            return Err("RRULE has no valid occurrences after DTSTART".into());
+        }
+        // COUNT without UNTIL must be achieved within 2000..2099. Returning a
+        // truncated series would silently change a user's scheduling intent.
+        if rule.count.is_some() && rule.until.is_none() {
+            return Err("RRULE COUNT exceeds supported date range; no partial import".into());
+        }
+        if rule.until.is_some()
+            && !finished_by_until
+            && rule.count.is_none()
+            && rule.until.unwrap_or(0)
+                > self.instant(
+                    NaiveDate::from_ymd_opt(2099, 12, 31)
+                        .ok_or("Invalid range end")?
+                        .and_hms_opt(23, 59, 59)
+                        .ok_or("Invalid range time")?,
+                )?
+        {
+            return Err("RRULE UNTIL exceeds supported date range".into());
         }
         Ok(occurrences)
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Frequency {
+    Daily,
+    Weekly,
+    Monthly,
+    Yearly,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WeekdaySelector {
+    day: Weekday,
+    ordinal: Option<i8>,
+}
+
+fn parse_weekday(value: &str) -> Result<Weekday, String> {
+    match value {
+        "MO" => Ok(Weekday::Mon),
+        "TU" => Ok(Weekday::Tue),
+        "WE" => Ok(Weekday::Wed),
+        "TH" => Ok(Weekday::Thu),
+        "FR" => Ok(Weekday::Fri),
+        "SA" => Ok(Weekday::Sat),
+        "SU" => Ok(Weekday::Sun),
+        _ => Err("Invalid BYDAY/WKST weekday".into()),
+    }
+}
+
+fn parse_rule_values<T>(
+    raw: &str,
+    max: usize,
+    mut parse: impl FnMut(&str) -> Result<T, String>,
+) -> Result<Vec<T>, String>
+where
+    T: Eq + std::hash::Hash + Copy,
+{
+    if raw.is_empty() || raw.split(',').count() > max {
+        return Err("RRULE list is empty or too long".into());
+    }
+    let mut seen = HashSet::new();
+    let mut values = Vec::new();
+    for entry in raw.split(',') {
+        let value = parse(entry)?;
+        if !seen.insert(value) {
+            return Err("RRULE list contains duplicates".into());
+        }
+        values.push(value);
+    }
+    Ok(values)
+}
+
 struct Recurrence {
-    step_days: i64,
+    freq: Frequency,
+    interval: i64,
     count: Option<usize>,
     until: Option<u64>,
+    weekdays: Vec<WeekdaySelector>,
+    months: Vec<u32>,
+    month_days: Vec<i32>,
+    week_start: Weekday,
 }
 
 impl Recurrence {
     fn parse(text: &str) -> Result<Self, String> {
-        let mut freq: Option<String> = None;
-        let mut interval: i64 = 1;
-        let mut count: Option<usize> = None;
-        let mut until: Option<u64> = None;
+        if text.len() > 512 {
+            return Err("RRULE exceeds 512 bytes".into());
+        }
+        let mut freq = None;
+        let mut interval = 1_i64;
+        let mut count = None;
+        let mut until = None;
+        let mut weekdays = Vec::new();
+        let mut months = Vec::new();
+        let mut month_days = Vec::new();
+        let mut week_start = Weekday::Mon;
         let mut found = HashSet::new();
         for section in text.split(';') {
             let (key, raw) = section.split_once('=').ok_or("Malformed RRULE parameter")?;
@@ -168,56 +264,195 @@ impl Recurrence {
                 return Err("Duplicate RRULE parameter".into());
             }
             match key.as_str() {
-                "FREQ" => freq = Some(raw.to_ascii_uppercase()),
+                "FREQ" => {
+                    freq = Some(match raw.to_ascii_uppercase().as_str() {
+                        "DAILY" => Frequency::Daily,
+                        "WEEKLY" => Frequency::Weekly,
+                        "MONTHLY" => Frequency::Monthly,
+                        "YEARLY" => Frequency::Yearly,
+                        _ => return Err("Unsupported RRULE FREQ".into()),
+                    })
+                }
                 "INTERVAL" => {
-                    interval = raw.parse::<i64>().map_err(|_| "Invalid RRULE INTERVAL")?;
+                    interval = raw.parse().map_err(|_| "Invalid RRULE INTERVAL")?;
                     if !(1..=365).contains(&interval) {
-                        return Err("RRULE INTERVAL must be between 1 and 365".into());
+                        return Err("RRULE INTERVAL must be 1..365".into());
                     }
                 }
                 "COUNT" => {
-                    let value = raw.parse::<usize>().map_err(|_| "Invalid RRULE COUNT")?;
-                    if !(1..=MAX_OCCURRENCES).contains(&value) {
-                        return Err("RRULE COUNT must be between 1 and 250".into());
+                    let n: usize = raw.parse().map_err(|_| "Invalid RRULE COUNT")?;
+                    if !(1..=MAX_OCCURRENCES).contains(&n) {
+                        return Err("RRULE COUNT must be 1..250".into());
                     }
-                    count = Some(value);
+                    count = Some(n);
                 }
                 "UNTIL" => {
-                    let body = raw
-                        .strip_suffix('Z')
-                        .ok_or("RRULE UNTIL must be an explicit UTC timestamp")?;
-                    let wall = local_datetime(body)?;
+                    let wall = local_datetime(
+                        raw.strip_suffix('Z')
+                            .ok_or("RRULE UNTIL must be explicit UTC")?,
+                    )?;
                     until = Some(
                         u64::try_from(wall.and_utc().timestamp_millis())
                             .map_err(|_| "RRULE UNTIL is outside the supported range")?,
                     );
                 }
-                _ => {
-                    return Err(format!(
-                        "Unsupported RRULE part {key}; nothing was imported"
-                    ))
+                "BYDAY" => {
+                    // Supported numeric ordinals are month-relative only.
+                    let entries = raw.split(',').collect::<Vec<_>>();
+                    if entries.is_empty() || entries.len() > 31 {
+                        return Err("Invalid BYDAY list length".into());
+                    }
+                    let mut seen = HashSet::new();
+                    for entry in entries {
+                        if entry.len() < 2 {
+                            return Err("Malformed BYDAY selector".into());
+                        }
+                        let (ordinal_raw, weekday_raw) = entry.split_at(entry.len() - 2);
+                        let day = parse_weekday(&weekday_raw.to_ascii_uppercase())?;
+                        let ordinal = if ordinal_raw.is_empty() {
+                            None
+                        } else {
+                            let value: i8 =
+                                ordinal_raw.parse().map_err(|_| "Invalid BYDAY ordinal")?;
+                            if value == 0 || !(-5..=5).contains(&value) {
+                                return Err("BYDAY ordinal must be -5..-1 or 1..5".into());
+                            }
+                            Some(value)
+                        };
+                        if !seen.insert((day, ordinal)) {
+                            return Err("Duplicate BYDAY selector".into());
+                        }
+                        weekdays.push(WeekdaySelector { day, ordinal });
+                    }
                 }
+                "BYMONTH" => {
+                    months = parse_rule_values(raw, 12, |part| {
+                        let n: u32 = part.parse().map_err(|_| "Invalid BYMONTH")?;
+                        if !(1..=12).contains(&n) {
+                            return Err("BYMONTH must be between 1 and 12".into());
+                        }
+                        Ok(n)
+                    })?;
+                }
+                "BYMONTHDAY" => {
+                    month_days = parse_rule_values(raw, 62, |part| {
+                        let n: i32 = part.parse().map_err(|_| "Invalid BYMONTHDAY")?;
+                        if n == 0 || !(-31..=31).contains(&n) {
+                            return Err("BYMONTHDAY must be -31..-1 or 1..31".into());
+                        }
+                        Ok(n)
+                    })?;
+                }
+                "WKST" => week_start = parse_weekday(&raw.to_ascii_uppercase())?,
+                _ => return Err(format!("Unsupported RRULE part {key}; nothing imported")),
             }
         }
-        let frequency = freq.ok_or("RRULE must specify FREQ")?;
-        let days_per_cycle = match frequency.as_str() {
-            "DAILY" => 1_i64,
-            "WEEKLY" => 7_i64,
-            _ => {
-                return Err(
-                    "Only simple DAILY/WEEKLY RRULE without BYDAY/BYMONTH is supported".into(),
-                )
-            }
-        };
+        let freq = freq.ok_or("RRULE requires FREQ")?;
         if count.is_none() && until.is_none() {
             return Err("Unbounded RRULE requires COUNT or UTC UNTIL".into());
         }
+        if weekdays.iter().any(|rule| rule.ordinal.is_some()) {
+            if !matches!(freq, Frequency::Monthly | Frequency::Yearly) {
+                return Err("Numbered BYDAY requires MONTHLY or YEARLY frequency".into());
+            }
+            if freq == Frequency::Yearly && months.is_empty() {
+                return Err("Year-relative numeric BYDAY without BYMONTH is not supported".into());
+            }
+        }
         Ok(Self {
-            step_days: days_per_cycle * interval,
+            freq,
+            interval,
             count,
             until,
+            weekdays,
+            months,
+            month_days,
+            week_start,
         })
     }
+
+    fn matches(&self, day: NaiveDate, origin: NaiveDate) -> Result<bool, String> {
+        let days = day.signed_duration_since(origin).num_days();
+        if days < 0 {
+            return Ok(false);
+        }
+        let month_delta = i64::from(day.year() - origin.year()) * 12 + i64::from(day.month())
+            - i64::from(origin.month());
+        let active_period = match self.freq {
+            Frequency::Daily => days % self.interval == 0,
+            Frequency::Weekly => {
+                let offset = (i64::from(origin.weekday().num_days_from_monday())
+                    - i64::from(self.week_start.num_days_from_monday()))
+                .rem_euclid(7);
+                let since_week_start = days + offset;
+                (since_week_start / 7) % self.interval == 0
+            }
+            Frequency::Monthly => month_delta >= 0 && month_delta % self.interval == 0,
+            Frequency::Yearly => {
+                let years = i64::from(day.year() - origin.year());
+                years >= 0 && years % self.interval == 0
+            }
+        };
+        if !active_period {
+            return Ok(false);
+        }
+        if !self.months.is_empty() && !self.months.contains(&day.month()) {
+            return Ok(false);
+        }
+        let last = last_day_of_month(day.year(), day.month())?;
+        if !self.month_days.is_empty()
+            && !self.month_days.iter().any(|n| {
+                let wanted = if *n > 0 { *n } else { last as i32 + 1 + *n };
+                i32::try_from(day.day()).is_ok_and(|d| d == wanted)
+            })
+        {
+            return Ok(false);
+        }
+        if !self.weekdays.is_empty() {
+            if !self.weekdays.iter().any(|selected| {
+                if selected.day != day.weekday() {
+                    return false;
+                }
+                match selected.ordinal {
+                    None => true,
+                    Some(n) if n > 0 => ((day.day() - 1) / 7 + 1) as i8 == n,
+                    Some(n) => -(((last - day.day()) / 7 + 1) as i8) == n,
+                }
+            }) {
+                return Ok(false);
+            }
+        } else if self.freq == Frequency::Weekly && day.weekday() != origin.weekday() {
+            return Ok(false);
+        }
+
+        if matches!(self.freq, Frequency::Monthly | Frequency::Yearly)
+            && self.weekdays.is_empty()
+            && self.month_days.is_empty()
+            && day.day() != origin.day()
+        {
+            return Ok(false);
+        }
+        if self.freq == Frequency::Yearly
+            && self.months.is_empty()
+            && self.weekdays.is_empty()
+            && self.month_days.is_empty()
+            && day.month() != origin.month()
+        {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+}
+
+fn last_day_of_month(year: i32, month: u32) -> Result<u32, String> {
+    let (next_year, next_month) = if month == 12 {
+        (year.checked_add(1).ok_or("RRULE year overflow")?, 1)
+    } else {
+        (year, month + 1)
+    };
+    let next =
+        NaiveDate::from_ymd_opt(next_year, next_month, 1).ok_or("RRULE has invalid month")?;
+    Ok(next.pred_opt().ok_or("RRULE day underflow")?.day())
 }
 
 #[cfg(test)]
@@ -306,10 +541,20 @@ mod tests {
         assert!(start
             .occurrences(Some("FREQ=DAILY;UNTIL=20991231T235959Z"))
             .is_err());
-        assert!(start.occurrences(Some("FREQ=MONTHLY;COUNT=2")).is_err());
-        assert!(start
-            .occurrences(Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=3"))
-            .is_err());
+        assert_eq!(
+            start.occurrences(Some("FREQ=MONTHLY;COUNT=2")).unwrap(),
+            vec![ms("20270614T113000Z"), ms("20270714T113000Z")]
+        );
+        assert_eq!(
+            start
+                .occurrences(Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=3"))
+                .unwrap(),
+            vec![
+                ms("20270614T113000Z"),
+                ms("20270616T113000Z"),
+                ms("20270621T113000Z")
+            ]
+        );
         assert_eq!(
             start
                 .occurrences(Some("FREQ=DAILY;UNTIL=20270615T110000Z"))
@@ -324,6 +569,99 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    #[test]
+    fn monthly_recurrence_skips_short_months_instead_of_clamping() {
+        let jan = CalendarStart::parse("DTSTART", "20270131T120000Z", None).unwrap();
+        assert_eq!(
+            jan.occurrences(Some("FREQ=MONTHLY;COUNT=3")).unwrap(),
+            vec![
+                ms("20270131T120000Z"),
+                ms("20270331T120000Z"),
+                ms("20270531T120000Z")
+            ]
+        );
+        let leap = CalendarStart::parse("DTSTART", "20280229T120000Z", None).unwrap();
+        assert_eq!(
+            leap.occurrences(Some("FREQ=YEARLY;COUNT=3")).unwrap(),
+            vec![
+                ms("20280229T120000Z"),
+                ms("20320229T120000Z"),
+                ms("20360229T120000Z")
+            ]
+        );
+    }
+
+    #[test]
+    fn monthly_ordinal_and_negative_monthday_are_deterministic() {
+        let first = CalendarStart::parse("DTSTART", "20270104T080000Z", None).unwrap();
+        assert_eq!(
+            first
+                .occurrences(Some("FREQ=MONTHLY;BYDAY=1MO;COUNT=3"))
+                .unwrap(),
+            vec![
+                ms("20270104T080000Z"),
+                ms("20270201T080000Z"),
+                ms("20270301T080000Z")
+            ]
+        );
+        let last = CalendarStart::parse("DTSTART", "20270131T080000Z", None).unwrap();
+        assert_eq!(
+            last.occurrences(Some("FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=3"))
+                .unwrap(),
+            vec![
+                ms("20270131T080000Z"),
+                ms("20270228T080000Z"),
+                ms("20270331T080000Z")
+            ]
+        );
+    }
+
+    #[test]
+    fn weekly_wkst_and_multi_day_byday_preserve_local_time() {
+        let start =
+            CalendarStart::parse("DTSTART;TZID=America/New_York", "20270313T093000", None).unwrap();
+        assert_eq!(
+            start
+                .occurrences(Some("FREQ=WEEKLY;INTERVAL=2;WKST=MO;BYDAY=SA,SU;COUNT=4"))
+                .unwrap(),
+            vec![
+                ms("20270313T143000Z"),
+                ms("20270314T133000Z"),
+                ms("20270327T133000Z"),
+                ms("20270328T133000Z")
+            ]
+        );
+    }
+
+    #[test]
+    fn yearly_by_month_and_by_day_filters_respect_bounds() {
+        let start = CalendarStart::parse("DTSTART", "20270614T120000Z", None).unwrap();
+        assert_eq!(
+            start
+                .occurrences(Some("FREQ=YEARLY;BYMONTH=6;BYMONTHDAY=14;COUNT=3"))
+                .unwrap(),
+            vec![
+                ms("20270614T120000Z"),
+                ms("20280614T120000Z"),
+                ms("20290614T120000Z")
+            ]
+        );
+        for rule in [
+            "FREQ=MONTHLY;COUNT=3;BYSETPOS=1",
+            "FREQ=WEEKLY;BYDAY=1MO;COUNT=3",
+            "FREQ=YEARLY;BYDAY=-1MO;COUNT=3",
+            "FREQ=MONTHLY;BYMONTHDAY=0;COUNT=3",
+            "FREQ=YEARLY;BYMONTH=13;COUNT=3",
+            "FREQ=YEARLY;WKST=XX;COUNT=3",
+            "FREQ=MONTHLY;BYDAY=0MO;COUNT=3",
+        ] {
+            assert!(
+                start.occurrences(Some(rule)).is_err(),
+                "Invalid/unsupported {rule}"
+            );
+        }
     }
 
     #[test]

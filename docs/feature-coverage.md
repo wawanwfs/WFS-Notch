@@ -9,14 +9,14 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.16.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.17.0 source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware manual placement plus opt-in Win32 foreground fullscreen guard (excluding spanning windows) / display hotplug polling; real device/hover/pass-through QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
 | Appearance / glass / animations | Partial | Accent, reduced-motion-friendly compact/expanded transitions and narrow-viewport scrolling; reference glass/animation library/layout editor missing |
 | Music & transport controls | Partial | GSMTC selected session metadata, artwork, timeline normalization and control capability checks; lyrics and native Windows player regression missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
-| Desktop calendar | Partial | Month grid, date-only DATE/DTEND all-day spans, timed UTC/IANA TZID/explicit floating import, simple bounded DAILY/WEEKLY expansion with EXDATE/RDATE, strict UTC/IANA timed DTEND/DURATION with 366-day maximum, UTC or DATE ICS export, edit-one or rename/delete-series actions, durable cancellation keys preventing unintended reimport, and local reminders; complex RRULE/BYDAY, RECURRENCE-ID overrides, full series schedule editing, file picker and cloud sync missing |
+| Desktop calendar | Partial | Month grid, date-only DATE/DTEND all-day spans, timed UTC/IANA TZID/explicit floating import, bounded DAILY/WEEKLY/MONTHLY/YEARLY expansion with BYDAY, BYMONTH, BYMONTHDAY, WKST, EXDATE/RDATE, versioned saved source rule/exception metadata, strict UTC/IANA timed DTEND/DURATION with 366-day maximum, UTC or DATE ICS export, edit-one or rename/delete-series actions, durable cancellation keys preventing unintended reimport, and local reminders; faithful original RRULE export, BYSETPOS/other unsupported RFC combinations, RECURRENCE-ID overrides, full series schedule editing, file picker and cloud sync missing |
 | Todo | Partial | CRUD; reminders, recurring, natural language parsing, snooze missing |
 | Notes | Partial | Local CRUD/autosave, full-text search and question::answer flashcards; rich editing and tagging missing |
 | Focus/Pomodoro | Partial | Preset focus; automatic work-break cycles and sounds missing |
@@ -50,9 +50,9 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Data backup | Partial | Local JSON snapshots/restore; portable import/export missing |
 | Self-update | Gap | Signed updater, portable notification |
 
-## Phase 16 weighted score (38 categories)
+## Phase 17 weighted score (38 categories)
 
-Counts: **Implemented 3**, **Partial 16**, **Gap 19**. Formula: (3 × 1 + 16 × 0.5 + 19 × 0) / 38 × 100 = **28.9%** (rounded to one decimal). This remains unchanged from v0.15.0: significant progress *within* partial categories does not promote an entire category to Implemented without completing its scope. CI results and real Windows tests are tracked separately in `docs/PHASE16_REPORT.md`.
+Counts: **Implemented 3**, **Partial 16**, **Gap 19**. Formula: (3 × 1 + 16 × 0.5 + 19 × 0) / 38 × 100 = **28.9%** (rounded to one decimal). This remains unchanged from v0.16.0: significant progress *within* partial categories does not promote an entire category to Implemented without completing its scope. CI results and real Windows tests are tracked separately in `docs/PHASE17_REPORT.md`.
 
 ## Gate for accurate 100% claim
 

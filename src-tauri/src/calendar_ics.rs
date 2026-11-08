@@ -1,13 +1,15 @@
 //! Local-only, bounded RFC 5545 iCalendar interchange.
 //! UTC, IANA TZID, and explicit user-selected floating timezones are resolved to UTC.
-//! Simple daily/weekly recurrence is materialized as stable local event occurrences.
-//! DATE and timed DTEND are supported; complex RRULE and RECURRENCE-ID fail closed.
+//! Bounded DAILY/WEEKLY/MONTHLY/YEARLY RRULEs are expanded into local instances.
+//! Source recurrence metadata is retained with an explicit version; RFC5545
+//! RECURRENCE-ID overrides and non-representable recurrence parts fail closed.
 use crate::{
     all_day::{parse_ics_date, AllDaySpan},
     ics_time::CalendarStart,
     new_id, now_ms, validate_event, validate_timed_end, with_store, AppData, CalendarEvent, Store,
 };
 use chrono::{DateTime, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Mutex};
 use tauri::State;
 
@@ -20,6 +22,7 @@ struct PartialEvent {
     title: Option<String>,
     description: String,
     start: Option<CalendarStart>,
+    start_property: Option<(String, String)>,
     all_day_start: Option<NaiveDate>,
     end_property: Option<(String, String)>,
     duration_property: Option<String>,
@@ -28,6 +31,48 @@ struct PartialEvent {
     recurrence: Option<String>,
     exdates: Vec<(String, String)>,
     rdates: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct SeriesSource {
+    // Persist the original normalized source without reconstructing it from
+    // flattened occurrences, which may have individual user edits.
+    pub schema_version: u8,
+    pub uid: String,
+    pub title: String,
+    pub description: String,
+    pub dtstart: (String, String),
+    pub dtend: Option<(String, String)>,
+    pub duration: Option<String>,
+    pub rrule: Option<String>,
+    pub exdates: Vec<(String, String)>,
+    pub rdates: Vec<(String, String)>,
+    pub floating_timezone: Option<String>,
+    // Explicit overrides are tracked, never silently replaced on reimport.
+    #[serde(default)]
+    pub modified_occurrence_ids: HashSet<String>,
+}
+impl SeriesSource {
+    pub(super) fn valid(&self, id: &str) -> bool {
+        self.schema_version == 1
+            && id == self.uid
+            && id.starts_with("ics:")
+            && id.len() <= 180
+            && !id.chars().any(char::is_control)
+            && !self.title.trim().is_empty()
+            && self.title.chars().count() <= 200
+            && self.description.chars().count() <= 2000
+            && self.dtstart.0.starts_with("DTSTART")
+            && self.dtstart.0.len() <= 110
+            && self.dtstart.1.len() <= 80
+            && self.rrule.as_ref().is_none_or(|rule| rule.len() <= 512)
+            && self.exdates.len() <= 250
+            && self.rdates.len() <= 250
+            && self.modified_occurrence_ids.len() <= 250
+            && self.modified_occurrence_ids.iter().all(|key| {
+                key.starts_with(id) && key.len() <= 240 && !key.chars().any(char::is_control)
+            })
+    }
 }
 #[cfg(test)]
 fn days_in_month(year: i64, month: i64) -> i64 {
@@ -273,7 +318,10 @@ fn parse_timed_duration(raw: &str) -> Result<u64, String> {
         .ok_or_else(|| "DURATION overflow".to_owned())
 }
 
-fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<CalendarEvent>, String> {
+fn parse_ics_bundle(
+    source: &str,
+    floating_timezone: Option<&str>,
+) -> Result<(Vec<CalendarEvent>, Vec<SeriesSource>), String> {
     if source.len() > MAX_ICS_BYTES {
         return Err("ICS input exceeds 256 KiB safety limit".into());
     }
@@ -292,6 +340,7 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
     let mut in_alarm = false;
     let mut current: Option<PartialEvent> = None;
     let mut events = Vec::new();
+    let mut sources = Vec::new();
     for line in unfolded {
         let Some((full_key, raw_value)) = line.split_once(':') else {
             continue;
@@ -421,6 +470,36 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                     );
                 }
                 let series_uid = is_series.then_some(base_id.clone());
+                if is_series {
+                    let source_id = base_id.clone();
+                    if sources
+                        .iter()
+                        .any(|item: &SeriesSource| item.uid == source_id)
+                    {
+                        return Err("Duplicate recurring source UID; no events imported".into());
+                    }
+                    let source = SeriesSource {
+                        schema_version: 1,
+                        uid: source_id.clone(),
+                        title: title.clone(),
+                        description: event.description.clone(),
+                        dtstart: event
+                            .start_property
+                            .clone()
+                            .ok_or("Missing source DTSTART")?,
+                        dtend: event.end_property.clone(),
+                        duration: event.duration_property.clone(),
+                        rrule: event.recurrence.clone(),
+                        exdates: event.exdates.clone(),
+                        rdates: event.rdates.clone(),
+                        floating_timezone: floating_timezone.map(str::to_owned),
+                        modified_occurrence_ids: HashSet::new(),
+                    };
+                    if !source.valid(&source_id) {
+                        return Err("ICS series metadata is outside safe persistence bounds".into());
+                    }
+                    sources.push(source);
+                }
                 let first_instant = base_span
                     .as_ref()
                     .map(AllDaySpan::utc_midnight_ms)
@@ -500,6 +579,7 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                             if event.start.is_some() || event.all_day_start.is_some() {
                                 return Err("Duplicate DTSTART".into());
                             }
+                            event.start_property = Some((full_key.to_owned(), value.to_owned()));
                             if full_key.to_ascii_uppercase().contains("VALUE=DATE")
                                 || value.len() == 8
                             {
@@ -544,8 +624,14 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
     if !calendar_open || !calendar_end || current.is_some() || events.is_empty() {
         return Err("Expected a complete VCALENDAR containing at least one VEVENT".into());
     }
-    Ok(events)
+    Ok((events, sources))
 }
+
+#[cfg(test)]
+fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<CalendarEvent>, String> {
+    Ok(parse_ics_bundle(source, floating_timezone)?.0)
+}
+
 fn serialize_ics(events: &[CalendarEvent]) -> Result<String, String> {
     let mut output = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//WFS Notch//Local Calendar 1.0//EN\r\nCALSCALE:GREGORIAN\r\n");
     for event in events {
@@ -667,8 +753,26 @@ pub fn import_ics(
     ics_text: String,
     floating_timezone: Option<String>,
 ) -> Result<AppData, String> {
-    let incoming = parse_ics(&ics_text, floating_timezone.as_deref())?;
-    with_store(store, move |data| merge_imported_events(data, incoming))
+    let (incoming, sources) = parse_ics_bundle(&ics_text, floating_timezone.as_deref())?;
+    with_store(store, move |data| {
+        merge_imported_events(data, incoming)?;
+        for source in sources {
+            if data.calendar_tombstones.contains(&source.uid) {
+                continue;
+            }
+            if !data.calendar_series.contains_key(&source.uid) && data.calendar_series.len() >= 250
+            {
+                return Err("Stored ICS series limit (250) exceeded".into());
+            }
+            // Preserve existing source and local per-occurrence edit markers on
+            // reimport. Updating the source schedule requires a separate safe
+            // explicit operation, not an accidental import side effect.
+            data.calendar_series
+                .entry(source.uid.clone())
+                .or_insert(source);
+        }
+        Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -765,7 +869,7 @@ mod tests {
     #[test]
     fn unsupported_rrule_override_and_timed_end_fail_atomically() {
         for suffix in [
-            "RRULE:FREQ=MONTHLY;COUNT=2\n",
+            "RRULE:FREQ=MONTHLY;BYSETPOS=1;COUNT=2\n",
             "RRULE:FREQ=DAILY;COUNT=251\n",
             "RRULE:FREQ=DAILY;COUNT=2\nRECURRENCE-ID:20270615T113000Z\n",
             "DTEND:20270614T103000Z\n",
@@ -897,6 +1001,85 @@ mod tests {
         recovered.events.retain(|entry| entry.id != canceled_id);
         merge_imported_events(&mut recovered, incoming).unwrap();
         assert_eq!(recovered.events.len(), 2);
+    }
+
+    #[test]
+    fn source_series_metadata_keeps_rrule_exceptions_and_user_edits_across_json() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:source17@example.org\nSUMMARY:Imported plan\nDESCRIPTION:Private note\nDTSTART:20270614T113000Z\nDTEND:20270614T123000Z\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4\nEXDATE:20270616T113000Z\nRDATE:20270630T113000Z\nEND:VEVENT\nEND:VCALENDAR";
+        let (occurrences, sources) = parse_ics_bundle(input, None).unwrap();
+        assert_eq!(occurrences.len(), 4);
+        assert_eq!(sources.len(), 1);
+        let mut state = AppData::default();
+        merge_imported_events(&mut state, occurrences.clone()).unwrap();
+        for source in sources {
+            assert!(source.valid(&source.uid));
+            state.calendar_series.insert(source.uid.clone(), source);
+        }
+        let key = "ics:source17@example.org";
+        let source = state.calendar_series.get(key).unwrap();
+        assert_eq!(source.schema_version, 1);
+        assert_eq!(
+            source.rrule.as_deref(),
+            Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4")
+        );
+        assert_eq!(source.exdates.len(), 1);
+        assert_eq!(source.rdates.len(), 1);
+        assert_eq!(source.dtend.as_ref().unwrap().1, "20270614T123000Z");
+        let changed = occurrences[1].id.clone();
+        state.events[1].description = "A user edit".to_owned();
+        state
+            .calendar_series
+            .get_mut(key)
+            .unwrap()
+            .modified_occurrence_ids
+            .insert(changed);
+        let json = serde_json::to_string(&state).unwrap();
+        let mut restored: AppData = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            restored.calendar_series.get(key),
+            state.calendar_series.get(key)
+        );
+        merge_imported_events(&mut restored, occurrences).unwrap();
+        assert_eq!(restored.events.len(), 4);
+        assert_eq!(restored.events[1].description, "A user edit");
+        let first_id = restored.events[0].id.clone();
+        crate::update_series_title(&mut restored, &first_id, "Retitled").unwrap();
+        assert_eq!(restored.calendar_series.get(key).unwrap().title, "Retitled");
+        crate::remove_series(&mut restored, &first_id).unwrap();
+        assert!(restored.calendar_series.is_empty());
+        assert!(restored.calendar_tombstones.contains(key));
+    }
+
+    #[test]
+    fn complex_monthly_and_yearly_ics_are_bounded_and_export_flattens() {
+        let monthly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:monthly17@example.org\nSUMMARY:Every last Monday\nDTSTART:20270125T090000Z\nRRULE:FREQ=MONTHLY;BYDAY=-1MO;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
+        let (events, source) = parse_ics_bundle(monthly, None).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(
+            events[0].starts_at_ms,
+            utc_to_ms("20270125T090000Z").unwrap()
+        );
+        assert_eq!(
+            events[1].starts_at_ms,
+            utc_to_ms("20270222T090000Z").unwrap()
+        );
+        assert_eq!(
+            events[2].starts_at_ms,
+            utc_to_ms("20270329T090000Z").unwrap()
+        );
+        assert_eq!(
+            source[0].rrule.as_deref(),
+            Some("FREQ=MONTHLY;BYDAY=-1MO;COUNT=3")
+        );
+        assert!(!serialize_ics(&events).unwrap().contains("RRULE:"));
+        let yearly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:leap17@example.org\nSUMMARY:Leap\nDTSTART;VALUE=DATE:20280229\nRRULE:FREQ=YEARLY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
+        let days = parse_ics(yearly, None).unwrap();
+        assert_eq!(
+            days.iter()
+                .map(|e| e.all_day.as_ref().unwrap().start_date.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2028-02-29", "2032-02-29", "2036-02-29"]
+        );
     }
 
     #[test]
