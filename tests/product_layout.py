@@ -10,6 +10,7 @@ expected = [
     'src/styles/base.css', 'src-tauri/src/main.rs',
     'src-tauri/src/wellness.rs', 'docs/architecture.md',
     'docs/security.md', 'tests/static_audit.py',
+    'scripts/prepare-nsis.ps1',
 ]
 for name in expected:
     assert (root / name).is_file(), f'Missing project file: {name}'
