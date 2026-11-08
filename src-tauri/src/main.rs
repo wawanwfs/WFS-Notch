@@ -1763,7 +1763,10 @@ mod tests {
         let recovered = Store::open(path.clone()).unwrap();
         assert_eq!(recovered.data.settings.accent, "#111111");
         assert_eq!(read_state(&path).unwrap().settings.accent, "#111111");
-        assert_eq!(fs::read_to_string(&backup).unwrap(), "{broken latest backup");
+        assert_eq!(
+            fs::read_to_string(&backup).unwrap(),
+            "{broken latest backup"
+        );
         let prefix = path.file_stem().unwrap().to_string_lossy();
         for entry in fs::read_dir(path.parent().unwrap()).unwrap().flatten() {
             if entry
@@ -1793,7 +1796,11 @@ mod tests {
         }
         let backup = path.with_extension("json.bak");
         let previous = path.with_extension("json.bak.prev");
-        let before = (fs::read(&path).unwrap(), fs::read(&backup).unwrap(), fs::read(&previous).unwrap());
+        let before = (
+            fs::read(&path).unwrap(),
+            fs::read(&backup).unwrap(),
+            fs::read(&previous).unwrap(),
+        );
         // Make the staging path a directory to force a deterministic write error
         // without changing permissions or touching production data.
         let staging = path.with_extension("json.tmp");
