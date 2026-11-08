@@ -5,6 +5,7 @@ on GitHub for stronger guarantees. Doesn't run for pull_request jobs.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,17 @@ NAME = 'WAHYU FAJAR SETIAWAN'
 
 def git(*arguments: str) -> str:
     return subprocess.check_output(['git', *arguments], text=True).strip()
+
+
+def allowed_committer(parent_count: int, committer: list[str], subject: str) -> bool:
+    if committer == [NAME, EMAIL]:
+        return True
+    # GitHub squash-merge metadata is platform-generated; retain owner identity.
+    if committer != ['GitHub', 'noreply@github.com']:
+        return False
+    if parent_count == 2:
+        return True
+    return parent_count == 1 and re.search(r'\(#\d+\)$', subject) is not None
 
 
 def main() -> int:
@@ -46,13 +58,10 @@ def main() -> int:
         author = git('show', '-s', '--format=%an%x00%ae', sha).split('\x00')
         committer = git('show', '-s', '--format=%cn%x00%ce', sha).split('\x00')
         parent_count = len(git('show', '-s', '--format=%P', sha).split())
-        # GitHub legitimately creates the committer identity for a merge commit.
-        # The author must still be the owner and the push actor must be @wawanwfs.
-        github_merge = (
-            parent_count == 2
-            and committer == ['GitHub', 'noreply@github.com']
-        )
-        if author != [NAME, EMAIL] or (committer != [NAME, EMAIL] and not github_merge):
+        # Accept GitHub-generated PR merges, including squash merges.
+        # Author and push actor remain strictly the configured owner identity.
+        subject = git('show', '-s', '--format=%s', sha)
+        if author != [NAME, EMAIL] or not allowed_committer(parent_count, committer, subject):
             print(f'FAIL: commit {sha} author={author} committer={committer}')
             return 1
     print(f'PASS: @{OWNER} pushed {len(hashes)} commit(s) with configured author/committer metadata')
