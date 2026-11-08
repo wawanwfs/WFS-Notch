@@ -1,3 +1,11 @@
+## 0.18.0 — Verified ICS recurrence-master export (Phase 18.1A)
+
+- Preserve one original validated RRULE/EXDATE/RDATE ICS master VEVENT for a completely unchanged imported recurrence series, using strict re-expansion to compare every local occurrence, title, description, interval, timezone, all-day range, timed end and reminder.
+- If any occurrence was edited, deleted, canceled, or lacks reliable persisted source metadata, explicitly fall back to independent flattened events; never export a master alongside duplicate materialized occurrences or recreate a deleted event on round-trip.
+- Retain source notification reminders in new recurrence metadata; pre-0.18 series with a non-recoverable alarm fall back safely without losing reminders. Source input is folded with control-character rejection to prevent ICS property injection.
+- Added five Rust regression tests for source-master round-trip, individual edits, tombstones, original timezone/monthly recurrence, legacy alarms and malformed source metadata. Local-only manual copy/paste export remains; native file picker and RECURRENCE-ID override semantics not yet available.
+- CI/Windows hardware: acceptance depends on current PR and post-merge GitHub Actions; real interactive Windows 10/11 QA NOT TESTED. Fixed 38-category weighted parity remains 28.9%.
+
 ## 0.17.0 — Bounded monthly/yearly RFC5545 recurrence + versioned source series (development)
 
 - Expand bounded DAILY/WEEKLY/MONTHLY/YEARLY RRULE with COUNT/UTC UNTIL/INTERVAL, BYDAY (including supported month-relative ordinals), WKST, BYMONTH and BYMONTHDAY (negative indices); reject unsupported parts rather than silently misreading. Leap days, missing month-end days and DST ambiguity are covered by Rust tests.
