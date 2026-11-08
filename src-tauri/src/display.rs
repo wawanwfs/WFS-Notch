@@ -85,6 +85,22 @@ fn monitor_id(monitor: &tauri::Monitor, monitors: &[tauri::Monitor]) -> String {
     persisted_monitor_id(name, position.x, position.y, unique)
 }
 
+fn monitor_matches_preference(
+    monitor: &tauri::Monitor,
+    all: &[tauri::Monitor],
+    preference: &str,
+) -> bool {
+    if monitor_id(monitor, all) == preference {
+        return true;
+    }
+    // Old v0.20 and earlier preferences used only the physical origin.
+    // Preserve their exact selection until the user re-selects a device-name
+    // option; never infer a new monitor from a changed old coordinate.
+    let position = monitor.position();
+    preference.starts_with("origin:")
+        && preference == format!("origin:{}:{}", position.x, position.y)
+}
+
 fn select_monitor(
     window: &WebviewWindow,
     preference: &str,
@@ -95,7 +111,7 @@ fn select_monitor(
     } else {
         monitors
             .iter()
-            .find(|monitor| monitor_id(monitor, &monitors) == preference)
+            .find(|monitor| monitor_matches_preference(monitor, &monitors, preference))
             .cloned()
     };
     if preferred.is_some() {
@@ -388,7 +404,7 @@ pub fn set_display_preference(
         let available = window.available_monitors().map_err(|e| e.to_string())?;
         let connected = available
             .iter()
-            .any(|monitor| self::monitor_id(monitor, &available) == monitor_id);
+            .any(|monitor| self::monitor_matches_preference(monitor, &available, &monitor_id));
         if !connected {
             return Err("Selected display is disconnected. Select Primary display instead.".into());
         }
