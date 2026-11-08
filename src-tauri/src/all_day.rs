@@ -105,7 +105,7 @@ impl AllDaySpan {
     pub(super) fn ics_date(value: &str) -> Result<String, String> {
         let date = parse_iso_date(value).or_else(|_| {
             NaiveDate::parse_from_str(value, "%Y-%m-%d")
-                .map_err(|_| "Invalid exclusive all-day date".into())
+                .map_err(|_| "Invalid exclusive all-day date".to_owned())
         })?;
         Ok(date.format("%Y%m%d").to_string())
     }
