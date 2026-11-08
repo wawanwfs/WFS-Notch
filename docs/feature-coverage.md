@@ -9,7 +9,7 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.17.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.18.0 source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware manual placement plus opt-in Win32 foreground fullscreen guard (excluding spanning windows) / display hotplug polling; real device/hover/pass-through QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
