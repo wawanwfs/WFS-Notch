@@ -340,6 +340,7 @@ mod tests {
             created_ms: 0,
             all_day: None,
             series_uid: None,
+            ends_at_ms: None,
         }
     }
 
