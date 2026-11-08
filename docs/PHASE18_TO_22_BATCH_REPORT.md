@@ -79,3 +79,15 @@ No proprietary third-party app source/assets or unlicensed lyrics were copied. N
 **38 fixed categories: 3 Implemented, 16 Partial, 19 Gap = 28.9%.** Calendar, Notifications, Todo and compact/expanded monitor behavior remain Partial. Internal workstream progress does not automatically advance reference parity.
 
 Continue with [NEXT_ACCELERATED_BATCH_PROMPT.md](NEXT_ACCELERATED_BATCH_PROMPT.md), which groups the remaining work into multiple PRs without requiring one-sentence repeated continuations. Each PR must pass exact-current-head CI and final-main verification.
+
+## Workstream A — verified merged v0.23.0
+
+PR [#26](https://github.com/wawanwfs/WFS-Notch/pull/26) merged into main `a7b478cc95de88f4b109e550b59ebd5e00d550e8`. Exact-main [CI 42513155235](https://github.com/wawanwfs/WFS-Notch/actions/runs/42513155235) **PASS**. Artifacts: [unsigned NSIS](https://github.com/wawanwfs/WFS-Notch/actions/runs/42513155235/artifacts/13630032749), [unsigned portable](https://github.com/wawanwfs/WFS-Notch/actions/runs/42513155235/artifacts/13630261632), [SHA256SUMS](https://github.com/wawanwfs/WFS-Notch/actions/runs/42513155235/artifacts/13630052625), [64 screenshots](https://github.com/wawanwfs/WFS-Notch/actions/runs/42513155235/artifacts/13630900060).
+
+The only schedule move implemented is a guarded atomic *one-time* whole-day shift of untouched UTC/all-day local recurrence instances. Full RECURRENCE-ID and DST-aware recurrence master edits remain not implemented. Interactive native Windows 10/11 remains NOT TESTED.
+
+## Workstream F — private Notes tags v0.24.0 PR #27 candidate
+
+Draft [PR #27](https://github.com/wawanwfs/WFS-Notch/pull/27) adds bounded persisted tags, old JSON migration, tag filter and tag-aware search, and Rust/browser tests. **The PR is not merged or release-ready until PR-head Windows CI and exact post-merge main CI pass.** All Notes remain stored only on the device, with text-only labels and no network indexing.
+
+Do not mark Notes fully implemented: folders, rich text, robust conflict handling, undo and structured export/import remain incomplete. REA weighted 38-category parity still 3 Implemented / 16 Partial / 19 Gap = 28.9%.
