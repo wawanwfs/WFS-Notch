@@ -302,6 +302,9 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                     return Err("ICS event has no remaining occurrences or exceeds the 250-event import limit".into());
                 }
                 let is_series = event.recurrence.is_some() || !event.rdates.is_empty();
+                if is_series && !event.uid.as_deref().is_some_and(|uid| valid_uid(uid) && uid.len() <= 128) {
+                    return Err("Recurring imports require a stable UID of at most 128 bytes".into());
+                }
                 let series_uid = is_series.then_some(base_id.clone());
                 let first_instant = base_span.as_ref()
                     .map(AllDaySpan::utc_midnight_ms)
