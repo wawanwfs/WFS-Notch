@@ -7,3 +7,14 @@
 .media-progress>span {display:block;background:var(--accent,#d6b77a);height:100%;width:0%;transition:width .4s linear;}
 .media-time {display:flex;justify-content:space-between;gap:10px;font-size:.75rem;color:#d7d5d1;}
 .now-playing button {justify-self:start;}
+
+.selected-player {padding:12px 14px;margin:10px 0 16px;border-radius:13px;border:1px solid rgba(214,183,122,.22);background:rgba(255,255,255,.027);display:grid;gap:9px}
+.selected-player label {font-size:.77rem;font-weight:650;color:#e7dbbd}
+.selected-player select {border-radius:9px;border:1px solid rgba(255,255,255,.16);background:#17191e;color:#f5f0e9;padding:9px 11px;min-width:0;width:100%}
+.selected-player-actions {display:flex;flex-wrap:wrap;gap:8px}
+.selected-player-actions button {flex:1;min-height:36px;white-space:nowrap}
+.selected-player #media-player-status {margin:0}
+.privacy-settings {border-radius:13px;border:1px solid rgba(214,183,122,.2);background:rgba(214,183,122,.045);padding:12px;margin:12px 0 16px}
+.privacy-settings .settings-row {margin-bottom:9px}
+.privacy-settings #notification-test {min-height:34px}
+.privacy-settings #notification-status {margin-top:10px}
