@@ -486,9 +486,11 @@ mod tests {
     }
 
     #[test]
-    fn malformed_or_local_tz_is_rejected() {
+    fn malformed_or_unknown_tz_is_rejected() {
         assert!(parse_ics("BEGIN:VCALENDAR\r\nEND:VCALENDAR", None).is_err());
-        let unsupported = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Meeting\nDTSTART;TZID=Asia/Jakarta:20270614T113000\nEND:VEVENT\nEND:VCALENDAR";
+        let supported = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Meeting\nDTSTART;TZID=Asia/Jakarta:20270614T113000\nEND:VEVENT\nEND:VCALENDAR";
+        assert!(parse_ics(supported, None).is_ok());
+        let unsupported = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Meeting\nDTSTART;TZID=Unknown/Timezone:20270614T113000\nEND:VEVENT\nEND:VCALENDAR";
         assert!(parse_ics(unsupported, None).is_err());
     }
 }
