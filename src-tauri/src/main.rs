@@ -1192,6 +1192,36 @@ mod tests {
     }
 
     #[test]
+    fn timed_end_validation_preserves_legacy_events_and_rejects_invalid_ranges() {
+        let start = 1_800_000_000_000_u64;
+        assert!(validate_timed_end(start, None).is_ok());
+        assert!(validate_timed_end(start, Some(start)).is_err());
+        assert!(validate_timed_end(start, Some(start - 1)).is_err());
+        assert!(validate_timed_end(start, Some(start + 60_000)).is_ok());
+        assert!(validate_timed_end(start, Some(start + MAX_TIMED_SPAN_MS)).is_ok());
+        assert!(validate_timed_end(start, Some(start + MAX_TIMED_SPAN_MS + 1)).is_err());
+        let legacy = r#"{"id":"old","title":"Old","starts_at_ms":1800000000000,"remind_minutes":null,"description":"","created_ms":1}"#;
+        let event: CalendarEvent = serde_json::from_str(legacy).unwrap();
+        assert!(event.ends_at_ms.is_none());
+        assert!(event.all_day.is_none());
+        assert!(event.series_uid.is_none());
+    }
+
+    #[test]
+    fn cancellation_marker_is_bounded_private_and_persists_without_titles() {
+        let mut state = AppData::default();
+        remember_calendar_cancellation(&mut state, "ics:series@example.org").unwrap();
+        remember_calendar_cancellation(&mut state, "ics:series@example.org").unwrap();
+        assert_eq!(state.calendar_tombstones.len(), 1);
+        assert!(remember_calendar_cancellation(&mut state, "local-event").is_err());
+        assert!(remember_calendar_cancellation(&mut state, "ics:malicious\nbody").is_err());
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(!json.contains("Private appointment"));
+        let restored: AppData = serde_json::from_str(&json).unwrap();
+        assert!(restored.calendar_tombstones.contains("ics:series@example.org"));
+    }
+
+    #[test]
     fn legacy_calendar_json_migrates_with_optional_date_and_series_metadata() {
         let previous = r#"{"id":"legacy","title":"Old","starts_at_ms":1800000000000,"remind_minutes":15,"description":"","created_ms":1}"#;
         let event: CalendarEvent = serde_json::from_str(previous).unwrap();
