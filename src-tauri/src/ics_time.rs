@@ -1,7 +1,9 @@
 //! Safe local iCalendar DTSTART and bounded RRULE conversion.
 //! Persisted events always contain UTC epoch milliseconds. We resolve IANA
 //! timezone rules on import; we never infer a floating timezone silently.
-use chrono::{Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Timelike, Weekday};
+use chrono::{
+    Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Timelike, Weekday,
+};
 use chrono_tz::Tz;
 use std::collections::HashSet;
 
@@ -121,7 +123,9 @@ impl CalendarStart {
         let rule = Recurrence::parse(text)?;
         let start_day = self.local.date();
         if !rule.matches(start_day, start_day)? {
-            return Err("RRULE filters do not include DTSTART; inconsistent series rejected".into());
+            return Err(
+                "RRULE filters do not include DTSTART; inconsistent series rejected".into(),
+            );
         }
         let mut occurrences = Vec::new();
         let mut finished_by_until = false;
@@ -161,14 +165,16 @@ impl CalendarStart {
         if rule.count.is_some() && rule.until.is_none() {
             return Err("RRULE COUNT exceeds supported date range; no partial import".into());
         }
-        if rule.until.is_some() && !finished_by_until
+        if rule.until.is_some()
+            && !finished_by_until
             && rule.count.is_none()
-            && rule.until.unwrap_or(0) > self.instant(
-                NaiveDate::from_ymd_opt(2099, 12, 31)
-                    .ok_or("Invalid range end")?
-                    .and_hms_opt(23, 59, 59)
-                    .ok_or("Invalid range time")?
-            )?
+            && rule.until.unwrap_or(0)
+                > self.instant(
+                    NaiveDate::from_ymd_opt(2099, 12, 31)
+                        .ok_or("Invalid range end")?
+                        .and_hms_opt(23, 59, 59)
+                        .ok_or("Invalid range time")?,
+                )?
         {
             return Err("RRULE UNTIL exceeds supported date range".into());
         }
@@ -252,9 +258,7 @@ impl Recurrence {
         let mut week_start = Weekday::Mon;
         let mut found = HashSet::new();
         for section in text.split(';') {
-            let (key, raw) = section
-                .split_once('=')
-                .ok_or("Malformed RRULE parameter")?;
+            let (key, raw) = section.split_once('=').ok_or("Malformed RRULE parameter")?;
             let key = key.to_ascii_uppercase();
             if !found.insert(key.clone()) {
                 return Err("Duplicate RRULE parameter".into());
@@ -284,7 +288,8 @@ impl Recurrence {
                 }
                 "UNTIL" => {
                     let wall = local_datetime(
-                        raw.strip_suffix('Z').ok_or("RRULE UNTIL must be explicit UTC")?,
+                        raw.strip_suffix('Z')
+                            .ok_or("RRULE UNTIL must be explicit UTC")?,
                     )?;
                     until = Some(
                         u64::try_from(wall.and_utc().timestamp_millis())
@@ -307,9 +312,8 @@ impl Recurrence {
                         let ordinal = if ordinal_raw.is_empty() {
                             None
                         } else {
-                            let value: i8 = ordinal_raw
-                                .parse()
-                                .map_err(|_| "Invalid BYDAY ordinal")?;
+                            let value: i8 =
+                                ordinal_raw.parse().map_err(|_| "Invalid BYDAY ordinal")?;
                             if value == 0 || !(-5..=5).contains(&value) {
                                 return Err("BYDAY ordinal must be -5..-1 or 1..5".into());
                             }
@@ -352,13 +356,18 @@ impl Recurrence {
                 return Err("Numbered BYDAY requires MONTHLY or YEARLY frequency".into());
             }
             if freq == Frequency::Yearly && months.is_empty() {
-                return Err(
-                    "Year-relative numeric BYDAY without BYMONTH is not supported".into(),
-                );
+                return Err("Year-relative numeric BYDAY without BYMONTH is not supported".into());
             }
         }
         Ok(Self {
-            freq, interval, count, until, weekdays, months, month_days, week_start,
+            freq,
+            interval,
+            count,
+            until,
+            weekdays,
+            months,
+            month_days,
+            week_start,
         })
     }
 
@@ -367,14 +376,14 @@ impl Recurrence {
         if days < 0 {
             return Ok(false);
         }
-        let month_delta = i64::from(day.year() - origin.year()) * 12
-            + i64::from(day.month()) - i64::from(origin.month());
+        let month_delta = i64::from(day.year() - origin.year()) * 12 + i64::from(day.month())
+            - i64::from(origin.month());
         let active_period = match self.freq {
             Frequency::Daily => days % self.interval == 0,
             Frequency::Weekly => {
                 let offset = (i64::from(origin.weekday().num_days_from_monday())
                     - i64::from(self.week_start.num_days_from_monday()))
-                    .rem_euclid(7);
+                .rem_euclid(7);
                 let since_week_start = days + offset;
                 (since_week_start / 7) % self.interval == 0
             }
@@ -391,10 +400,12 @@ impl Recurrence {
             return Ok(false);
         }
         let last = last_day_of_month(day.year(), day.month())?;
-        if !self.month_days.is_empty() && !self.month_days.iter().any(|n| {
-            let wanted = if *n > 0 { *n } else { last as i32 + 1 + *n };
-            i32::try_from(day.day()).is_ok_and(|d| d == wanted)
-        }) {
+        if !self.month_days.is_empty()
+            && !self.month_days.iter().any(|n| {
+                let wanted = if *n > 0 { *n } else { last as i32 + 1 + *n };
+                i32::try_from(day.day()).is_ok_and(|d| d == wanted)
+            })
+        {
             return Ok(false);
         }
         if !self.weekdays.is_empty() {
@@ -439,8 +450,8 @@ fn last_day_of_month(year: i32, month: u32) -> Result<u32, String> {
     } else {
         (year, month + 1)
     };
-    let next = NaiveDate::from_ymd_opt(next_year, next_month, 1)
-        .ok_or("RRULE has invalid month")?;
+    let next =
+        NaiveDate::from_ymd_opt(next_year, next_month, 1).ok_or("RRULE has invalid month")?;
     Ok(next.pred_opt().ok_or("RRULE day underflow")?.day())
 }
 
@@ -535,8 +546,14 @@ mod tests {
             vec![ms("20270614T113000Z"), ms("20270714T113000Z")]
         );
         assert_eq!(
-            start.occurrences(Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=3")).unwrap(),
-            vec![ms("20270614T113000Z"), ms("20270616T113000Z"), ms("20270621T113000Z")]
+            start
+                .occurrences(Some("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=3"))
+                .unwrap(),
+            vec![
+                ms("20270614T113000Z"),
+                ms("20270616T113000Z"),
+                ms("20270621T113000Z")
+            ]
         );
         assert_eq!(
             start
@@ -559,12 +576,20 @@ mod tests {
         let jan = CalendarStart::parse("DTSTART", "20270131T120000Z", None).unwrap();
         assert_eq!(
             jan.occurrences(Some("FREQ=MONTHLY;COUNT=3")).unwrap(),
-            vec![ms("20270131T120000Z"), ms("20270331T120000Z"), ms("20270531T120000Z")]
+            vec![
+                ms("20270131T120000Z"),
+                ms("20270331T120000Z"),
+                ms("20270531T120000Z")
+            ]
         );
         let leap = CalendarStart::parse("DTSTART", "20280229T120000Z", None).unwrap();
         assert_eq!(
             leap.occurrences(Some("FREQ=YEARLY;COUNT=3")).unwrap(),
-            vec![ms("20280229T120000Z"), ms("20320229T120000Z"), ms("20360229T120000Z")]
+            vec![
+                ms("20280229T120000Z"),
+                ms("20320229T120000Z"),
+                ms("20360229T120000Z")
+            ]
         );
     }
 
@@ -572,21 +597,35 @@ mod tests {
     fn monthly_ordinal_and_negative_monthday_are_deterministic() {
         let first = CalendarStart::parse("DTSTART", "20270104T080000Z", None).unwrap();
         assert_eq!(
-            first.occurrences(Some("FREQ=MONTHLY;BYDAY=1MO;COUNT=3")).unwrap(),
-            vec![ms("20270104T080000Z"), ms("20270201T080000Z"), ms("20270301T080000Z")]
+            first
+                .occurrences(Some("FREQ=MONTHLY;BYDAY=1MO;COUNT=3"))
+                .unwrap(),
+            vec![
+                ms("20270104T080000Z"),
+                ms("20270201T080000Z"),
+                ms("20270301T080000Z")
+            ]
         );
         let last = CalendarStart::parse("DTSTART", "20270131T080000Z", None).unwrap();
         assert_eq!(
-            last.occurrences(Some("FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=3")).unwrap(),
-            vec![ms("20270131T080000Z"), ms("20270228T080000Z"), ms("20270331T080000Z")]
+            last.occurrences(Some("FREQ=MONTHLY;BYMONTHDAY=-1;COUNT=3"))
+                .unwrap(),
+            vec![
+                ms("20270131T080000Z"),
+                ms("20270228T080000Z"),
+                ms("20270331T080000Z")
+            ]
         );
     }
 
     #[test]
     fn weekly_wkst_and_multi_day_byday_preserve_local_time() {
-        let start = CalendarStart::parse("DTSTART;TZID=America/New_York", "20270313T093000", None).unwrap();
+        let start =
+            CalendarStart::parse("DTSTART;TZID=America/New_York", "20270313T093000", None).unwrap();
         assert_eq!(
-            start.occurrences(Some("FREQ=WEEKLY;INTERVAL=2;WKST=MO;BYDAY=SA,SU;COUNT=4")).unwrap(),
+            start
+                .occurrences(Some("FREQ=WEEKLY;INTERVAL=2;WKST=MO;BYDAY=SA,SU;COUNT=4"))
+                .unwrap(),
             vec![
                 ms("20270313T143000Z"),
                 ms("20270314T133000Z"),
@@ -600,8 +639,14 @@ mod tests {
     fn yearly_by_month_and_by_day_filters_respect_bounds() {
         let start = CalendarStart::parse("DTSTART", "20270614T120000Z", None).unwrap();
         assert_eq!(
-            start.occurrences(Some("FREQ=YEARLY;BYMONTH=6;BYMONTHDAY=14;COUNT=3")).unwrap(),
-            vec![ms("20270614T120000Z"), ms("20280614T120000Z"), ms("20290614T120000Z")]
+            start
+                .occurrences(Some("FREQ=YEARLY;BYMONTH=6;BYMONTHDAY=14;COUNT=3"))
+                .unwrap(),
+            vec![
+                ms("20270614T120000Z"),
+                ms("20280614T120000Z"),
+                ms("20290614T120000Z")
+            ]
         );
         for rule in [
             "FREQ=MONTHLY;COUNT=3;BYSETPOS=1",
@@ -612,7 +657,10 @@ mod tests {
             "FREQ=YEARLY;WKST=XX;COUNT=3",
             "FREQ=MONTHLY;BYDAY=0MO;COUNT=3",
         ] {
-            assert!(start.occurrences(Some(rule)).is_err(), "Invalid/unsupported {rule}");
+            assert!(
+                start.occurrences(Some(rule)).is_err(),
+                "Invalid/unsupported {rule}"
+            );
         }
     }
 
