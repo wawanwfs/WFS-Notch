@@ -582,19 +582,73 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_exceptions_and_all_day_are_rejected_atomically() {
+    fn unsupported_rrule_override_and_timed_end_fail_atomically() {
         for suffix in [
             "RRULE:FREQ=MONTHLY;COUNT=2\n",
-            "RRULE:FREQ=DAILY;COUNT=2\nEXDATE:20270615T113000Z\n",
             "RRULE:FREQ=DAILY;COUNT=251\n",
+            "RRULE:FREQ=DAILY;COUNT=2\nRECURRENCE-ID:20270615T113000Z\n",
+            "DTEND:20270614T133000Z\n",
         ] {
             let input = format!(
                 "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:series@example.org\nSUMMARY:Series\nDTSTART:20270614T113000Z\n{suffix}END:VEVENT\nEND:VCALENDAR"
             );
             assert!(parse_ics(&input, None).is_err());
         }
-        let all_day = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:All day\nDTSTART;VALUE=DATE:20270614\nEND:VEVENT\nEND:VCALENDAR";
-        assert!(parse_ics(all_day, Some("Asia/Jakarta")).is_err());
+    }
+
+    #[test]
+    fn all_day_date_and_exclusive_end_roundtrip_without_timezone_shift() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:festival@example.org\nSUMMARY:Leap day event\nDTSTART;VALUE=DATE:20280229\nDTEND;VALUE=DATE:20280302\nEND:VEVENT\nEND:VCALENDAR";
+        let items = parse_ics(input, Some("Pacific/Honolulu")).unwrap();
+        assert_eq!(items.len(), 1);
+        let span = items[0].all_day.as_ref().unwrap();
+        assert_eq!(span.start_date, "2028-02-29");
+        assert_eq!(span.end_date_exclusive, "2028-03-02");
+        assert_eq!(items[0].remind_minutes, None);
+        let serialized = serialize_ics(&items).unwrap();
+        assert!(serialized.contains("DTSTART;VALUE=DATE:20280229"));
+        assert!(serialized.contains("DTEND;VALUE=DATE:20280302"));
+        assert!(!serialized.contains("T000000Z"));
+        let other = parse_ics(&serialized, Some("Asia/Jakarta")).unwrap();
+        assert_eq!(items[0].all_day, other[0].all_day);
+        assert_eq!(items[0].starts_at_ms, other[0].starts_at_ms);
+        assert_eq!(items[0].id, other[0].id);
+    }
+
+    #[test]
+    fn date_only_rrule_exdate_rdate_and_series_identity_are_stable() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:dates@example.org\nSUMMARY:Holiday sequence\nDTSTART;VALUE=DATE:20270614\nDTEND;VALUE=DATE:20270616\nRRULE:FREQ=DAILY;COUNT=3\nEXDATE;VALUE=DATE:20270615\nRDATE;VALUE=DATE:20270620\nEND:VEVENT\nEND:VCALENDAR";
+        let items = parse_ics(input, None).unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(
+            items.iter().map(|e| e.all_day.as_ref().unwrap().start_date.as_str()).collect::<Vec<_>>(),
+            vec!["2027-06-14", "2027-06-16", "2027-06-20"]
+        );
+        assert_eq!(items[1].all_day.as_ref().unwrap().end_date_exclusive, "2027-06-18");
+        assert_eq!(items[2].all_day.as_ref().unwrap().end_date_exclusive, "2027-06-22");
+        assert!(items.iter().all(|event| event.series_uid.as_deref() == Some("ics:dates@example.org")));
+        let mut data = AppData::default();
+        merge_imported_events(&mut data, items.clone()).unwrap();
+        merge_imported_events(&mut data, items).unwrap();
+        assert_eq!(data.events.len(), 3);
+        let exported = serialize_ics(&data.events).unwrap();
+        assert_eq!(parse_ics(&exported, None).unwrap().len(), 3);
+        assert!(!exported.contains("RRULE:"));
+    }
+
+    #[test]
+    fn timed_exception_lists_resolve_dst_and_reject_invalid_values() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:timed@example.org\nSUMMARY:NY schedule\nDTSTART;TZID=America/New_York:20270313T093000\nRRULE:FREQ=DAILY;COUNT=3\nEXDATE;TZID=America/New_York:20270314T093000\nRDATE;TZID=America/New_York:20270320T093000\nEND:VEVENT\nEND:VCALENDAR";
+        let events = parse_ics(input, None).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].starts_at_ms, utc_to_ms("20270313T143000Z").unwrap());
+        assert_eq!(events[1].starts_at_ms, utc_to_ms("20270315T133000Z").unwrap());
+        assert_eq!(events[2].starts_at_ms, utc_to_ms("20270320T133000Z").unwrap());
+        let malformed = input.replace("RDATE;TZID=America/New_York:20270320T093000",
+            "RDATE;TZID=Unknown/Place:20270320T093000");
+        assert!(parse_ics(&malformed, None).is_err());
+        let invalid_date = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Impossible day\nDTSTART;VALUE=DATE:20270229\nEND:VEVENT\nEND:VCALENDAR";
+        assert!(parse_ics(invalid_date, None).is_err());
     }
 
     #[test]
