@@ -9,14 +9,14 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.13.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.14.0 source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware manual placement plus opt-in Win32 foreground fullscreen guard (excluding spanning windows) / display hotplug polling; real device/hover/pass-through QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
 | Appearance / glass / animations | Partial | Accent, reduced-motion-friendly compact/expanded transitions and narrow-viewport scrolling; reference glass/animation library/layout editor missing |
 | Music & transport controls | Partial | GSMTC selected session metadata, artwork, timeline normalization and control capability checks; lyrics and native Windows player regression missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
-| Desktop calendar | Partial | Month grid, UTC ICS text import/export and local reminders; TZID/floating-date support, file picker, iCal subscriptions and Google/Outlook sync missing |
+| Desktop calendar | Partial | Month grid, UTC/IANA TZID/explicit floating IANA timezone ICS text import, bounded DAILY/WEEKLY expansion, UTC ICS export and local reminders; all-day date semantics, full RRULE/EXDATE, series editing, file picker, subscriptions and Google/Outlook sync missing |
 | Todo | Partial | CRUD; reminders, recurring, natural language parsing, snooze missing |
 | Notes | Partial | Local CRUD/autosave, full-text search and question::answer flashcards; rich editing and tagging missing |
 | Focus/Pomodoro | Partial | Preset focus; automatic work-break cycles and sounds missing |
@@ -50,9 +50,9 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Data backup | Partial | Local JSON snapshots/restore; portable import/export missing |
 | Self-update | Gap | Signed updater, portable notification |
 
-## Phase 13 weighted score (38 categories)
+## Phase 14 weighted score (38 categories)
 
-Counts: **Implemented 3**, **Partial 16**, **Gap 19**. Formula: (3 × 1 + 16 × 0.5 + 19 × 0) / 38 × 100 = **28.9%** (rounded to one decimal). This remains unchanged from v0.12.0: significant progress *within* partial categories does not promote an entire category to Implemented without completing its scope. CI results and real Windows tests are tracked separately in `docs/PHASE13_REPORT.md`.
+Counts: **Implemented 3**, **Partial 16**, **Gap 19**. Formula: (3 × 1 + 16 × 0.5 + 19 × 0) / 38 × 100 = **28.9%** (rounded to one decimal). This remains unchanged from v0.13.0: significant progress *within* partial categories does not promote an entire category to Implemented without completing its scope. CI results and real Windows tests are tracked separately in `docs/PHASE14_REPORT.md`.
 
 ## Gate for accurate 100% claim
 
