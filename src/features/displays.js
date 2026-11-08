@@ -43,7 +43,9 @@ async function wfsRefreshDisplays() {
     if (saved !== 'primary' && !monitors.some(display => display.id === saved)) {
       const old = document.createElement('option');
       old.value = saved;
-      old.textContent = 'Disconnected saved display — using primary';
+      old.textContent = snapshot.using_fallback
+        ? 'Saved display unavailable — using fallback'
+        : 'Legacy coordinate preference — select this display again to adopt a stable ID';
       select.append(old);
     }
     select.value = saved;
