@@ -418,11 +418,38 @@ function asLocalInput(epoch) {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function setAllDayEditor(enabled) {
+  $('#event-all-day').checked = enabled;
+  $('#event-all-day-fields').hidden = !enabled;
+  $('#event-time').hidden = enabled;
+  $('#event-time').required = !enabled;
+  $('#event-remind').disabled = enabled;
+  if (enabled) $('#event-remind').value = 'off';
+  if (enabled && !$('#event-start-date').value) {
+    const date = ($('#event-time').value || asLocalInput(Date.now())).slice(0, 10);
+    $('#event-start-date').value = date;
+    const next = new Date(date + 'T12:00:00');
+    next.setDate(next.getDate() + 1);
+    const pad = n => String(n).padStart(2, '0');
+    $('#event-end-date').value = [next.getFullYear(), pad(next.getMonth() + 1), pad(next.getDate())].join('-');
+  }
+}
+function eventDisplayDate(event) {
+  if (!event.all_day) return eventDate(event.starts_at_ms);
+  const end = new Date(Date.parse(event.all_day.end_date_exclusive + 'T00:00:00Z') - 86400000)
+    .toISOString().slice(0, 10);
+  return event.all_day.start_date === end ? end + ' · All day'
+    : event.all_day.start_date + ' – ' + end + ' · All day';
+}
 function cancelEventEdit() {
   selectedEventId = null;
+  selectedSeriesEventId = null;
   $('#event-submit').textContent = 'Add event';
   $('#event-cancel').hidden = true;
   $('#event-title').value = '';
+  $('#event-time').disabled = false;
+  $('#event-all-day').disabled = false;
+  setAllDayEditor(false);
 }
 function renderCalendar() {
   const events = [...data.events].sort((a, b) => a.starts_at_ms - b.starts_at_ms);
