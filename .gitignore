@@ -1,0 +1,16 @@
+# Never commit third-party reference executables, reverse engineering evidence or secrets.
+Poni*.exe
+Poni*.msi
+*.dmp
+private-rea-audit/
+audit-private/
+rea-evidence/
+craft-anything-workspace/
+*.pdb
+*.user
+.env
+.env.*
+# Build byproducts
+node_modules/
+target/
+02_APP/src-tauri/target/
