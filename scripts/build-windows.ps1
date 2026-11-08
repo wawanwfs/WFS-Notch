@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param([switch]$SkipLint)
 $ErrorActionPreference = 'Stop'
-$App = (Resolve-Path (Join-Path $PSScriptRoot '..\02_APP')).Path
+$App = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Backend = Join-Path $App 'src-tauri'
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     throw 'Rust/Cargo not found. Install Rust MSVC from https://rustup.rs/ and restart PowerShell.'
