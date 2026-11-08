@@ -770,6 +770,7 @@ fn main() {
             app.manage(Mutex::new(store));
             app.manage(Mutex::new(System::new_all()));
             app.manage(notifications::SentNotices::default());
+            notifications::start_scheduler(app.handle().clone())?;
             let tray_menu = MenuBuilder::new(app)
                 .text("show", "Show WFS Notch")
                 .text("quit", "Exit WFS Notch")
@@ -836,6 +837,7 @@ fn main() {
             notifications::set_notification_preferences,
             notifications::set_notifications_paused,
             notifications::notify_test,
+            notifications::get_reminder_scheduler_status,
             notifications::notify_due_event,
             set_accent,
             set_hover_to_open,
