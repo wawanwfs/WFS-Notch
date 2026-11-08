@@ -148,6 +148,6 @@ mod tests {
             parse_iso_date("2027-06-14").unwrap(),
             parse_iso_date("2027-06-15").unwrap(),
         ).unwrap();
-        assert_eq!(span.utc_midnight_ms().unwrap(), 1_813_017_600_000);
+        assert_eq!(span.utc_midnight_ms().unwrap(), 1_812_931_200_000);
     }
 }
