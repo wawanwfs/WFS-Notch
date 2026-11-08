@@ -37,6 +37,24 @@ Feature branch feat/phase18c-stable-monitor-identity targets source version v0.2
 - Monitor topology polling also notices device-name changes. Tests cover stable names after rearrangement, signed virtual origins, duplicate/unsafe names and preference validation.
 - Its final release status must be established from latest PR-head and final-main CI; this report is not a release PASS claim for v0.21.0.
 
+## Workstream D — merged and independently verified (v0.22.0)
+
+PR [#25](https://github.com/wawanwfs/WFS-Notch/pull/25) merged to main SHA `9acc91d841e1640596c2259926790b204ff9d5e4`. Exact final-main [GitHub Actions run 42510653325](https://github.com/wawanwfs/WFS-Notch/actions/runs/42510653325) **ALL FOUR JOBS PASS**: 81 Rust tests, Clippy, rustfmt, browser suites including new mocked GSMTC duplicate-ID regression, 64 headless screenshots, unsigned NSIS/portable and owner identity audit.
+
+- [Installer ZIP](https://github.com/wawanwfs/WFS-Notch/actions/runs/42510653325/artifacts/13629900118)
+- [Portable ZIP](https://github.com/wawanwfs/WFS-Notch/actions/runs/42510653325/artifacts/13629361938)
+- [SHA256 ZIP](https://github.com/wawanwfs/WFS-Notch/actions/runs/42510653325/artifacts/13629272362)
+- [Browser screenshot ZIP](https://github.com/wawanwfs/WFS-Notch/actions/runs/42510653325/artifacts/13628549172)
+- SHA256 `WFS Notch_0.22.0_x64-setup.exe`: `93b9a9ea336551deccc80a5e0fa1655cbaaf3e0192e02277d0578fb70ac5c131`
+
+GSMTC now refuses arbitrary control of browser tabs sharing a SourceAppUserModelId, invalidates stale artwork, guards asynchronous player selection, and bounds progress projection after sleep/resume. This is a safety fix, not full per-tab selection. Physical Win10/11 interactive media QA remains NOT TESTED.
+
+## Workstream A — guarded one-time series shift in v0.23.0 candidate
+
+The feature branch `feat/phase22a-safe-series-day-shift` implements preview/freshness-guarded atomic whole-day moves of existing *untouched* date-only or UTC recurring instances, preserving event IDs, reminder history and deletion tombstones, and marking all moved instances individually edited to ensure source-master RRULE export safely falls back to independent events. It rejects TZID/floating DST and previously edited source series. Real recurrence-master editing, multi-shift support and RECURRENCE-ID are **not** implemented.
+
+**Verification status:** this section is a source scope description ONLY until the exact v0.23.0 PR-head and post-merge main CI are green. Do not call it merged or release-ready before that evidence exists.
+
 ## Exact remaining issues by workstream
 
 A: Full recurrence source schedule changes with preview/rollback; RECURRENCE-ID override and exception semantics; native consented ICS open/save; optional subscriptions only with explicit credentials/permission.
