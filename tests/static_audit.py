@@ -7,9 +7,9 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
 root = Path(__file__).resolve().parents[1]
-app = root / '02_APP'
+app = root
 html = (app / 'ui/index.html').read_text()
-js = '\n'.join((app / 'ui' / filename).read_text() for filename in ('app.js', 'modules.js', 'parity.js', 'calendar_plus.js', 'system_details.js', 'media_sessions.js', 'ux_polish.js', 'display_ui.js'))
+js = '\n'.join((app / 'src' / filename).read_text() for filename in ('app.js', 'modules.js', 'parity.js', 'calendar_plus.js', 'system_details.js', 'media_sessions.js', 'ux_polish.js', 'display_ui.js'))
 rust = (app / 'src-tauri/src/main.rs').read_text()
 all_rust = '\n'.join((app / 'src-tauri/src' / filename).read_text() for filename in ('main.rs', 'extra.rs', 'parity.rs', 'calendar_ics.rs', 'system_details.rs', 'media_sessions.rs', 'display.rs'))
 config = json.loads((app / 'src-tauri/tauri.conf.json').read_text())
@@ -38,7 +38,7 @@ assert capabilities['windows'] == ['main']
 assert config['app']['withGlobalTauri'] is True
 for path in config['bundle']['icon']:
     assert (app / 'src-tauri' / path).exists(), path
-for path in (root / '05_BRANDING').glob('*.svg'):
+for path in (root / 'assets' / 'branding').glob('*.svg'):
     ET.parse(path)
 assert (app / 'ui/assets/wfs-notch-mark.svg').exists()
 assert 'update_event' in commands and 'update_event' in js
