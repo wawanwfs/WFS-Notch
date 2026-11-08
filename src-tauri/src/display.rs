@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn geometry_handles_secondary_monitors_and_three_dpi_scales() {
-        for (scale, expected_x) in [(1.0, 580), (1.25, 580), (1.5, 580)] {
+        for scale in [1.0, 1.25, 1.5] {
             // 1920 physical pixels; 760 logical pixels scaled by DPI.
             let result = geometry(1920, 1080, scale, 12, true);
             let measured = (result.logical_width * scale).round() as i32;
@@ -413,7 +413,6 @@ mod tests {
             assert!(result.x >= 0);
             assert!(result.y >= 0);
             assert!(result.logical_height * scale <= 1080.0);
-            let _ = expected_x; // Fractional DPI changes the physical center offset.
             assert!((-1920_i32).saturating_add(result.x) < 0);
         }
         let tiny = geometry(640, 480, 1.5, 12, true);
