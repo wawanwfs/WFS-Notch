@@ -11,6 +11,7 @@ use std::{
 use sysinfo::System;
 mod calendar_ics;
 mod extra;
+mod media_sessions;
 mod parity;
 mod system_details;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
@@ -786,6 +787,7 @@ fn main() {
             restore_backup,
             get_system_snapshot,
             system_details::get_system_details,
+            media_sessions::get_active_media_session,
             set_accent,
             set_hover_to_open,
             set_pin_open,
