@@ -18,6 +18,13 @@ fn non_negative_ms(time_100ns: i64) -> u64 {
     (time_100ns.max(0) / 10_000) as u64
 }
 
+fn normalized_timeline(start: i64, position: i64, end: i64) -> (u64, u64) {
+    // GSMTC timelines may start at a nonzero 100ns offset.
+    let total = non_negative_ms(end.saturating_sub(start));
+    let elapsed = non_negative_ms(position.saturating_sub(start)).min(total);
+    (elapsed, total)
+}
+
 fn artwork_mime(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
         Some("image/png")
@@ -60,7 +67,7 @@ fn artwork_data_url(
 }
 
 #[cfg(windows)]
-fn read_session() -> Result<Option<ActiveMediaSnapshot>, String> {
+fn read_session_with_source(requested_source: Option<&str>) -> Result<Option<ActiveMediaSnapshot>, String> {
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSessionManager as MediaManager,
         GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status,
@@ -72,9 +79,27 @@ fn read_session() -> Result<Option<ActiveMediaSnapshot>, String> {
         .map_err(|error| format!("Windows media manager unavailable: {error}"))?
         .join()
         .map_err(|error| format!("Cannot access Windows media sessions: {error}"))?;
-    let session = match manager.GetCurrentSession() {
-        Ok(session) => session,
-        Err(_) => return Ok(None),
+    let session = if let Some(requested) = requested_source {
+        let sessions = manager.GetSessions().map_err(|e| e.to_string())?;
+        let mut selected = None;
+        for i in 0..sessions.Size().map_err(|e| e.to_string())?.min(64) {
+            let Ok(candidate) = sessions.GetAt(i) else { continue };
+            if candidate.SourceAppUserModelId().ok().map(|s| s.to_string()).as_deref()
+                == Some(requested)
+            {
+                selected = Some(candidate);
+                break;
+            }
+        }
+        match selected {
+            Some(session) => session,
+            None => return Ok(None), // Disconnected; never substitute another player.
+        }
+    } else {
+        match manager.GetCurrentSession() {
+            Ok(session) => session,
+            Err(_) => return Ok(None),
+        }
     };
     let properties = session
         .TryGetMediaPropertiesAsync()
@@ -101,15 +126,12 @@ fn read_session() -> Result<Option<ActiveMediaSnapshot>, String> {
         .to_owned();
 
     let timeline = session.GetTimelineProperties().ok();
-    let position_ms = timeline
-        .as_ref()
-        .and_then(|timeline| timeline.Position().ok())
-        .map(|value| non_negative_ms(value.Duration));
-    let duration_ms = timeline.as_ref().and_then(|timeline| {
-        let end = timeline.EndTime().ok()?.Duration;
-        let start = timeline.StartTime().ok()?.Duration;
-        Some(non_negative_ms(end.saturating_sub(start)))
-    });
+    let (position_ms, duration_ms) = timeline.as_ref().and_then(|time| {
+        let start = time.StartTime().ok()?.Duration;
+        let position = time.Position().ok()?.Duration;
+        let end = time.EndTime().ok()?.Duration;
+        Some(normalized_timeline(start, position, end))
+    }).map_or((None, None), |(pos, total)| (Some(pos), Some(total)));
     Ok(Some(ActiveMediaSnapshot {
         source: session
             .SourceAppUserModelId()
@@ -134,9 +156,29 @@ fn read_session() -> Result<Option<ActiveMediaSnapshot>, String> {
     }))
 }
 
+#[cfg(windows)]
+fn read_session() -> Result<Option<ActiveMediaSnapshot>, String> {
+    read_session_with_source(None)
+}
+
 #[cfg(not(windows))]
 fn read_session() -> Result<Option<ActiveMediaSnapshot>, String> {
     Err("Native media sessions are available only on Windows".into())
+}
+
+#[cfg(not(windows))]
+fn read_session_with_source(_source: Option<&str>) -> Result<Option<ActiveMediaSnapshot>, String> {
+    Err("Native media sessions are available only on Windows".into())
+}
+
+#[tauri::command]
+pub async fn get_media_session_by_source(source: String) -> Result<Option<ActiveMediaSnapshot>, String> {
+    if source.is_empty() || source.len() > 256 {
+        return Err("Invalid media source".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || read_session_with_source(Some(&source)))
+        .await
+        .map_err(|error| format!("Media session worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -162,6 +204,14 @@ mod tests {
     }
 
     #[test]
+    fn progress_is_clamped_to_track_and_handles_nonzero_start() {
+        assert_eq!(normalized_timeline(100_000, 600_000, 1_100_000), (50, 100));
+        assert_eq!(normalized_timeline(100_000, 0, 1_100_000), (0, 100));
+        assert_eq!(normalized_timeline(100_000, 2_000_000, 1_100_000), (100, 100));
+        assert_eq!(normalized_timeline(100_000, 0, 50_000), (0, 0));
+    }
+
+    #[test]
     fn time_conversion_clamps_negative_and_100ns_units() {
         assert_eq!(non_negative_ms(1_234_560), 123);
         assert_eq!(non_negative_ms(-10), 0);
@@ -175,6 +225,9 @@ pub struct MediaSessionChoice {
     title: String,
     artist: String,
     playback_status: String,
+    can_toggle: bool,
+    can_next: bool,
+    can_previous: bool,
 }
 
 fn valid_control(action: &str) -> bool {
@@ -239,11 +292,15 @@ fn read_media_choices() -> Result<Vec<MediaSessionChoice>, String> {
             })
             .unwrap_or("Unknown")
             .to_owned();
+        let controls = session.GetPlaybackInfo().ok().and_then(|info| info.Controls().ok());
         result.push(MediaSessionChoice {
             source,
             title,
             artist,
             playback_status: status,
+            can_toggle: controls.as_ref().and_then(|c| c.IsPlayPauseToggleEnabled().ok()).unwrap_or(false),
+            can_next: controls.as_ref().and_then(|c| c.IsNextEnabled().ok()).unwrap_or(false),
+            can_previous: controls.as_ref().and_then(|c| c.IsPreviousEnabled().ok()).unwrap_or(false),
         });
     }
     Ok(result)
@@ -277,6 +334,17 @@ fn apply_media_control(source: &str, action: &str) -> Result<bool, String> {
             .unwrap_or_default();
         if id != source {
             continue;
+        }
+        // Query controls again on the *current* session, not stale UI metadata.
+        let controls = session.GetPlaybackInfo().ok().and_then(|info| info.Controls().ok());
+        let supported = match action {
+            "toggle" => controls.as_ref().and_then(|c| c.IsPlayPauseToggleEnabled().ok()),
+            "next" => controls.as_ref().and_then(|c| c.IsNextEnabled().ok()),
+            "previous" => controls.as_ref().and_then(|c| c.IsPreviousEnabled().ok()),
+            _ => None,
+        };
+        if supported != Some(true) {
+            return Ok(false);
         }
         let operation = match action {
             "toggle" => session.TryTogglePlayPauseAsync(),
