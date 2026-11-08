@@ -49,8 +49,9 @@ async function wfsRefreshDisplays() {
     select.value = saved;
     document.getElementById('display-top-gap').value =
       String(Number.isInteger(snapshot.margin_px) ? snapshot.margin_px : 12);
-    const fallback = snapshot.using_fallback ? ' Saved display unavailable; using fallback monitor.' : '';
-    wfsDisplayStatus(monitors.length + ' monitor(s) detected.' + fallback + ' Settings remain local on this computer.');
+    const fallback = snapshot.using_fallback ? ' Saved display unavailable; using fallback monitor until it reconnects.' : '';
+    const legacy = saved.startsWith('origin:') ? ' Coordinate-based saved selection; choose this monitor again to switch to a stable device name when available.' : '';
+    wfsDisplayStatus(monitors.length + ' monitor(s) detected.' + fallback + legacy + ' Settings remain local on this computer.');
   } catch (error) {
     wfsDisplayStatus('Cannot detect displays: ' + (error?.message || String(error)), true);
   } finally {
