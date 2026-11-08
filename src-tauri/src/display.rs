@@ -287,12 +287,13 @@ pub fn start_guard(app: AppHandle) -> std::io::Result<()> {
                                 .iter()
                                 .map(|m| {
                                     format!(
-                                        "{}:{}:{}:{}:{:.3}",
+                                        "{}:{}:{}:{}:{:.3}:{}",
                                         m.position().x,
                                         m.position().y,
                                         m.size().width,
                                         m.size().height,
-                                        m.scale_factor()
+                                        m.scale_factor(),
+                                        m.name().map(String::as_str).unwrap_or("")
                                     )
                                 })
                                 .collect::<Vec<_>>();
