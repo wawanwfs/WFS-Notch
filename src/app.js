@@ -450,6 +450,8 @@ function cancelEventEdit() {
   $('#event-time').disabled = false;
   $('#event-all-day').disabled = false;
   setAllDayEditor(false);
+  $('#event-start-date').value = '';
+  $('#event-end-date').value = '';
 }
 function renderCalendar() {
   const events = [...data.events].sort((a, b) => a.starts_at_ms - b.starts_at_ms);
