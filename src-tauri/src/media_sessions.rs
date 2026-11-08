@@ -15,7 +15,7 @@ pub struct ActiveMediaSnapshot {
 }
 
 /// Media SourceAppUserModelId is an application ID, NOT a tab/instance ID.
- /// Only select a player when exactly one currently visible session matches.
+/// Only select a player when exactly one currently visible session matches.
 fn select_unique_source<T>(
     requested: &str,
     candidates: impl IntoIterator<Item = (String, T)>,
@@ -107,9 +107,13 @@ fn read_session_with_source(
         }
         let mut candidates = Vec::new();
         for i in 0..count {
-            let candidate = sessions.GetAt(i).map_err(|_| "Cannot inspect all Windows media sessions")?;
-            let source = candidate.SourceAppUserModelId()
-                .map_err(|_| "Cannot verify Windows media app identity")?.to_string();
+            let candidate = sessions
+                .GetAt(i)
+                .map_err(|_| "Cannot inspect all Windows media sessions")?;
+            let source = candidate
+                .SourceAppUserModelId()
+                .map_err(|_| "Cannot verify Windows media app identity")?
+                .to_string();
             candidates.push((source, candidate));
         }
         match select_unique_source(requested, candidates)? {
@@ -229,7 +233,10 @@ mod tests {
             select_unique_source("spotify.id", candidates.clone()).unwrap(),
             Some("Spotify")
         );
-        assert_eq!(select_unique_source("disconnected", candidates).unwrap(), None);
+        assert_eq!(
+            select_unique_source("disconnected", candidates).unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -308,10 +315,7 @@ fn read_media_choices() -> Result<Vec<MediaSessionChoice>, String> {
         if source.is_empty() || source.len() > 256 || source.chars().any(char::is_control) {
             continue;
         }
-        if let Some(existing) = result
-            .iter_mut()
-            .find(|item| item.source == source)
-        {
+        if let Some(existing) = result.iter_mut().find(|item| item.source == source) {
             existing.ambiguous = true;
             existing.can_toggle = false;
             existing.can_next = false;
@@ -400,36 +404,40 @@ fn apply_media_control(source: &str, action: &str) -> Result<bool, String> {
     }
     let mut candidates = Vec::new();
     for index in 0..count {
-        let session = view.GetAt(index).map_err(|_| "Cannot inspect all Windows media sessions")?;
-        let id = session.SourceAppUserModelId()
-            .map_err(|_| "Cannot verify Windows media app identity")?.to_string();
+        let session = view
+            .GetAt(index)
+            .map_err(|_| "Cannot inspect all Windows media sessions")?;
+        let id = session
+            .SourceAppUserModelId()
+            .map_err(|_| "Cannot verify Windows media app identity")?
+            .to_string();
         candidates.push((id, session));
     }
     let session = select_unique_source(source, candidates)?
         .ok_or("Selected Windows media session was disconnected")?;
     // Query controls again on the *current* session, not stale UI metadata.
-        let controls = session
-            .GetPlaybackInfo()
-            .ok()
-            .and_then(|info| info.Controls().ok());
-        let supported = match action {
-            "toggle" => controls
-                .as_ref()
-                .and_then(|c| c.IsPlayPauseToggleEnabled().ok()),
-            "next" => controls.as_ref().and_then(|c| c.IsNextEnabled().ok()),
-            "previous" => controls.as_ref().and_then(|c| c.IsPreviousEnabled().ok()),
-            _ => None,
-        };
-        if supported != Some(true) {
-            return Ok(false);
-        }
-        let operation = match action {
-            "toggle" => session.TryTogglePlayPauseAsync(),
-            "next" => session.TrySkipNextAsync(),
-            "previous" => session.TrySkipPreviousAsync(),
-            _ => return Err("Unsupported media action".into()),
-        }
-        .map_err(|e| format!("Media player rejected control: {e}"))?;
+    let controls = session
+        .GetPlaybackInfo()
+        .ok()
+        .and_then(|info| info.Controls().ok());
+    let supported = match action {
+        "toggle" => controls
+            .as_ref()
+            .and_then(|c| c.IsPlayPauseToggleEnabled().ok()),
+        "next" => controls.as_ref().and_then(|c| c.IsNextEnabled().ok()),
+        "previous" => controls.as_ref().and_then(|c| c.IsPreviousEnabled().ok()),
+        _ => None,
+    };
+    if supported != Some(true) {
+        return Ok(false);
+    }
+    let operation = match action {
+        "toggle" => session.TryTogglePlayPauseAsync(),
+        "next" => session.TrySkipNextAsync(),
+        "previous" => session.TrySkipPreviousAsync(),
+        _ => return Err("Unsupported media action".into()),
+    }
+    .map_err(|e| format!("Media player rejected control: {e}"))?;
     operation
         .join()
         .map_err(|e| format!("Media player did not respond: {e}"))
@@ -442,7 +450,11 @@ fn apply_media_control(_source: &str, _action: &str) -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn control_media_session(source: String, action: String) -> Result<bool, String> {
-    if source.is_empty() || source.len() > 256 || source.chars().any(char::is_control) || !valid_control(&action) {
+    if source.is_empty()
+        || source.len() > 256
+        || source.chars().any(char::is_control)
+        || !valid_control(&action)
+    {
         return Err("Invalid media player or playback action".into());
     }
     tauri::async_runtime::spawn_blocking(move || apply_media_control(&source, &action))
