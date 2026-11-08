@@ -151,7 +151,10 @@ mod tests {
     use super::*;
     #[test]
     fn artwork_mime_strictly_limits_local_image_types() {
-        assert_eq!(artwork_mime(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]), Some("image/png"));
+        assert_eq!(
+            artwork_mime(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
+            Some("image/png")
+        );
         assert_eq!(artwork_mime(&[0xff, 0xd8, 0xff, 0x00]), Some("image/jpeg"));
         assert_eq!(artwork_mime(b"GIF89a"), Some("image/gif"));
         assert_eq!(artwork_mime(b"<svg onload=alert(1)>"), None);
