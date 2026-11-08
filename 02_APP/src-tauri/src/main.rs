@@ -10,6 +10,7 @@ use std::{
 };
 use sysinfo::System;
 mod calendar_ics;
+mod display;
 mod extra;
 mod media_sessions;
 mod parity;
@@ -23,6 +24,8 @@ struct Settings {
     accent: String,
     hover_to_open: bool,
     pin_open: bool,
+    monitor_id: String,
+    top_margin_px: u32,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -30,6 +33,8 @@ impl Default for Settings {
             accent: "#d6b77a".into(),
             hover_to_open: true,
             pin_open: false,
+            monitor_id: display::DEFAULT_MONITOR.into(),
+            top_margin_px: 12,
         }
     }
 }
@@ -193,6 +198,13 @@ impl AppData {
             .focus
             .remaining_seconds
             .min(self.focus.duration_seconds);
+        self.settings.top_margin_px = self.settings.top_margin_px.min(display::MAX_MARGIN);
+        if self.settings.monitor_id != display::DEFAULT_MONITOR
+            && (!self.settings.monitor_id.starts_with("origin:")
+                || self.settings.monitor_id.len() > 80)
+        {
+            self.settings.monitor_id = display::DEFAULT_MONITOR.into();
+        }
         if self.settings.accent.len() != 7
             || !self.settings.accent.starts_with('#')
             || !self.settings.accent[1..]
@@ -690,28 +702,18 @@ fn focus_reset(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
 }
 
 #[tauri::command]
-fn set_expanded(window: tauri::Window, expanded: bool) -> Result<(), String> {
-    let (width, height) = if expanded {
-        (760.0, 470.0)
-    } else {
-        (240.0, 48.0)
-    };
-    window
-        .set_size(tauri::LogicalSize::new(width, height))
-        .map_err(|error| error.to_string())?;
-    if let Some(monitor) = window
-        .current_monitor()
-        .map_err(|error| error.to_string())?
-    {
-        let scale = monitor.scale_factor();
-        let pixel_width = (width * scale).round() as i32;
-        let position_x = monitor.position().x + (monitor.size().width as i32 - pixel_width) / 2;
-        let position_y = monitor.position().y + (12.0 * scale).round() as i32;
-        window
-            .set_position(tauri::PhysicalPosition::new(position_x, position_y))
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
+fn set_expanded(
+    window: tauri::WebviewWindow,
+    store: State<'_, Mutex<Store>>,
+    expanded: bool,
+) -> Result<(), String> {
+    let settings = store
+        .lock()
+        .map_err(|_| "Data lock is unavailable".to_owned())?
+        .data
+        .settings
+        .clone();
+    display::place_notch(&window, &settings, expanded)
 }
 
 #[tauri::command]
@@ -751,15 +753,14 @@ fn main() {
                 })
                 .build(app)?;
             if let Some(window) = app.get_webview_window("main") {
-                if let Ok(Some(monitor)) = window.current_monitor() {
-                    let scale = monitor.scale_factor();
-                    let width = (240.0 * scale).round() as i32;
-                    let position_x =
-                        monitor.position().x + (monitor.size().width as i32 - width) / 2;
-                    let position_y = monitor.position().y + (12.0 * scale).round() as i32;
-                    let _ =
-                        window.set_position(tauri::PhysicalPosition::new(position_x, position_y));
-                }
+                let settings = app
+                    .state::<Mutex<Store>>()
+                    .lock()
+                    .map_err(|_| std::io::Error::other("Data lock unavailable"))?
+                    .data
+                    .settings
+                    .clone();
+                display::place_notch(&window, &settings, false).map_err(std::io::Error::other)?;
             }
             Ok(())
         })
@@ -795,6 +796,8 @@ fn main() {
             focus_toggle,
             focus_reset,
             set_expanded,
+            display::get_display_options,
+            display::set_display_preference,
             close_app,
             extra::add_habit,
             extra::toggle_habit_day,
@@ -836,6 +839,8 @@ mod tests {
         let mut store = Store::open(path.clone()).unwrap();
         assert_eq!(store.data.focus.remaining_seconds, 1500);
         assert!(!store.data.settings.pin_open);
+        assert_eq!(store.data.settings.monitor_id, "primary");
+        assert_eq!(store.data.settings.top_margin_px, 12);
         store
             .transact(|state| {
                 state.todos.push(Todo {

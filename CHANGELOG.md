@@ -1,3 +1,12 @@
+## 0.9.0 — Persistent DPI-aware multi-monitor notch placement (CI validation pending)
+
+- Added native Rust monitor enumeration and a Settings monitor picker, including a Primary display preference.
+- Added a configurable 0–120 logical-pixel notch top gap and persistent settings migration.
+- Positioning clamps compact and expanded notch sizes to the chosen display, supporting negative virtual display origins and high-DPI scaling.
+- A disconnected saved monitor gracefully falls back to the primary/current display without overwriting the preference.
+- Added pure geometry unit tests and browser checks against fabricated monitor data.
+- Windows multi-monitor physical runtime tests remain pending; CI compilation alone is not full Poni feature parity.
+
 ## 0.8.0 — Native Windows media session metadata and accessible UI polish (validation pending)
 
 - Added premium dark/champagne-gold UI refinement, focus states, responsive layout and reduced-motion support.

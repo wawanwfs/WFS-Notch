@@ -42,16 +42,19 @@ with sync_playwright() as pw:
     }""")
     for filename in (
         "styles.css", "calendar_plus.css", "system_details.css",
-        "media_sessions.css", "ux_polish.css"
+        "media_sessions.css", "ux_polish.css", "display_ui.css"
     ):
         page.add_style_tag(content=(UI / filename).read_text(encoding="utf-8"))
     for filename in (
         "app.js", "modules.js", "parity.js", "calendar_plus.js",
-        "system_details.js", "media_sessions.js", "ux_polish.js"
+        "system_details.js", "media_sessions.js", "ux_polish.js", "display_ui.js"
     ):
         page.add_script_tag(content=(UI / filename).read_text(encoding="utf-8"))
 
     page.locator("#expanded").wait_for(state="visible")
+    assert page.locator("#display-monitor").is_disabled()
+    assert page.locator("#display-apply").is_disabled()
+    assert "cannot detect real monitors" in page.locator("#display-status").inner_text()
     assert page.locator(".tabs .tab").count() >= 14
     assert page.locator("#nav-home").get_attribute("aria-current") == "page"
     assert page.locator("#nav-todos").get_attribute("aria-controls") == "panel-todos"

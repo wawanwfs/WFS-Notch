@@ -1,0 +1,29 @@
+/* Native multi-monitor controls (no browser simulated hardware) */
+.display-options {
+  border: 1px solid rgba(214,183,122,.23);
+  border-radius: 13px;
+  background: linear-gradient(125deg,rgba(214,183,122,.075),rgba(255,255,255,.01));
+  padding: 12px;
+  margin: 10px 0 13px;
+}
+.display-options .settings-row {margin: 0 0 10px;}
+.display-options .settings-row .secondary {white-space: nowrap;min-height: 32px}
+.display-inputs {display: grid;grid-template-columns: minmax(0,1fr) 128px auto;gap: 9px;align-items:end;}
+.display-inputs label {display:grid;gap:6px;font-size:11px;color:#c5c7d0;min-width:0;}
+.display-inputs input,.display-inputs select {
+  background:#18191f;
+  border:1px solid #3d3e46;
+  border-radius:9px;
+  color:#f3f2f1;
+  width:100%;
+  min-width:0;
+  padding:9px 10px;
+  font:inherit;
+}
+.display-inputs .primary {min-height: 36px;white-space:nowrap}
+#display-status {margin:10px 0 0;line-height:1.5;white-space:normal;overflow-wrap:anywhere;}
+#display-status.error {color:#ffb0a5}
+@media(max-width:700px) {
+  .display-inputs {grid-template-columns:minmax(0,1fr) 112px}
+  .display-inputs .primary {grid-column:1/-1}
+}

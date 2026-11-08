@@ -76,6 +76,8 @@ jobs:
         run: node --check 02_APP/ui/media_sessions.js
       - name: UX accessibility JavaScript syntax
         run: node --check 02_APP/ui/ux_polish.js
+      - name: Multi-monitor UI JavaScript syntax
+        run: node --check 02_APP/ui/display_ui.js
       - name: Desktop UX 760x470 browser regression
         run: python 04_TESTS/browser_ux_polish.py
       - name: Upload browser evidence

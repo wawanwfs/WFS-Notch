@@ -9,7 +9,7 @@ const defaults = () => ({
   todos: [], notes: [], events: [], habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
-  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false },
+  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12 },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
 });
 let data = defaults();
