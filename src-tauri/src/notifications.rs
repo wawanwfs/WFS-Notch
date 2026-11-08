@@ -1,7 +1,7 @@
 //! Opt-in WFS-owned Windows notifications, including a native background scheduler.
 //! Never accesses notifications from other applications, OS DND, or private calendars
 //! outside the local WFS Notch store. All user-facing content is redacted by default.
-use crate::{now_ms, with_store, AppData, CalendarEvent, Settings, Store};
+use crate::{now_ms, with_store, AppData, CalendarEvent, Settings, Store, Todo};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Mutex, time::Duration};
 use tauri::{AppHandle, Manager, State};
@@ -42,6 +42,8 @@ pub struct ReminderSchedulerStatus {
     paused: bool,
     scheduled_count: usize,
     next_due_at_ms: Option<u64>,
+    task_due_reminders_enabled: bool,
+    upcoming_task_due_count: usize,
     poll_interval_seconds: u64,
     persisted_delivery_count: usize,
     pending_retry_count: usize,
@@ -87,15 +89,23 @@ fn needs_delivery(
             .is_some_and(|expiry| *expiry > now)
 }
 
+fn retry_allowed_key(
+    key: &str,
+    now: u128,
+    retries: &HashMap<String, ReminderRetry>,
+) -> bool {
+    retries.get(key).is_none_or(|record| {
+        record.expires_at_ms <= now
+            || (record.attempts < MAX_RETRY_ATTEMPTS && now >= record.retry_after_ms)
+    })
+}
+
 fn retry_allowed(
     event: &CalendarEvent,
     now: u128,
     retries: &HashMap<String, ReminderRetry>,
 ) -> bool {
-    retries.get(&delivery_key(event)).is_none_or(|record| {
-        record.expires_at_ms <= now
-            || (record.attempts < MAX_RETRY_ATTEMPTS && now >= record.retry_after_ms)
-    })
+    retry_allowed_key(&delivery_key(event), now, retries)
 }
 
 fn reservation_expires_at(event: &CalendarEvent) -> u128 {
@@ -116,6 +126,62 @@ fn due_event_ids(data: &AppData, now: u128) -> Vec<String> {
         .map(|event| event.id.clone())
         .take(256)
         .collect()
+}
+
+/// Local task reminders are independent from calendar alerts and opt-in twice:
+/// WFS-owned system toasts must be enabled AND task due reminders opted in.
+fn task_delivery_key(todo: &Todo) -> Option<String> {
+    todo.due_at_ms
+        .map(|due| format!("task:{}:{}", todo.id, due))
+}
+
+fn task_due(todo: &Todo, now: u128) -> bool {
+    todo.due_at_ms.is_some_and(|due| {
+        !todo.done
+            && now >= u128::from(due)
+            && now < u128::from(due).saturating_add(EVENT_GRACE_MS)
+    })
+}
+
+fn needs_task_delivery(todo: &Todo, settings: &Settings, now: u128, data: &AppData) -> bool {
+    let Some(key) = task_delivery_key(todo) else {
+        return false;
+    };
+    // Ensure a bounded, private journal key for old imported task IDs too.
+    can_notify(settings)
+        && settings.task_due_reminders_enabled
+        && !todo.id.is_empty()
+        && todo.id.len() <= 140
+        && !todo.id.chars().any(char::is_control)
+        && task_due(todo, now)
+        && !data
+            .reminder_deliveries
+            .get(&key)
+            .is_some_and(|expiry| *expiry > now)
+        && retry_allowed_key(&key, now, &data.reminder_retries)
+}
+
+fn due_task_ids(data: &AppData, now: u128) -> Vec<String> {
+    if !can_notify(&data.settings) || !data.settings.task_due_reminders_enabled {
+        return Vec::new();
+    }
+    data.todos
+        .iter()
+        .filter(|todo| needs_task_delivery(todo, &data.settings, now, data))
+        .map(|todo| todo.id.clone())
+        .take(256)
+        .collect()
+}
+
+fn task_message(todo: &Todo, details: bool) -> String {
+    if details {
+        format!(
+            "Task due: {}",
+            todo.title.chars().take(120).collect::<String>()
+        )
+    } else {
+        "A task is due. Open WFS Notch to view it.".to_owned()
+    }
 }
 
 fn event_message(event: &CalendarEvent, details: bool) -> String {
@@ -218,13 +284,28 @@ where
     }
     let key = delivery_key(&event);
     let expires_at = reservation_expires_at(&event);
+    reserve_and_send(&mut guard, key, expires_at, now, || sender(&event, &settings))
+}
+
+/// Shared durable reservation and retry journal for calendar and task alerts.
+/// The OS enqueue is not proof the Windows notification was visibly displayed.
+fn reserve_and_send<F>(
+    guard: &mut Store,
+    key: String,
+    expires_at: u128,
+    now: u128,
+    sender: F,
+) -> Result<bool, String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
     // Store::transact writes to an fsync'd temporary state and renames it.
     guard.transact(|data| {
         data.reminder_deliveries.retain(|_, until| *until > now);
         data.reminder_deliveries.insert(key.clone(), expires_at);
         Ok(())
     })?;
-    if let Err(_error) = sender(&event, &settings) {
+    if let Err(_error) = sender() {
         // The OS call returned an error. Its precise presentation state may be
         // unknowable, so retries are bounded (3 total) and marked locally.
         // Commit the unreserve + retry atomically; if this transaction fails,
@@ -266,6 +347,46 @@ where
     Ok(true)
 }
 
+/// Only a currently open, still-due, explicitly opted-in task can reserve/send.
+/// The task key includes its due time, so edits and retries never reuse stale IDs.
+fn deliver_task_with<F>(
+    store: &Mutex<Store>,
+    id: &str,
+    now: u128,
+    sender: F,
+) -> Result<bool, String>
+where
+    F: FnOnce(&Todo, &Settings) -> Result<(), String>,
+{
+    if id.is_empty() || id.len() > 140 || id.chars().any(char::is_control) {
+        return Err("Invalid task reminder id".into());
+    }
+    let mut guard = store
+        .lock()
+        .map_err(|_| "Storage lock unavailable".to_owned())?;
+    let Some(todo) = guard.data.todos.iter().find(|todo| todo.id == id).cloned() else {
+        return Ok(false);
+    };
+    let settings = guard.data.settings.clone();
+    if !needs_task_delivery(&todo, &settings, now, &guard.data) {
+        return Ok(false);
+    }
+    let key = task_delivery_key(&todo).ok_or("Task due date was cleared")?;
+    let expires_at = u128::from(todo.due_at_ms.ok_or("Task due date was cleared")?)
+        .saturating_add(LEDGER_RETENTION_MS);
+    reserve_and_send(&mut guard, key, expires_at, now, || sender(&todo, &settings))
+}
+
+fn deliver_task_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool, String> {
+    deliver_task_with(store, id, now_ms(), |todo, settings| {
+        show(
+            app,
+            "WFS Notch · Tasks",
+            &task_message(todo, settings.notifications_show_details),
+        )
+    })
+}
+
 fn deliver_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool, String> {
     deliver_with(store, id, now_ms(), |event, settings| {
         show(
@@ -280,11 +401,12 @@ fn deliver_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool
 /// This keeps reminders active when the notch is collapsed or its WebView is hidden.
 fn poll_due_events(app: &AppHandle) -> Result<usize, String> {
     let store = app.state::<Mutex<Store>>();
-    let due_ids = {
+    let (due_ids, task_ids) = {
         let guard = store
             .lock()
             .map_err(|_| "Storage lock unavailable".to_owned())?;
-        due_event_ids(&guard.data, now_ms())
+        let now = now_ms();
+        (due_event_ids(&guard.data, now), due_task_ids(&guard.data, now))
     };
     let mut delivered = 0;
     for id in due_ids {
@@ -294,6 +416,16 @@ fn poll_due_events(app: &AppHandle) -> Result<usize, String> {
             Err(_) => {
                 // No event titles, source UIDs or Windows error strings logged.
                 eprintln!("WFS reminder enqueue failed (retry bounded by local journal)");
+            }
+        }
+    }
+    for id in task_ids {
+        match deliver_task_by_id(app, store.inner(), &id) {
+            Ok(true) => delivered += 1,
+            Ok(false) => {}
+            Err(_) => {
+                // Never log private task titles, identifiers or sender contents.
+                eprintln!("WFS task reminder enqueue failed (bounded local retry)");
             }
         }
     }
@@ -335,6 +467,19 @@ pub fn get_reminder_scheduler_status(
             .iter()
             .min()
             .and_then(|value| u64::try_from(*value).ok()),
+        task_due_reminders_enabled: guard.data.settings.task_due_reminders_enabled,
+        upcoming_task_due_count: if can_notify(&guard.data.settings)
+            && guard.data.settings.task_due_reminders_enabled
+        {
+            guard
+                .data
+                .todos
+                .iter()
+                .filter(|todo| !todo.done && todo.due_at_ms.is_some_and(|due| u128::from(due) >= now))
+                .count()
+        } else {
+            0
+        },
         poll_interval_seconds: POLL_INTERVAL.as_secs(),
         persisted_delivery_count: guard
             .data
@@ -383,6 +528,17 @@ pub fn set_notifications_paused(
 }
 
 #[tauri::command]
+pub fn set_task_due_reminders(
+    store: State<'_, Mutex<Store>>,
+    enabled: bool,
+) -> Result<AppData, String> {
+    with_store(store, |data| {
+        data.settings.task_due_reminders_enabled = enabled;
+        Ok(())
+    })
+}
+
+#[tauri::command]
 pub fn notify_test(app: AppHandle, store: State<'_, Mutex<Store>>) -> Result<bool, String> {
     // The lock prevents a change to preferences during the notification send.
     let guard = store
@@ -411,6 +567,85 @@ pub fn notify_due_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn task(id: &str, due_at_ms: u64) -> Todo {
+        Todo {
+            id: id.into(),
+            title: "Private launch".into(),
+            done: false,
+            created_ms: 1,
+            priority: "high".into(),
+            due_at_ms: Some(due_at_ms),
+        }
+    }
+
+    #[test]
+    fn tasks_require_separate_consent_and_skip_completed_edited_or_deleted() {
+        let time = 1_900_000_000_000_u64;
+        let mut data = AppData {
+            todos: vec![task("task-1", time)],
+            ..AppData::default()
+        };
+        assert!(due_task_ids(&data, u128::from(time)).is_empty());
+        data.settings.notifications_enabled = true;
+        assert!(due_task_ids(&data, u128::from(time)).is_empty());
+        data.settings.task_due_reminders_enabled = true;
+        assert_eq!(due_task_ids(&data, u128::from(time)), vec!["task-1"]);
+        assert!(!task_message(&data.todos[0], false).contains("Private launch"));
+        assert!(task_message(&data.todos[0], true).contains("Private launch"));
+        assert!(due_task_ids(&data, u128::from(time) - 1).is_empty());
+        let key = task_delivery_key(&data.todos[0]).unwrap();
+        data.reminder_deliveries
+            .insert(key, u128::from(time) + LEDGER_RETENTION_MS);
+        assert!(due_task_ids(&data, u128::from(time)).is_empty());
+        data.todos[0].title = "Edited title".into();
+        assert!(due_task_ids(&data, u128::from(time)).is_empty());
+        data.todos[0].due_at_ms = Some(time + 60_000);
+        assert_eq!(due_task_ids(&data, u128::from(time) + 60_000), vec!["task-1"]);
+        data.todos[0].done = true;
+        assert!(due_task_ids(&data, u128::from(time) + 60_000).is_empty());
+        data.todos.clear();
+        assert!(due_task_ids(&data, u128::from(time) + 60_000).is_empty());
+    }
+
+    #[test]
+    fn task_reservations_survive_restart_and_retry_without_private_details() {
+        let due = 1_900_000_000_000_u64;
+        let path = std::env::temp_dir().join(format!("wfs-task-alert-{}.json", crate::new_id()));
+        let mut initial = Store::open(path.clone()).unwrap();
+        initial
+            .transact(|data| {
+                data.settings.notifications_enabled = true;
+                data.settings.task_due_reminders_enabled = true;
+                data.todos.push(task("task-1", due));
+                Ok(())
+            })
+            .unwrap();
+        let store = Mutex::new(initial);
+        let error = deliver_task_with(&store, "task-1", u128::from(due), |_, _| {
+            Err("private sender failure".into())
+        })
+        .unwrap_err();
+        assert!(!error.contains("private"));
+        assert!(!error.contains("task-1"));
+        assert!(!deliver_task_with(&store, "task-1", u128::from(due) + 1, |_, _| {
+            panic!("Retry was scheduled in the future")
+        })
+        .unwrap());
+        assert!(deliver_task_with(&store, "task-1", u128::from(due) + 20_000, |todo, _| {
+            assert_eq!(todo.id, "task-1");
+            Ok(())
+        })
+        .unwrap());
+        let from_disk = Store::open(path.clone()).unwrap();
+        let after_restart = Mutex::new(from_disk);
+        assert!(!deliver_task_with(&after_restart, "task-1", u128::from(due) + 25_000, |_, _| {
+            panic!("Successful durable reservation must not replay")
+        })
+        .unwrap());
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("json.bak"));
+    }
 
     fn event(starts_at_ms: u64, remind_minutes: Option<u32>) -> CalendarEvent {
         CalendarEvent {
