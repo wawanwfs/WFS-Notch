@@ -171,6 +171,9 @@ struct AppData {
     events: Vec<CalendarEvent>,
     // Local, title-free, persistent reservation ledger. Kept in state.json atomically.
     reminder_deliveries: HashMap<String, u128>,
+    // Failed OS enqueue attempts use a bounded persistent backoff journal.
+    // No event titles or notification bodies are stored in this map.
+    reminder_retries: HashMap<String, notifications::ReminderRetry>,
     // Local-only ICS cancellation markers; reimport never silently restores deleted events.
     calendar_tombstones: HashSet<String>,
     // Versioned normalized ICS source metadata. Legacy flatten-only JSON
@@ -233,6 +236,12 @@ impl AppData {
         });
         self.calendar_tombstones.retain(|uid| {
             uid.starts_with("ics:") && uid.len() <= 240 && !uid.chars().any(char::is_control)
+        });
+        self.reminder_retries.retain(|key, retry| {
+            !key.is_empty()
+                && key.len() <= 240
+                && !key.chars().any(char::is_control)
+                && retry.valid()
         });
         self.calendar_series.retain(|key, series| series.valid(key));
         // Never truncate cancellation markers or source rules silently:
@@ -852,6 +861,20 @@ fn preserve_reminder_history(recovered: &mut AppData, existing: &AppData) {
             .entry(key.clone())
             .and_modify(|entry| *entry = (*entry).max(*until))
             .or_insert(*until);
+    }
+    // A backup must not roll back sender failure history and trigger an
+    // uncontrolled immediate replay on next launch. Preserve the more
+    // conservative attempt count and retry eligibility timestamp.
+    for (key, retry) in &existing.reminder_retries {
+        recovered
+            .reminder_retries
+            .entry(key.clone())
+            .and_modify(|entry| {
+                entry.attempts = entry.attempts.max(retry.attempts);
+                entry.retry_after_ms = entry.retry_after_ms.max(retry.retry_after_ms);
+                entry.expires_at_ms = entry.expires_at_ms.max(retry.expires_at_ms);
+            })
+            .or_insert_with(|| retry.clone());
     }
 }
 
