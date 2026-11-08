@@ -35,3 +35,20 @@
 #event-description { box-sizing: border-box; width: 100%; min-height: 52px; resize: vertical; padding: 8px 10px; border-radius: 9px; font: inherit; }
 .calendar-field-label { display: block; font-size: .76rem; line-height: 1.4; }
 #ics-clear-cancellations { font-size: .75rem; line-height: 1.35; text-align: left; min-height: 34px; }
+
+/* Phase 22A: explicit, one-time safe series day shift with preview and consent. */
+.series-shift-panel { border: 1px solid rgba(214,183,122,.34); border-radius: 13px;
+  margin: 9px 0 13px; padding: 12px; background: rgba(214,183,122,.055);
+  display: grid; gap: 9px; }
+.series-shift-panel[hidden] { display: none !important; }
+.series-shift-panel strong { color: var(--accent,#d6b77a); font-size: .86rem; }
+.series-shift-panel p, #calendar-shift-status { margin: 0; font-size: .75rem;
+  line-height: 1.55; color: var(--muted,#c8c8d2); }
+.series-shift-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; }
+.series-shift-controls label { display: grid; gap: 4px; min-width: 130px; font-size: .72rem; }
+#calendar-shift-days { max-width: 130px; width: 100%; box-sizing: border-box;
+  background: #15171d; color: var(--text,#eee); border: 1px solid rgba(214,183,122,.25);
+  border-radius: 8px; padding: 8px; color-scheme: dark; }
+.series-shift-controls button { min-height: 34px; }
+.series-shift-controls :focus-visible { outline: 2px solid var(--accent,#d6b77a); outline-offset: 2px; }
+@media (max-width: 560px) { .series-shift-controls { align-items: stretch; } }
