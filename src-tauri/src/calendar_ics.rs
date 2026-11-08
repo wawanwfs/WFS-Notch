@@ -230,10 +230,14 @@ fn parse_timed_duration(raw: &str) -> Result<u64, String> {
         }
         if ch.is_ascii_digit() {
             digits.push(ch);
-            if digits.len() > 9 { return Err("DURATION component is too large".into()); }
+            if digits.len() > 9 {
+                return Err("DURATION component is too large".into());
+            }
             continue;
         }
-        let count = digits.parse::<u64>().map_err(|_| "Malformed DURATION component")?;
+        let count = digits
+            .parse::<u64>()
+            .map_err(|_| "Malformed DURATION component")?;
         digits.clear();
         let (unit, rank) = match (in_time, ch) {
             (false, 'W') => (604800_u64, 1),
@@ -243,20 +247,30 @@ fn parse_timed_duration(raw: &str) -> Result<u64, String> {
             (true, 'S') => (1, 3),
             _ => return Err("Unsupported DURATION component".into()),
         };
-        if !seen.insert(ch) || rank <= last_rank ||
-           (ch == 'W' && seen.len() > 1) || (ch == 'D' && seen.contains(&'W')) {
+        if !seen.insert(ch)
+            || rank <= last_rank
+            || (ch == 'W' && seen.len() > 1)
+            || (ch == 'D' && seen.contains(&'W'))
+        {
             return Err("Duplicate or out-of-order DURATION unit".into());
         }
         last_rank = rank;
-        seconds = seconds.checked_add(count.checked_mul(unit).ok_or("DURATION overflow")?)
+        seconds = seconds
+            .checked_add(count.checked_mul(unit).ok_or("DURATION overflow")?)
             .ok_or("DURATION overflow")?;
         had_value = true;
     }
-    if !digits.is_empty() || !had_value || seconds == 0 || seconds > 366 * 86400
-        || (in_time && !seen.iter().any(|unit| matches!(unit, 'H' | 'M' | 'S'))) {
+    if !digits.is_empty()
+        || !had_value
+        || seconds == 0
+        || seconds > 366 * 86400
+        || (in_time && !seen.iter().any(|unit| matches!(unit, 'H' | 'M' | 'S')))
+    {
         return Err("DURATION must be positive and at most 366 days".into());
     }
-    seconds.checked_mul(1000).ok_or_else(|| "DURATION overflow".to_owned())
+    seconds
+        .checked_mul(1000)
+        .ok_or_else(|| "DURATION overflow".to_owned())
 }
 
 fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<CalendarEvent>, String> {
@@ -322,7 +336,9 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                     return Err("VEVENT cannot contain both DTEND and DURATION".into());
                 }
                 if is_all_day && event.duration_property.is_some() {
-                    return Err("DATE-only DURATION is not supported; use exclusive DATE DTEND".into());
+                    return Err(
+                        "DATE-only DURATION is not supported; use exclusive DATE DTEND".into(),
+                    );
                 }
                 let base_span = if let Some(start) = event.all_day_start {
                     let end = if let Some((key, raw)) = event.end_property.as_ref() {
@@ -340,26 +356,36 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                     None
                 };
                 let elapsed_ms = if !is_all_day {
-                    let original_start = event.start.as_ref().ok_or("Missing DTSTART")?
+                    let original_start = event
+                        .start
+                        .as_ref()
+                        .ok_or("Missing DTSTART")?
                         .occurrences(None)?[0];
                     let elapsed = if let Some((key, raw)) = event.end_property.as_ref() {
                         let end = CalendarStart::parse(key, raw, floating_timezone)?
                             .occurrences(None)?[0];
-                        Some(end.checked_sub(original_start)
-                            .filter(|duration| *duration > 0)
-                            .ok_or("Timed DTEND must be strictly later than DTSTART")?)
+                        Some(
+                            end.checked_sub(original_start)
+                                .filter(|duration| *duration > 0)
+                                .ok_or("Timed DTEND must be strictly later than DTSTART")?,
+                        )
                     } else {
-                        event.duration_property.as_ref()
+                        event
+                            .duration_property
+                            .as_ref()
                             .map(|raw| parse_timed_duration(raw))
                             .transpose()?
                     };
                     if let Some(ms) = elapsed {
-                        let end = original_start.checked_add(ms)
+                        let end = original_start
+                            .checked_add(ms)
                             .ok_or("Timed end timestamp overflow")?;
                         validate_timed_end(original_start, Some(end))?;
                     }
                     elapsed
-                } else { None };
+                } else {
+                    None
+                };
                 let mut instants = if let Some(span) = base_span.as_ref() {
                     let date = span.start_date.replace('-', "");
                     let source = CalendarStart::parse("DTSTART", &format!("{date}T000000Z"), None)?;
@@ -419,9 +445,13 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                             None
                         };
                     validate_event(&title, &event.description, starts_at_ms, event.reminder)?;
-                    let ends_at_ms = elapsed_ms.map(|ms| {
-                        starts_at_ms.checked_add(ms).ok_or("Timed end exceeds supported range")
-                    }).transpose()?;
+                    let ends_at_ms = elapsed_ms
+                        .map(|ms| {
+                            starts_at_ms
+                                .checked_add(ms)
+                                .ok_or("Timed end exceeds supported range")
+                        })
+                        .transpose()?;
                     validate_timed_end(starts_at_ms, ends_at_ms)?;
                     // Keep legacy single-UID identity for nonrecurring imports.
                     // In a series use the absolute occurrence key independent of
@@ -600,7 +630,11 @@ fn merge_imported_events(data: &mut AppData, incoming: Vec<CalendarEvent>) -> Re
         // Tombstones remain local, persist in backups and prevent accidental
         // resurrection of deleted imported occurrences / whole series.
         if data.calendar_tombstones.contains(&candidate.id)
-            || candidate.series_uid.as_ref().is_some_and(|series| data.calendar_tombstones.contains(series)) {
+            || candidate
+                .series_uid
+                .as_ref()
+                .is_some_and(|series| data.calendar_tombstones.contains(series))
+        {
             continue;
         }
         if let Some(series) = candidate.series_uid.as_ref() {
@@ -748,8 +782,14 @@ mod tests {
         let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:dtend@example.org\nSUMMARY:Timed review\nDTSTART;TZID=Asia/Jakarta:20270614T113000\nDTEND;TZID=Asia/Jakarta:20270614T130000\nEND:VEVENT\nEND:VCALENDAR";
         let first = parse_ics(input, None).unwrap();
         assert_eq!(first.len(), 1);
-        assert_eq!(first[0].starts_at_ms, utc_to_ms("20270614T043000Z").unwrap());
-        assert_eq!(first[0].ends_at_ms, Some(utc_to_ms("20270614T060000Z").unwrap()));
+        assert_eq!(
+            first[0].starts_at_ms,
+            utc_to_ms("20270614T043000Z").unwrap()
+        );
+        assert_eq!(
+            first[0].ends_at_ms,
+            Some(utc_to_ms("20270614T060000Z").unwrap())
+        );
         let text = serialize_ics(&first).unwrap();
         assert!(text.contains("DTEND:20270614T060000Z"));
         let recovered = parse_ics(&text, None).unwrap();
@@ -758,16 +798,27 @@ mod tests {
         assert_eq!(recovered[0].id, first[0].id);
         let duration_ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:duration@example.org\nSUMMARY:Duration\nDTSTART:20270614T113000Z\nDURATION:PT1H30M\nEND:VEVENT\nEND:VCALENDAR";
         let duration = parse_ics(duration_ics, None).unwrap();
-        assert_eq!(duration[0].ends_at_ms, Some(utc_to_ms("20270614T130000Z").unwrap()));
-        assert!(serialize_ics(&duration).unwrap().contains("DTEND:20270614T130000Z"));
+        assert_eq!(
+            duration[0].ends_at_ms,
+            Some(utc_to_ms("20270614T130000Z").unwrap())
+        );
+        assert!(serialize_ics(&duration)
+            .unwrap()
+            .contains("DTEND:20270614T130000Z"));
     }
 
     #[test]
     fn iana_dtend_resolves_spring_dst_and_rejects_nonexistent_and_ambiguous_times() {
         let valid = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:DST change\nDTSTART;TZID=America/New_York:20270313T233000\nDTEND;TZID=America/New_York:20270314T033000\nEND:VEVENT\nEND:VCALENDAR";
         let events = parse_ics(valid, None).unwrap();
-        assert_eq!(events[0].starts_at_ms, utc_to_ms("20270314T043000Z").unwrap());
-        assert_eq!(events[0].ends_at_ms, Some(utc_to_ms("20270314T073000Z").unwrap()));
+        assert_eq!(
+            events[0].starts_at_ms,
+            utc_to_ms("20270314T043000Z").unwrap()
+        );
+        assert_eq!(
+            events[0].ends_at_ms,
+            Some(utc_to_ms("20270314T073000Z").unwrap())
+        );
         let gap = valid.replace("20270314T033000", "20270314T023000");
         assert!(parse_ics(&gap, None).unwrap_err().contains("Nonexistent"));
         let overlap = valid.replace("20270314T033000", "20271107T013000");
@@ -781,10 +832,23 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:recurring-duration@example.org\nSUMMARY:NY weekly\nDTSTART;TZID=America/New_York:20270313T093000\nDTEND;TZID=America/New_York:20270313T103000\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
         let events = parse_ics(ics, None).unwrap();
         assert_eq!(events.len(), 3);
-        assert_eq!(events[0].starts_at_ms, utc_to_ms("20270313T143000Z").unwrap());
-        assert_eq!(events[1].starts_at_ms, utc_to_ms("20270314T133000Z").unwrap());
-        assert!(events.iter().all(|item| item.ends_at_ms.unwrap() - item.starts_at_ms == 3_600_000));
-        assert_eq!(parse_ics(&serialize_ics(&events).unwrap(), None).unwrap().len(), 3);
+        assert_eq!(
+            events[0].starts_at_ms,
+            utc_to_ms("20270313T143000Z").unwrap()
+        );
+        assert_eq!(
+            events[1].starts_at_ms,
+            utc_to_ms("20270314T133000Z").unwrap()
+        );
+        assert!(events
+            .iter()
+            .all(|item| item.ends_at_ms.unwrap() - item.starts_at_ms == 3_600_000));
+        assert_eq!(
+            parse_ics(&serialize_ics(&events).unwrap(), None)
+                .unwrap()
+                .len(),
+            3
+        );
     }
 
     #[test]
@@ -816,7 +880,9 @@ mod tests {
         assert_eq!(state.events.len(), 3);
         crate::remove_series(&mut state, &incoming[0].id).unwrap();
         assert_eq!(state.events.len(), 0);
-        assert!(state.calendar_tombstones.contains("ics:cancel-me@example.org"));
+        assert!(state
+            .calendar_tombstones
+            .contains("ics:cancel-me@example.org"));
         merge_imported_events(&mut state, incoming.clone()).unwrap();
         assert!(state.events.is_empty());
         let serialized = serde_json::to_string(&state).unwrap();
