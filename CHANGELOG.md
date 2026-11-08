@@ -1,3 +1,13 @@
+## 0.12.0 — Windows reliability and native media refinement (development)
+
+- Added an at-most-once persistent WFS reminder reservation ledger in the existing Rust local state file, bounded sleep/resume catch-up, edited-event keys, failure retry and deterministic tests. Windows toast enqueue is not an end-user display receipt.
+- Added WinRT per-app toast setting inspection in Settings without conflating it with Tauri desktop permission or Focus Assist.
+- Added opt-in Win32 same-monitor fullscreen detection and background monitor DPI/topology re-positioning; native hardware QA remains open.
+- Added selected GSMTC player metadata/progress/artwork and capability-aware transport controls with disconnect handling.
+- Added compact/expanded transitions, scrollable small viewport UI and 64 browser screenshot checks across 16 modules and three simulated DPR values.
+- Category-weighted progress remains 28.9% (3 Implemented, 16 Partial, 19 Gap); see Phase 12 report.
+- Windows installer is unsigned; do not interpret CI compilation as real-device behavioral validation.
+
 ## 0.11.0 — Native calendar reminder scheduling (development)
 
 - Moved scheduling of WFS-owned Windows calendar reminder to a Rust worker that keeps running while the notch UI is hidden or collapsed (application must remain running).

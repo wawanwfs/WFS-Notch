@@ -1,12 +1,12 @@
 # Development roadmap
 
-Current baseline: **v0.11.0 development**. Priorities are product behavior and testable Windows integration rather than documentation volume.
+Current Phase 12 work: **v0.12.0 development**. Priorities are product behavior and testable Windows integration rather than documentation volume.
 
 ## Next milestones
 
 1. Native Windows 10/11 device smoke test: 1–3 monitors, 100/125/150% DPI, fullscreen and hot-unplug/reconnect.
-2. Notifications: native Rust-owned reminder scheduling and a private UI status panel now exist. Next verify Windows toast permission prompts, send failures, restart-deduplication ledger, lock-screen privacy and WFS-only pause mode. Third-party notification interception is not implemented.
-3. Media: reliably select GSMTC sessions, confirm artwork decoding, media progress and playback controls in Spotify/browser/Windows Media Player.
+2. Notifications: native Rust-owned reminder scheduling and a private UI status panel now exist. Durable delivery reservation and WinRT setting diagnostic are in source. Next verify installed/portable toast delivery, OS suppression, lock-screen privacy and crash-in-flight semantics. Third-party notification interception is not implemented.
+3. Media: selected-session metadata and capability checks exist; confirm artwork, progress and controls on real Spotify/browser/Windows Media Player instances.
 4. UI accessibility and polished notch animations, no focus stealing in fullscreen, keyboard-first workflows.
 5. Calendar recurrence/TZID, file shelf, clipboard history with explicit consent, and native device controls.
 

@@ -3,7 +3,8 @@
 use crate::{with_store, AppData, Settings, Store};
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::{PhysicalPosition, State, WebviewWindow};
+use std::time::Duration;
+use tauri::{AppHandle, Manager, PhysicalPosition, State, WebviewWindow};
 
 const COLLAPSED_WIDTH: f64 = 240.0;
 const COLLAPSED_HEIGHT: f64 = 48.0;
@@ -146,6 +147,140 @@ pub fn place_notch(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(windows)]
+fn active_fullscreen_on_monitor(window: &WebviewWindow, settings: &Settings) -> bool {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO,
+        MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId,
+    };
+    let Ok((Some(monitor), _)) = select_monitor(window, &settings.monitor_id) else {
+        return false;
+    };
+    let position = monitor.position();
+    let size = monitor.size();
+    let point = POINT {
+        x: position.x.saturating_add((size.width / 2) as i32),
+        y: position.y.saturating_add((size.height / 2) as i32),
+    };
+    // SAFETY: read-only Win32 foreground/window/monitor queries, owned POD buffers.
+    unsafe {
+        let foreground = GetForegroundWindow();
+        let mut process_id = 0_u32;
+        if GetWindowThreadProcessId(foreground, Some(&mut process_id)) == 0
+            || process_id == std::process::id()
+        {
+            return false; // WFS Notch itself is focused.
+        }
+        let target = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+        let current = MonitorFromWindow(foreground, MONITOR_DEFAULTTONULL);
+        if target != current {
+            return false; // Fullscreen app on a *different* monitor.
+        }
+        let mut monitor_info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let mut rect = RECT::default();
+        if !GetMonitorInfoW(current, &mut monitor_info).as_bool()
+            || GetWindowRect(foreground, &mut rect).is_err()
+        {
+            return false;
+        }
+        covers_monitor(
+            (rect.left, rect.top, rect.right, rect.bottom),
+            (
+                monitor_info.rcMonitor.left,
+                monitor_info.rcMonitor.top,
+                monitor_info.rcMonitor.right,
+                monitor_info.rcMonitor.bottom,
+            ),
+        )
+    }
+}
+#[cfg(not(windows))]
+fn active_fullscreen_on_monitor(_window: &WebviewWindow, _settings: &Settings) -> bool {
+    false
+}
+
+// 2px margin tolerates Win32 invisible borders; small maximized apps do not
+// qualify because the taskbar leaves an uncovered strip.
+fn covers_monitor(window: (i32, i32, i32, i32), monitor: (i32, i32, i32, i32)) -> bool {
+    window.0 <= monitor.0.saturating_add(2)
+        && window.1 <= monitor.1.saturating_add(2)
+        && window.2 >= monitor.2.saturating_sub(2)
+        && window.3 >= monitor.3.saturating_sub(2)
+}
+
+/// Reorder without activating/focusing the app; never call set_focus here.
+pub fn sync_topmost(window: &WebviewWindow, settings: &Settings) -> Result<(), String> {
+    let allow = settings.always_on_top
+        && !(settings.auto_lower_fullscreen && active_fullscreen_on_monitor(window, settings));
+    window.set_always_on_top(allow).map_err(|e| e.to_string())
+}
+
+/// Poll only local window and display geometry. No app-title/process-name
+/// collection, no accessibility hooks, no global keyboard or screen capture.
+pub fn start_guard(app: AppHandle) -> std::io::Result<()> {
+    std::thread::Builder::new()
+        .name("wfs-display-guard".into())
+        .spawn(move || {
+            let mut previous_geometry: Option<Vec<String>> = None;
+            let mut previous_topmost: Option<bool> = None;
+            loop {
+                if let Some(window) = app.get_webview_window("main") {
+                    let store = app.state::<Mutex<Store>>();
+                    let settings = store.lock().ok().map(|state| state.data.settings.clone());
+                    if let Some(settings) = settings {
+                        if let Ok(monitors) = window.available_monitors() {
+                            let mut fingerprint = monitors
+                                .iter()
+                                .map(|m| {
+                                    format!(
+                                        "{}:{}:{}:{}:{:.3}",
+                                        m.position().x,
+                                        m.position().y,
+                                        m.size().width,
+                                        m.size().height,
+                                        m.scale_factor()
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            fingerprint.sort();
+                            if previous_geometry
+                                .as_ref()
+                                .is_some_and(|old| old != &fingerprint)
+                            {
+                                let height = window.inner_size().ok().map(|s| s.height as f64);
+                                let scale = window.scale_factor().unwrap_or(1.0).max(0.1);
+                                let expanded = height.is_some_and(|h| h / scale > 120.0);
+                                if let Err(error) = place_notch(&window, &settings, expanded) {
+                                    eprintln!("WFS display placement unavailable: {error}");
+                                }
+                            }
+                            previous_geometry = Some(fingerprint);
+                        }
+                        let desired = settings.always_on_top
+                            && !(settings.auto_lower_fullscreen
+                                && active_fullscreen_on_monitor(&window, &settings));
+                        if previous_topmost != Some(desired) {
+                            if let Err(error) = window.set_always_on_top(desired) {
+                                eprintln!("WFS topmost update unavailable: {error}");
+                            } else {
+                                previous_topmost = Some(desired);
+                            }
+                        }
+                    }
+                }
+                std::thread::sleep(Duration::from_secs(2));
+            }
+        })
+        .map(|_| ())
+}
+
 #[tauri::command]
 pub fn get_display_options(
     window: WebviewWindow,
@@ -245,6 +380,14 @@ mod tests {
         assert!(narrow.logical_height <= 456.0);
         assert!(narrow.y >= 0);
         assert!(narrow.y + narrow.logical_height as i32 <= 480);
+    }
+
+    #[test]
+    fn fullscreen_tolerance_does_not_match_maximized_work_area() {
+        assert!(covers_monitor((0, 0, 1920, 1080), (0, 0, 1920, 1080)));
+        assert!(covers_monitor((-1922, -1, -1, 1081), (-1920, 0, 0, 1080)));
+        assert!(!covers_monitor((0, 0, 1920, 1040), (0, 0, 1920, 1080)));
+        assert!(!covers_monitor((1920, 0, 3840, 1080), (0, 0, 1920, 1080)));
     }
 
     #[test]

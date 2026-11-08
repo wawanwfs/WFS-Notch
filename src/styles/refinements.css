@@ -96,3 +96,20 @@ footer {background:rgba(8,9,11,.37)}
   .mini-card b {font-size:22px}
   .media-pad button {width:52px;height:52px;font-size:22px}
 }
+
+/* Phase 12: small viewports, keyboard and motion-safe panel transitions. */
+.tabs {overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
+main {min-width:0;}
+.panel.active {overflow-x:hidden;overflow-y:auto;padding-right:4px;}
+.expanded:not([hidden]) {animation:wfs-open 190ms cubic-bezier(.22,1,.36,1) both;}
+.collapsed:not([hidden]) {animation:wfs-close 150ms ease-out both;}
+@keyframes wfs-open {from{opacity:.86;transform:translateY(-5px) scale(.993)}to{opacity:1;transform:none}}
+@keyframes wfs-close {from{opacity:.84;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media (max-width:560px) {
+ .topbar {min-width:0}
+ .top-actions #current-date {display:none}
+ .home-grid {grid-template-columns:repeat(3,minmax(0,1fr))}
+ .section-heading {gap:8px}
+ .settings-row {gap:8px}
+ .privacy-settings button {max-width:100%;white-space:normal}
+}

@@ -11,10 +11,10 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 
 | Reference feature | WFS Notch 0.11.0 | Remaining difference / evidence required |
 | --- | --- | --- |
-| Compact/expanded interactive notch | Partial | DPI-aware multi-monitor placement and manual always-on-top option; automatic fullscreen detection, exact hover/pass-through and real multi-monitor QA pending |
+| Compact/expanded interactive notch | Partial | DPI-aware manual placement plus opt-in Win32 foreground fullscreen guard / display hotplug polling; real device/hover/pass-through QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
-| Appearance / glass / animations | Partial | Accent + collapse; glass, frosted, 9 animations, layout editor missing |
-| Music & transport controls | Partial | Global media keys, WinRT metadata, album artwork when available, player list, selected session controls and interpolated progress; lyrics and native device tests missing |
+| Appearance / glass / animations | Partial | Accent, reduced-motion-friendly compact/expanded transitions and narrow-viewport scrolling; reference glass/animation library/layout editor missing |
+| Music & transport controls | Partial | GSMTC selected session metadata, artwork, timeline normalization and control capability checks; lyrics and native Windows player regression missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
 | Desktop calendar | Partial | Month grid, UTC ICS text import/export and local reminders; TZID/floating-date support, file picker, iCal subscriptions and Google/Outlook sync missing |
 | Todo | Partial | CRUD; reminders, recurring, natural language parsing, snooze missing |
@@ -31,7 +31,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Wi-Fi Controls | Gap | Windows adapter & network list APIs |
 | Bluetooth Controls | Gap | Windows radio/device APIs, pairing/battery |
 | Dashboard quick toggles | Gap | Wi-Fi, Bluetooth, Keep Awake, dark mode, brightness, mic |
-| Notifications | Partial | Rust-native WFS-owned background calendar reminder scheduling while process runs, opt-in private titles, in-memory deduplication and pause mode; restart ledger, third-party OS NotificationListener, history, system DND and native runtime tests missing |
+| Notifications | Partial | Rust-native background scheduler, durable per-event at-most-once reservation ledger, catch-up after resume, opt-in private titles, WinRT toast setting diagnostic and WFS-only pause; OS delivery acknowledgement, full system DND, native tests and third-party listener missing |
 | HUD/OSD | Gap | Volume, brightness, keyboard state, airplane mode overlays |
 | Dock | Partial | Quick launch/links only, not running-app/taskbar dock |
 | Shelf/drop actions | Gap | File drops, ZIP, convert, safe send |
@@ -49,6 +49,10 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Native autostart/tray | Implemented | Windows runner compilation; behavioral device test pending |
 | Data backup | Partial | Local JSON snapshots/restore; portable import/export missing |
 | Self-update | Gap | Signed updater, portable notification |
+
+## Phase 12 weighted score (38 categories)
+
+Counts: **Implemented 3**, **Partial 16**, **Gap 19**. Formula: (3 × 1 + 16 × 0.5 + 19 × 0) / 38 × 100 = **28.9%** (rounded to one decimal). This remains unchanged from v0.11.0: significant progress *within* partial categories does not promote an entire category to Implemented without completing its scope. CI results and real Windows tests are tracked separately in `docs/PHASE12_REPORT.md`.
 
 ## Gate for accurate 100% claim
 

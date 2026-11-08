@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
@@ -31,6 +32,7 @@ struct Settings {
     notifications_show_details: bool,
     notifications_paused: bool,
     always_on_top: bool,
+    auto_lower_fullscreen: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -44,6 +46,7 @@ impl Default for Settings {
             notifications_show_details: false,
             notifications_paused: false,
             always_on_top: true,
+            auto_lower_fullscreen: false,
         }
     }
 }
@@ -155,6 +158,8 @@ struct AppData {
     todos: Vec<Todo>,
     notes: Vec<Note>,
     events: Vec<CalendarEvent>,
+    // Local, title-free, persistent reservation ledger. Kept in state.json atomically.
+    reminder_deliveries: HashMap<String, u128>,
     habits: Vec<extra::Habit>,
     quick_links: Vec<extra::QuickLink>,
     health: wellness::HealthState,
@@ -697,9 +702,15 @@ fn set_notch_on_top(
         .data
         .settings
         .always_on_top;
-    window
-        .set_always_on_top(enabled)
-        .map_err(|error| error.to_string())?;
+    let settings = store
+        .lock()
+        .map_err(|_| "Storage lock unavailable".to_owned())?
+        .data
+        .settings
+        .clone();
+    let mut updated = settings;
+    updated.always_on_top = enabled;
+    display::sync_topmost(&window, &updated)?;
     match with_store(store, |data| {
         data.settings.always_on_top = enabled;
         Ok(())
@@ -741,6 +752,20 @@ fn focus_reset(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
 }
 
 #[tauri::command]
+fn set_fullscreen_auto(
+    window: tauri::WebviewWindow,
+    store: State<'_, Mutex<Store>>,
+    enabled: bool,
+) -> Result<AppData, String> {
+    let snapshot = with_store(store, |data| {
+        data.settings.auto_lower_fullscreen = enabled;
+        Ok(())
+    })?;
+    display::sync_topmost(&window, &snapshot.settings)?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
 fn set_expanded(
     window: tauri::WebviewWindow,
     store: State<'_, Mutex<Store>>,
@@ -769,7 +794,6 @@ fn main() {
             let store = Store::open(directory.join("state.json")).map_err(std::io::Error::other)?;
             app.manage(Mutex::new(store));
             app.manage(Mutex::new(System::new_all()));
-            app.manage(notifications::SentNotices::default());
             notifications::start_scheduler(app.handle().clone())?;
             let tray_menu = MenuBuilder::new(app)
                 .text("show", "Show WFS Notch")
@@ -803,8 +827,9 @@ fn main() {
                     .settings
                     .clone();
                 display::place_notch(&window, &settings, false).map_err(std::io::Error::other)?;
-                window.set_always_on_top(settings.always_on_top)?;
+                display::sync_topmost(&window, &settings).map_err(std::io::Error::other)?;
             }
+            display::start_guard(app.handle().clone())?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -832,17 +857,20 @@ fn main() {
             get_system_snapshot,
             system_details::get_system_details,
             media_sessions::get_active_media_session,
+            media_sessions::get_media_session_by_source,
             media_sessions::list_media_sessions,
             media_sessions::control_media_session,
             notifications::set_notification_preferences,
             notifications::set_notifications_paused,
             notifications::notify_test,
             notifications::get_reminder_scheduler_status,
+            notifications::get_windows_notification_permission,
             notifications::notify_due_event,
             set_accent,
             set_hover_to_open,
             set_pin_open,
             set_notch_on_top,
+            set_fullscreen_auto,
             set_focus_duration,
             focus_toggle,
             focus_reset,
