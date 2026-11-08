@@ -9,9 +9,9 @@ from html.parser import HTMLParser
 root = Path(__file__).resolve().parents[1]
 app = root / '02_APP'
 html = (app / 'ui/index.html').read_text()
-js = '\n'.join((app / 'ui' / filename).read_text() for filename in ('app.js', 'modules.js', 'parity.js', 'calendar_plus.js', 'system_details.js'))
+js = '\n'.join((app / 'ui' / filename).read_text() for filename in ('app.js', 'modules.js', 'parity.js', 'calendar_plus.js', 'system_details.js', 'media_sessions.js', 'ux_polish.js'))
 rust = (app / 'src-tauri/src/main.rs').read_text()
-all_rust = '\n'.join((app / 'src-tauri/src' / filename).read_text() for filename in ('main.rs', 'extra.rs', 'parity.rs', 'calendar_ics.rs', 'system_details.rs'))
+all_rust = '\n'.join((app / 'src-tauri/src' / filename).read_text() for filename in ('main.rs', 'extra.rs', 'parity.rs', 'calendar_ics.rs', 'system_details.rs', 'media_sessions.rs'))
 config = json.loads((app / 'src-tauri/tauri.conf.json').read_text())
 capabilities = json.loads((app / 'src-tauri/capabilities/default.json').read_text())
 
@@ -27,7 +27,7 @@ ids = parser.ids
 assert len(ids) == len(set(ids)), 'Duplicate HTML ids'
 referenced_ids = set(re.findall(r"\$\('#([A-Za-z0-9_-]+)'\)", js))
 assert referenced_ids.issubset(set(ids)), f'Missing elements: {referenced_ids - set(ids)}'
-commands = set(re.findall(r'\#\[tauri::command\]\s*(?:pub\s+)?fn\s+(\w+)', all_rust))
+commands = set(re.findall(r'\#\[tauri::command\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)', all_rust))
 frontend_calls = set(re.findall(r"(?:mutation|invoke)\('([a-z_]+)'", js))
 extra_commands = set(re.findall(r'\#\[tauri::command\]\s*pub fn\s+(\w+)', (app / 'src-tauri/src/extra.rs').read_text()))
 assert frontend_calls.issubset(commands | extra_commands), f'Missing Rust command(s): {frontend_calls - (commands | extra_commands)}'
@@ -46,6 +46,6 @@ assert len(commands) >= 20
 extra = (app / 'src-tauri/src/extra.rs').read_text()
 extra_commands = set(re.findall(r'\#\[tauri::command\]\s*pub fn\s+(\w+)', extra))
 assert {'add_habit', 'open_quick_link', 'media_key'} <= extra_commands
-assert {'import_ics', 'export_ics'} <= commands
+assert {'import_ics', 'export_ics', 'get_active_media_session'} <= commands
 assert 'calendar_ics::import_ics' in rust and 'calendar_ics::export_ics' in rust
 print('PASS: static audit |', len(ids), 'unique element IDs |', len(frontend_calls), 'bound frontend commands |', len(commands), 'Rust commands | JSON/SVG/icons checked')
