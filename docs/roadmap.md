@@ -11,7 +11,7 @@ Baseline: v0.9.0, Windows Rust + Tauri 2. Current release: v0.10.0 development.
 
 ## Progress measurement
 
-Reference feature ledger contains 38 feature groups. The v0.9.0 baseline has 3 implemented, 15 partial and 20 gaps. Weighted development estimate: **(3 + 15×0.5) / 38 = 27.6%**. This *planning score* is not a measure of visual similarity, production readiness, runtime coverage, or official feature equivalence.
+Reference feature ledger contains 38 feature groups. The v0.9.0 baseline has 3 implemented, 16 partial and 19 gaps. Weighted development estimate: **(3 + 16×0.5) / 38 = 28.9%**. This *planning score* is not a measure of visual similarity, production readiness, runtime coverage, or official feature equivalence.
 
 ## Completion criteria
 
