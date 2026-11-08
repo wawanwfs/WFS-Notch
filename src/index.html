@@ -83,8 +83,11 @@
           <div class="calendar-weekdays" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
           <div id="calendar-month-grid" class="calendar-month-grid" role="group" aria-label="Monthly calendar"></div>
           <details class="ics-box"><summary>Import / export iCalendar (.ics)</summary>
-            <p class="event-hint">Paste UTC-based ICS calendar text below. Unsupported floating/TZID timestamps are rejected rather than guessed. Import is transactional and repeated UIDs are skipped.</p>
+            <p class="event-hint">Paste .ics text. UTC and IANA TZID event times are resolved to UTC. For floating (timezone-free) timestamps, enter the intended IANA timezone below; WFS will not guess. Simple bounded daily/weekly RRULE occurrences are imported as individual events. Unsupported rules, all-day dates and DST-ambiguous times are rejected atomically.</p>
             <textarea id="ics-import-data" maxlength="262144" aria-label="Paste iCalendar ICS content" placeholder="BEGIN:VCALENDAR&#10;VERSION:2.0&#10;..."></textarea>
+            <label for="ics-floating-timezone" class="event-hint">Floating-time IANA timezone (only needed for DTSTART without Z or TZID)</label>
+            <input id="ics-floating-timezone" type="text" autocomplete="off" maxlength="80" placeholder="e.g. Asia/Jakarta or America/Chicago" aria-describedby="ics-floating-hint">
+            <small id="ics-floating-hint" class="event-hint">Leave empty for UTC or explicit TZID ICS. No automatic device timezone assumption.</small>
             <div class="calendar-toolbar"><button id="ics-import-button" class="secondary" type="button">Import events</button><button id="ics-export-button" class="secondary" type="button">Export events</button><button id="ics-export-copy" class="text-button" type="button">Copy export</button></div>
             <textarea id="ics-export-data" readonly aria-label="Exported iCalendar ICS content" placeholder="Exported ICS will appear here"></textarea>
             <small id="ics-status" role="status">Local-only calendar interchange. No cloud sync.</small>
