@@ -151,7 +151,7 @@ function initCalendarPlus() {
       await writeQueue;
       const text = await invoke('export_ics');
       document.querySelector('#ics-export-data').value = text;
-      status.textContent = 'Export prepared (' + data.events.length + ' events). Copy and save as .ics in a UTF-8 text editor.';
+      status.textContent = 'Export prepared (' + data.events.length + ' local events). Unchanged ICS series retain one RRULE master; edited/deleted or legacy series export as individual events. Copy and save as .ics.';
       showInfo('ICS export ready.');
     } catch (error) { showError(error); }
   });
