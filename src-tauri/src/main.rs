@@ -1220,7 +1220,7 @@ mod tests {
                 created_ms: 0,
                 all_day: None,
                 series_uid: series_uid.map(str::to_owned),
-            ends_at_ms: None,
+                ends_at_ms: None,
             });
         }
         assert!(update_series_title(&mut state, "standalone", "No").is_err());
@@ -1254,7 +1254,7 @@ mod tests {
                     created_ms: now_ms(),
                     all_day: None,
                     series_uid: None,
-                ends_at_ms: None,
+                    ends_at_ms: None,
                 });
                 Ok(())
             })
@@ -1287,7 +1287,7 @@ mod tests {
             created_ms: 0,
             all_day: None,
             series_uid: None,
-        ends_at_ms: None,
+            ends_at_ms: None,
         });
         preserve_reminder_history(&mut old_backup, &current);
         assert_eq!(
