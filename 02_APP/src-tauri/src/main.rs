@@ -11,9 +11,9 @@ use std::{
 use sysinfo::System;
 mod calendar_ics;
 mod extra;
+mod media_sessions;
 mod parity;
 mod system_details;
-mod media_sessions;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
 use tauri::{Manager, State};
 
