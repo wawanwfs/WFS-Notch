@@ -27,11 +27,11 @@ function Test-NodeSupported {
   }
   $raw = (& node -p 'process.versions.node').Trim()
   $version = [version]$raw
-  $supported = ($version.Major -eq 22 -and $version -ge [version]'22.19.0') -or
-    ($version.Major -eq 24 -and $version -ge [version]'24.11.0') -or
-    ($version.Major -ge 26)
+  $supported = ($version.Major -eq 22 -and $version -ge [version]'22.23.4') -or
+    ($version.Major -eq 24 -and $version -ge [version]'24.22.1') -or
+    ($version.Major -ge 26 -and $version -ge [version]'26.12.1')
   if (-not $supported) {
-    throw "REA requires Node.js 22.19+, 24.11+, or 26+. Your version: $raw"
+    throw "REA package manifest requires Node.js 22.23.4+, 24.22.1+ or 26.12.1+ (same major). Your version: $raw"
   }
   Write-Host "Node.js $raw / npm available"
 }
