@@ -138,6 +138,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      - name: Pre-cache verified official NSIS toolkit with retries
+        shell: pwsh
+        timeout-minutes: 20
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/prepare-nsis.ps1
       - name: Build Windows installer with official Tauri action
         uses: tauri-apps/tauri-action@v1
         with:
