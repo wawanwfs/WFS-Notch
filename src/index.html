@@ -177,6 +177,7 @@
         <section class="panel" id="panel-media">
           <div class="section-heading"><div><h2>Media remote</h2><p>Windows global media and volume controls.</p></div><span class="section-pill">NATIVE KEYS</span></div>
           <div id="now-playing" class="now-playing" role="status" aria-live="polite">
+            <img id="media-artwork" alt="Cover artwork from the active Windows player" hidden>
             <div class="now-playing-overline">CURRENT WINDOWS MEDIA SESSION</div>
             <strong id="media-track-title">No session detected</strong>
             <div id="media-track-artist">Open the native desktop app to inspect active media.</div>
@@ -206,7 +207,7 @@
             <button type="button" data-media="mute">Mute / unmute</button>
             <button type="button" data-media="volume_up">+ Volume</button>
           </div>
-          <p class="event-hint">Track title, artist, album, session and position are read from Windows GSMTC only while this panel is open. Album art, synchronized lyrics and playlists are not implemented yet. The selected-player controls target the chosen Windows media app; the separate large buttons send global media keys.</p>
+          <p class="event-hint">Track title, artist, album, session and position are read from Windows GSMTC only while this panel is open. Album art is shown when the Windows player exposes a supported PNG/JPEG/GIF thumbnail; synchronized lyrics and playlists are not implemented. The selected-player controls target the chosen Windows media app; the separate large buttons send global media keys.</p>
         </section>
         <section class="panel" id="panel-tools">
           <div class="section-heading"><div><h2>Quick tools</h2><p>Small utilities built into the notch.</p></div><span class="section-pill">OFFLINE</span></div>
