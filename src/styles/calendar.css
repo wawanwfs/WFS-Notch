@@ -28,3 +28,10 @@
 .event-all-day-range[hidden], #event-time[hidden] { display: none !important; }
 .event-item .text-button { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 560px) { .event-all-day-range { grid-template-columns: 1fr; } }
+
+/* Phase 16: optional timed range and private event description. */
+#event-end-time[hidden], #event-end-time-label[hidden] { display: none !important; }
+#event-end-time { min-width: 0; width: 100%; }
+#event-description { box-sizing: border-box; width: 100%; min-height: 52px; resize: vertical; padding: 8px 10px; border-radius: 9px; font: inherit; }
+.calendar-field-label { display: block; font-size: .76rem; line-height: 1.4; }
+#ics-clear-cancellations { font-size: .75rem; line-height: 1.35; text-align: left; min-height: 34px; }
