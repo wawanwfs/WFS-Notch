@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn durable_enqueues_survive_restart_and_retry_on_sender_error() {
-        let (store, path) = fixture_store("replay", 1_1_799_999_800_000_000_000);
+        let (store, path) = fixture_store("replay", 1_800_000_000_000);
         let mut sends = 0;
         assert!(deliver_with(&store, "event-1", 1_799_999_700_000, |_, _| {
             sends += 1;
@@ -486,7 +486,6 @@ mod tests {
             Ok(())
         }).unwrap());
         assert_eq!(sends, 1);
-        // A new scheduled instant is a different reminder occurrence.
         reloaded.lock().unwrap().transact(|data| {
             data.events[0].starts_at_ms = 1_800_000_100_000;
             Ok(())
@@ -504,7 +503,7 @@ mod tests {
 
     #[test]
     fn rejected_platform_send_releases_reservation_without_logging_titles() {
-        let (store, path) = fixture_store("failure", 1_1_799_999_800_000_000_000);
+        let (store, path) = fixture_store("failure", 1_800_000_000_000);
         assert!(deliver_with(&store, "event-1", 1_799_999_700_000, |_, _| {
             Err("OS notification disabled".into())
         }).is_err());
