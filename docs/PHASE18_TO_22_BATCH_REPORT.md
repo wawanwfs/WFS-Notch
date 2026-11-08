@@ -91,3 +91,11 @@ The only schedule move implemented is a guarded atomic *one-time* whole-day shif
 Draft [PR #27](https://github.com/wawanwfs/WFS-Notch/pull/27) adds bounded persisted tags, old JSON migration, tag filter and tag-aware search, and Rust/browser tests. **The PR is not merged or release-ready until PR-head Windows CI and exact post-merge main CI pass.** All Notes remain stored only on the device, with text-only labels and no network indexing.
 
 Do not mark Notes fully implemented: folders, rich text, robust conflict handling, undo and structured export/import remain incomplete. REA weighted 38-category parity still 3 Implemented / 16 Partial / 19 Gap = 28.9%.
+
+## Workstream F — verified merged v0.24.0 Notes
+
+PR [#27](https://github.com/wawanwfs/WFS-Notch/pull/27) was merged into main at `daa6b6b6a63e6b5896130056f5f6b23781d30069`. Exact postmerge [GitHub Actions 42514303079](https://github.com/wawanwfs/WFS-Notch/actions/runs/42514303079) **PASS**. All four CI job statuses (3 active passes and an expected identity gate skip) are distinct from native Win10/11 acceptance, which is still NOT TESTED. 85 Rust tests passed on the v0.24.0 PR-head; tag search/filter and browser regressions passed. Notes stays Partial.
+
+## Workstream F — v0.25.0 task reminders candidate
+
+On `feat/phase24f-opt-in-task-reminders`, implement task due alerts as a separate opt-in, reusing the 20-second native Windows scheduler and durable at-most-once enqueue + bounded sender retry. Only incomplete, currently due tasks in a 5-minute grace period qualify; task IDs/due timestamps are namespaced and private titles redacted by default. Browser never fakes OS delivery. Unit tests cover opt-in, edits, completions, restarts and retry. **Status: candidate only** until exact PR-head CI and final main CI independently PASS; no real native Windows 10/11 acceptance has been performed.

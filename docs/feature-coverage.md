@@ -9,7 +9,7 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.24.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.25.0 source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware placement with unique bounded monitor-name persistence (legacy coordinate fallback), opt-in Win32 foreground fullscreen guard (excluding spanning windows) and display hotplug polling; real Win10/11 device/hover/pass-through and RDP QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
@@ -17,7 +17,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Music & transport controls | Partial | GSMTC selected session metadata, artwork, timeline normalization, control capability checks, explicit safety rejection for duplicate browser/tab AUMIDs, stale selection protection and post-resume progress limits; lyrics, true per-tab selection and native Windows Spotify/browser/Media Player regression missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
 | Desktop calendar | Partial | Month grid, date-only DATE/DTEND all-day spans, timed UTC/IANA TZID/explicit floating import, bounded DAILY/WEEKLY/MONTHLY/YEARLY expansion with BYDAY, BYMONTH, BYMONTHDAY, WKST, EXDATE/RDATE, versioned saved source rule/exception metadata, strict UTC/IANA timed DTEND/DURATION with 366-day maximum, validated unchanged-master RRULE/EXDATE/RDATE ICS export with flattened fallback for edited/deleted/legacy series, edit-one or rename/delete-series actions, guarded one-time source-backed UTC/all-day whole-series day shift preview with atomic reflow (TZID/floating and already-edited series fail closed), durable cancellation keys preventing unintended reimport, and local reminders; source-preserving export of modified recurrence overrides, BYSETPOS/other unsupported RFC combinations, RECURRENCE-ID overrides, full series schedule editing, file picker and cloud sync missing |
-| Todo | Partial | Local add/complete/delete and edit with persisted low/normal/high priority, optional local due date, legacy JSON migration and UI regression; task due-date notifications, recurring schedules, natural-language input, snooze and undo still missing |
+| Todo | Partial | Local add/complete/delete and edit with persisted low/normal/high priority, optional local due date, legacy JSON migration and UI regression, separately opt-in native Windows task due alert with durable journal; recurring schedules, natural-language input, snooze, undo and native Win10/11 delivery validation still missing |
 | Notes | Partial | Local CRUD/autosave, full-text search including persisted private tags, accessible tag filter and question::answer flashcards; folders, rich editing, structured export/import, undo and conflict handling missing |
 | Focus/Pomodoro | Partial | Preset focus; automatic work-break cycles and sounds missing |
 | Stopwatch | Implemented | Browser UI + localStorage; native runtime still unverified |
@@ -31,7 +31,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Wi-Fi Controls | Gap | Windows adapter & network list APIs |
 | Bluetooth Controls | Gap | Windows radio/device APIs, pairing/battery |
 | Dashboard quick toggles | Gap | Wi-Fi, Bluetooth, Keep Awake, dark mode, brightness, mic |
-| Notifications | Partial | Rust-native background scheduler, durable per-event at-most-once reservation ledger with bounded clock rollback retention, bounded persistent 3-attempt OS enqueue error retries with 20/60/180 second backoff, deterministic transaction tests and backup restore replay protection, catch-up after resume, opt-in private titles, WinRT toast setting diagnostic and WFS-only pause; OS delivery acknowledgement, full system DND, native tests and third-party listener missing |
+| Notifications | Partial | Rust-native background scheduler for calendar plus separately opt-in task due alerts, shared durable per-event/task at-most-once reservation ledger with bounded clock rollback retention, bounded persistent 3-attempt OS enqueue error retries with 20/60/180 second backoff, deterministic transaction tests and backup restore replay protection, catch-up after resume, opt-in private titles, WinRT toast setting diagnostic and WFS-only pause; OS delivery acknowledgement, full system DND, native tests and third-party listener missing |
 | HUD/OSD | Gap | Volume, brightness, keyboard state, airplane mode overlays |
 | Dock | Partial | Quick launch/links only, not running-app/taskbar dock |
 | Shelf/drop actions | Gap | File drops, ZIP, convert, safe send |

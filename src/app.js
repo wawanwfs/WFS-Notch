@@ -9,7 +9,7 @@ const defaults = () => ({
   todos: [], notes: [], events: [], calendar_tombstones: [], calendar_series: {}, reminder_retries: {}, habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
-  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, always_on_top: true, auto_lower_fullscreen: false },
+  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, task_due_reminders_enabled: false, always_on_top: true, auto_lower_fullscreen: false },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
 });
 let data = defaults();
@@ -307,6 +307,7 @@ function previewInvoke(command, args = {}) {
     case 'set_notch_on_top': state.settings.always_on_top = args.enabled; break;
     case 'set_fullscreen_auto': state.settings.auto_lower_fullscreen = Boolean(args.enabled); break;
     case 'set_notifications_paused': state.settings.notifications_paused = Boolean(args.paused); break;
+    case 'set_task_due_reminders': state.settings.task_due_reminders_enabled = Boolean(args.enabled); break;
     case 'set_notification_preferences':
       state.settings.notifications_enabled = args.enabled;
       state.settings.notifications_show_details = Boolean(args.enabled && args.showDetails);
@@ -750,6 +751,18 @@ function renderSettings() {
   $('#notification-details-toggle').disabled = !data.settings.notifications_enabled;
   $('#notifications-pause-toggle').checked = Boolean(data.settings.notifications_paused);
   $('#notifications-pause-toggle').disabled = !data.settings.notifications_enabled;
+  const taskAlerts = $('#task-reminders-toggle');
+  taskAlerts.checked = Boolean(data.settings.task_due_reminders_enabled);
+  taskAlerts.disabled = !nativeInvoke;
+  $('#task-reminders-status').textContent = !nativeInvoke
+    ? 'Native Windows only: browser preview never sends task toasts.'
+    : !data.settings.notifications_enabled
+      ? 'Enable WFS desktop reminders above before task alerts can be delivered.'
+      : data.settings.notifications_paused
+        ? 'WFS desktop reminders are paused; task alerts will not send.'
+        : taskAlerts.checked
+          ? 'Task reminders are on for unfinished tasks with a due date, only while WFS Notch is running.'
+          : 'Task alerts are off. Due dates remain stored locally.';
   $('#notification-test').disabled = !nativeInvoke || !data.settings.notifications_enabled || Boolean(data.settings.notifications_paused);
   $('#notification-scheduler-refresh').disabled = !nativeInvoke;
   $('#notification-permission-check').disabled = !nativeInvoke;
@@ -985,6 +998,8 @@ function bind() {
   $('#notifications-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: event.target.checked, showDetails: event.target.checked && $('#notification-details-toggle').checked }));
   $('#notification-details-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: $('#notifications-toggle').checked, showDetails: event.target.checked }));
   $('#notifications-pause-toggle').addEventListener('change', event => void mutation('set_notifications_paused', { paused: event.target.checked }));
+  $('#task-reminders-toggle').addEventListener('change', event =>
+    void mutation('set_task_due_reminders', { enabled: event.target.checked }));
   $('#notification-scheduler-refresh').addEventListener('click', async () => {
     if (!nativeInvoke) return;
     try {
@@ -1002,8 +1017,10 @@ function bind() {
         ' enqueue attempts; Windows may still hide accepted toasts).';
       $('#notification-scheduler-status').textContent =
         'Native reminder scheduler: ' + state + '. ' + count +
-        ' upcoming reminder(s); checks every ' + status.poll_interval_seconds +
-        ' seconds while WFS Notch is running.' + next + retryNote;
+        ' upcoming calendar reminder(s); checks every ' + status.poll_interval_seconds +
+        ' seconds while WFS Notch is running. ' +
+        Math.max(0, Number(status.upcoming_task_due_count || 0)) +
+        ' upcoming opted-in task due reminder(s).' + next + retryNote;
     } catch (error) {
       $('#notification-scheduler-status').textContent = 'Native scheduler status unavailable.';
       showError(error);

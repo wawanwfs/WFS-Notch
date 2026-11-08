@@ -33,6 +33,8 @@ struct Settings {
     notifications_enabled: bool,
     notifications_show_details: bool,
     notifications_paused: bool,
+    // Separate explicit opt-in; existing calendar notifications do not imply task alerts.
+    task_due_reminders_enabled: bool,
     always_on_top: bool,
     auto_lower_fullscreen: bool,
 }
@@ -47,6 +49,7 @@ impl Default for Settings {
             notifications_enabled: false,
             notifications_show_details: false,
             notifications_paused: false,
+            task_due_reminders_enabled: false,
             always_on_top: true,
             auto_lower_fullscreen: false,
         }
@@ -1422,6 +1425,7 @@ fn main() {
             media_sessions::control_media_session,
             notifications::set_notification_preferences,
             notifications::set_notifications_paused,
+            notifications::set_task_due_reminders,
             notifications::notify_test,
             notifications::get_reminder_scheduler_status,
             notifications::get_windows_notification_permission,
@@ -1498,6 +1502,21 @@ mod tests {
         assert!(reopened.data.notes[0].body.contains("Preserve"));
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn legacy_settings_do_not_enable_task_due_alerts() {
+        let legacy: Settings = serde_json::from_str(r#"{"notifications_enabled":true}"#).unwrap();
+        assert!(legacy.notifications_enabled);
+        assert!(!legacy.task_due_reminders_enabled);
+        assert!(!Settings::default().task_due_reminders_enabled);
+        let encoded = serde_json::to_string(&Settings {
+            task_due_reminders_enabled: true,
+            ..legacy
+        })
+        .unwrap();
+        let restored: Settings = serde_json::from_str(&encoded).unwrap();
+        assert!(restored.task_due_reminders_enabled);
     }
 
     #[test]
