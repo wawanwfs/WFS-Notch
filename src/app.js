@@ -6,7 +6,7 @@ const nativeInvoke = window.__TAURI__?.core?.invoke;
 const previewKey = 'wfs-notch-browser-preview-v2';
 const previewBackupsKey = 'wfs-notch-browser-backups-v3';
 const defaults = () => ({
-  todos: [], notes: [], events: [], calendar_tombstones: [], habits: [], quick_links: [],
+  todos: [], notes: [], events: [], calendar_tombstones: [], calendar_series: {}, habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
   settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, always_on_top: true, auto_lower_fullscreen: false },
@@ -57,6 +57,8 @@ function previewInvoke(command, args = {}) {
   state.focus = { ...defaults().focus, ...state.focus };
   state.events = Array.isArray(state.events) ? state.events : [];
   state.calendar_tombstones = Array.isArray(state.calendar_tombstones) ? state.calendar_tombstones : [];
+  state.calendar_series = state.calendar_series && typeof state.calendar_series === 'object' && !Array.isArray(state.calendar_series)
+    ? state.calendar_series : {};
   state.habits = Array.isArray(state.habits) ? state.habits : [];
   state.quick_links = Array.isArray(state.quick_links) ? state.quick_links : [];
   state.health = { ...defaults().health, ...state.health };
@@ -141,6 +143,11 @@ function previewInvoke(command, args = {}) {
       if (!validTimedEnd(args.startsAtMs, args.endsAtMs)) throw new Error('Timed end must be after start and within 366 days');
       if (String(args.description || '').length > 2000) throw new Error('Description exceeds 2000 characters');
       Object.assign(item, {title, starts_at_ms: args.startsAtMs, ends_at_ms: args.endsAtMs ?? null, remind_minutes: args.remindMinutes, description: args.description || '', all_day: null});
+      const series = state.calendar_series[item.series_uid];
+      if (series) {
+        if (!Array.isArray(series.modified_occurrence_ids)) series.modified_occurrence_ids = [];
+        if (!series.modified_occurrence_ids.includes(item.id)) series.modified_occurrence_ids.push(item.id);
+      }
       break;
     }
     case 'remove_event': {
@@ -173,6 +180,11 @@ function previewInvoke(command, args = {}) {
         if (!item) throw new Error('Event not found');
         Object.assign(item, {title, starts_at_ms: Date.parse(start + 'T00:00:00Z'),
           remind_minutes: null, description: args.description || '', all_day: span, ends_at_ms: null});
+        const series = state.calendar_series[item.series_uid];
+        if (series) {
+          if (!Array.isArray(series.modified_occurrence_ids)) series.modified_occurrence_ids = [];
+          if (!series.modified_occurrence_ids.includes(item.id)) series.modified_occurrence_ids.push(item.id);
+        }
       }
       break;
     }
@@ -185,12 +197,14 @@ function previewInvoke(command, args = {}) {
         const title = String(args.title || '').trim();
         if (!title || title.length > 200) throw new Error('Invalid series title');
         members.forEach(item => { item.title = title; });
+        if (state.calendar_series[current.series_uid]) state.calendar_series[current.series_uid].title = title;
       } else {
         if (!state.calendar_tombstones.includes(current.series_uid)) {
           if (state.calendar_tombstones.length >= 4096) throw new Error('Cancellation ledger full');
           state.calendar_tombstones.push(current.series_uid);
         }
         state.events = state.events.filter(item => item.series_uid !== current.series_uid);
+        delete state.calendar_series[current.series_uid];
       }
       break;
     }
@@ -508,6 +522,13 @@ function renderCalendar() {
       : event.remind_minutes === 0 ? 'At event time'
       : String(event.remind_minutes) + ' min before';
     info.append(node('small', '', reminderLabel));
+    if (event.series_uid) {
+      const source = data.calendar_series?.[event.series_uid];
+      const badge = source?.rrule
+        ? 'Imported series · saved rule: ' + source.rrule
+        : 'Imported series · legacy/unknown source rules';
+      info.append(node('small', 'series-source-summary', badge));
+    }
     const edit = node('button', 'text-button', 'Edit');
     edit.type = 'button';
     edit.setAttribute('aria-label', `Edit event: ${event.title}`);
