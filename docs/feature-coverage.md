@@ -1,18 +1,15 @@
-# REA functional parity matrix — Poni 1.5.0 versus WFS Notch 0.9.0
+# Feature coverage — WFS Notch
 
 **Method.** Independent static examination of two user-supplied Poni 1.5.0 executables plus the published feature guide/release notes and WFS Notch source. No original vendor source or copyrighted assets were copied. Reference executables were **not run** in this environment. This report distinguishes confirmed functionality from unverified work; it does not claim 100% parity.
 
-## Reference evidence
+## Reference scope
 
-- Portable: SHA-256 `4c0ee8719d474eed32389352d41874ab11b1541272a3886f63f3ff5cc62388ce`; PE32+ x64; 11,895,808 bytes.
-- Setup: SHA-256 `e45f95d75e47d4869321e64507d2999931868f9c3971e8681ec9277007a5fdde`; NSIS PE32; 4,973,625 bytes.
 - Published guide: https://poni.web.id/panduan/
 - 1.5.0 release notes: https://poni.web.id/catatan-rilis/
-- WFS Notch prior baseline: 0.4.0, GitHub Actions successful before this REA stage.
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.9.0 | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.10.0 | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | Selected-monitor positioning and top gap implemented with DPI-aware geometry; exact hover/pass-through/fullscreen handling and real 2–3 monitor QA pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
@@ -57,5 +54,5 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 
 Every reference feature must pass: (1) independently observed behavior or reliable specification, (2) implementation and automated coverage, (3) native Windows interactive test, (4) regression, (5) privacy and performance validation. For hardware/Windows-only features, a clean CI build is **not** proof of behavioral parity.
 
-### Immediate next native integration tranche
+### Next native integration milestones
 Windows GlobalSystemMediaTransportControlsSessionManager + album art/progress; native winrt notifications; Bluetooth/Wi-Fi; real taskbar dock; filesystem shelf; privacy-preserving AI providers; 1.5.0 AI usage and Claude Code capabilities.
