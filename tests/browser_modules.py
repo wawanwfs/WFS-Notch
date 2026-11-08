@@ -1,4 +1,4 @@
-"""Phase 4 preview regressions; hardware/media/tray require installed Windows app."""
+"""Desktop module preview regressions; hardware/media/tray require installed Windows app."""
 from pathlib import Path
 import base64
 from shutil import which
@@ -19,9 +19,9 @@ with sync_playwright() as pw:
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.on("dialog", lambda dialog: dialog.accept())
     html = (UI / "index.html").read_text()
-    html = html.replace('<link rel="stylesheet" href="styles.css">', "")
+    html = html.replace('<link rel="stylesheet" href="styles/base.css">', "")
     html = html.replace('<script src="app.js" defer></script>', "")
-    html = html.replace('<script src="modules.js" defer></script>', "")
+    html = html.replace('<script src="features/modules.js" defer></script>', "")
     logo = base64.b64encode((UI / "assets/wfs-notch-mark.svg").read_bytes()).decode()
     html = html.replace('src="assets/wfs-notch-mark.svg"', 'src="data:image/svg+xml;base64,' + logo + '"')
     page.set_content(html)
@@ -33,9 +33,9 @@ with sync_playwright() as pw:
         removeItem: key => { delete storage[key]; },
       }});
     }""")
-    page.add_style_tag(content=(UI / "styles.css").read_text())
+    page.add_style_tag(content=(UI / "styles/base.css").read_text())
     page.add_script_tag(content=(UI / "app.js").read_text())
-    page.add_script_tag(content=(UI / "modules.js").read_text())
+    page.add_script_tag(content=(UI / "features/modules.js").read_text())
     page.locator("#expanded").wait_for(state="visible")
     page.get_by_role("button", name="Habits", exact=True).click()
     page.locator("#habit-title").fill("Read 20 minutes")

@@ -1,4 +1,4 @@
-"""Phase 5 browser-only tests: functional UI, no fake claims about native Windows."""
+"""Wellness and timer browser tests: functional UI, no fake claims about native Windows."""
 from pathlib import Path
 import base64
 from shutil import which
@@ -17,10 +17,10 @@ with sync_playwright() as pw:
     page.on("pageerror", lambda error: problems.append(str(error)))
     page.on("dialog", lambda dialog: dialog.accept())
     html = (UI / "index.html").read_text()
-    html = html.replace('<link rel="stylesheet" href="styles.css">', "")
+    html = html.replace('<link rel="stylesheet" href="styles/base.css">', "")
     html = html.replace('<script src="app.js" defer></script>', "")
-    html = html.replace('<script src="modules.js" defer></script>', "")
-    html = html.replace('<script src="parity.js" defer></script>', "")
+    html = html.replace('<script src="features/modules.js" defer></script>', "")
+    html = html.replace('<script src="features/wellness.js" defer></script>', "")
     mark = base64.b64encode((UI / "assets/wfs-notch-mark.svg").read_bytes()).decode()
     html = html.replace('src="assets/wfs-notch-mark.svg"', f'src="data:image/svg+xml;base64,{mark}"')
     page.set_content(html)
@@ -32,8 +32,8 @@ with sync_playwright() as pw:
         removeItem:key=>{delete state[key]}
       }});
     }""")
-    page.add_style_tag(content=(UI / "styles.css").read_text())
-    for name in ("app.js", "modules.js", "parity.js"):
+    page.add_style_tag(content=(UI / "styles/base.css").read_text())
+    for name in ("app.js", "features/modules.js", "features/wellness.js"):
         page.add_script_tag(content=(UI / name).read_text())
     page.locator("#expanded").wait_for(state="visible")
 
@@ -91,7 +91,7 @@ with sync_playwright() as pw:
 
     page.get_by_role("button", name="Health", exact=True).click()
     assert page.locator("#health-water").inner_text() == "1 / 8"
-    page.screenshot(path=str(EVIDENCE / "browser-parity-phase5.png"))
+    page.screenshot(path=str(EVIDENCE / "browser-wellness.png"))
     assert not problems, f"JavaScript errors: {problems}"
     print("PASS Phase 5: persisted health, countdown, day progress, flashcards, weather UI mock")
     browser.close()

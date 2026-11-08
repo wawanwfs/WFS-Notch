@@ -41,13 +41,13 @@ with sync_playwright() as pw:
       }});
     }""")
     for filename in (
-        "styles.css", "calendar_plus.css", "system_details.css",
-        "media_sessions.css", "ux_polish.css", "display_ui.css"
+        "styles/base.css", "styles/calendar.css", "styles/system.css",
+        "styles/media.css", "styles/refinements.css", "styles/displays.css"
     ):
         page.add_style_tag(content=(UI / filename).read_text(encoding="utf-8"))
     for filename in (
-        "app.js", "modules.js", "parity.js", "calendar_plus.js",
-        "system_details.js", "media_sessions.js", "ux_polish.js", "display_ui.js"
+        "app.js", "features/modules.js", "features/wellness.js", "features/calendar.js",
+        "features/system.js", "features/media.js", "features/accessibility.js", "features/displays.js"
     ):
         page.add_script_tag(content=(UI / filename).read_text(encoding="utf-8"))
 
@@ -59,13 +59,18 @@ with sync_playwright() as pw:
     assert page.locator("#notification-test").is_disabled(), "Browser must not simulate a Windows toast"
     assert not page.locator("#notifications-toggle").is_checked(), "Sensitive toast capability must be opt-in"
     assert page.locator("#notification-details-toggle").is_disabled()
+    assert page.locator("#notifications-pause-toggle").is_disabled()
     page.locator("#nav-settings").click()
     page.locator("#notifications-toggle").check()
     page.wait_for_function("document.querySelector('#notification-details-toggle').disabled === false")
     assert not page.locator("#notification-details-toggle").is_checked()
+    page.locator("#notifications-pause-toggle").check()
+    page.wait_for_function("document.querySelector('#notification-test').disabled === true")
+    page.locator("#notifications-pause-toggle").uncheck()
     page.locator("#notifications-toggle").uncheck()
     page.wait_for_function("document.querySelector('#notification-details-toggle').disabled === true")
     assert page.locator("#notification-test").is_disabled()
+    assert page.locator("#notifications-pause-toggle").is_disabled()
     page.locator("#on-top-toggle").uncheck()
     page.wait_for_function("document.querySelector('#on-top-toggle').checked === false")
     page.locator("#on-top-toggle").check()

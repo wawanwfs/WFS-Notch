@@ -52,34 +52,36 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: JavaScript syntax
         run: node --check src/app.js
-      - name: Phase 4 JavaScript syntax
-        run: node --check src/modules.js
-      - name: Feature JavaScript syntax
-        run: node --check src/parity.js
+      - name: Modules JavaScript syntax
+        run: node --check src/features/modules.js
+      - name: Wellness JavaScript syntax
+        run: node --check src/features/wellness.js
       - name: Structural and metadata audit
         run: python tests/static_audit.py
-      - name: Phase 2 browser regression
+      - name: Product layout guard
+        run: python tests/product_layout.py
+      - name: Core browser regression
         run: python tests/browser_smoke.py
-      - name: Phase 3 browser integration
-        run: python tests/browser_phase3.py
-      - name: Phase 4 functional UI integration
-        run: python tests/browser_phase4.py
-      - name: Feature browser regression
-        run: python tests/browser_parity.py
+      - name: Calendar and system browser integration
+        run: python tests/browser_calendar.py
+      - name: Desktop module browser regression
+        run: python tests/browser_modules.py
+      - name: Wellness browser regression
+        run: python tests/browser_wellness.py
       - name: Calendar month and Notes search regression
-        run: python tests/browser_calendar_plus.py
+        run: python tests/browser_calendar_notes.py
       - name: Calendar UI JavaScript syntax
-        run: node --check src/calendar_plus.js
+        run: node --check src/features/calendar.js
       - name: System details JavaScript syntax
-        run: node --check src/system_details.js
+        run: node --check src/features/system.js
       - name: Media sessions JavaScript syntax
-        run: node --check src/media_sessions.js
+        run: node --check src/features/media.js
       - name: UX accessibility JavaScript syntax
-        run: node --check src/ux_polish.js
+        run: node --check src/features/accessibility.js
       - name: Multi-monitor UI JavaScript syntax
-        run: node --check src/display_ui.js
-      - name: Desktop UX 760x470 browser regression
-        run: python tests/browser_ux_polish.py
+        run: node --check src/features/displays.js
+      - name: Desktop accessibility 760x470 regression
+        run: python tests/browser_accessibility.py
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -136,6 +138,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      - name: Pre-cache verified official NSIS toolkit with retries
+        shell: pwsh
+        timeout-minutes: 20
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/prepare-nsis.ps1
       - name: Build Windows installer with official Tauri action
         uses: tauri-apps/tauri-action@v1
         with:

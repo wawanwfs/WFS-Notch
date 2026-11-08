@@ -11,6 +11,10 @@ pub struct SentNotices {
     ids: Mutex<HashSet<String>>,
 }
 
+fn can_notify(settings: &Settings) -> bool {
+    settings.notifications_enabled && !settings.notifications_paused
+}
+
 fn event_due(event: &CalendarEvent, now: u128) -> bool {
     let Some(minutes) = event.remind_minutes else {
         return false;
@@ -55,14 +59,25 @@ pub fn set_notification_preferences(
 }
 
 #[tauri::command]
+pub fn set_notifications_paused(
+    store: State<'_, Mutex<Store>>,
+    paused: bool,
+) -> Result<AppData, String> {
+    with_store(store, |data| {
+        data.settings.notifications_paused = paused;
+        Ok(())
+    })
+}
+
+#[tauri::command]
 pub fn notify_test(app: AppHandle, store: State<'_, Mutex<Store>>) -> Result<bool, String> {
-    let enabled = store
+    let settings = store
         .lock()
         .map_err(|_| "Storage lock unavailable".to_owned())?
         .data
         .settings
-        .notifications_enabled;
-    if !enabled {
+        .clone();
+    if !can_notify(&settings) {
         return Ok(false);
     }
     show(
@@ -87,7 +102,7 @@ pub fn notify_due_event(
         let guard = store
             .lock()
             .map_err(|_| "Storage lock unavailable".to_owned())?;
-        if !guard.data.settings.notifications_enabled {
+        if !can_notify(&guard.data.settings) {
             return Ok(false);
         }
         let Some(event) = guard.data.events.iter().find(|e| e.id == id) else {
@@ -139,6 +154,16 @@ mod tests {
         assert!(!event_due(&event(1_000_000, Some(5)), 100_000));
         assert!(event_due(&event(1_000_000, Some(5)), 700_000));
         assert!(!event_due(&event(1_000_000, Some(5)), 1_400_000));
+    }
+
+    #[test]
+    fn disabled_or_paused_notifications_never_deliver() {
+        let mut settings = Settings::default();
+        assert!(!can_notify(&settings));
+        settings.notifications_enabled = true;
+        assert!(can_notify(&settings));
+        settings.notifications_paused = true;
+        assert!(!can_notify(&settings));
     }
 
     #[test]

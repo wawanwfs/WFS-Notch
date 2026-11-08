@@ -1,3 +1,10 @@
+## 0.10.1 — Product layout and private notification pause (development)
+
+- Rebuilt the source tree as a conventional Rust/Tauri application, with domain-level feature and style modules.
+- Added a local WFS-only Pause Reminders setting; native notifications are opt-in and redacted by default.
+- Updated regression fixtures, Rust module imports, documentation and CI references after file renames.
+- Does not enable third-party notification scraping, alter global Do Not Disturb, or establish native Windows runtime parity.
+
 # Changelog
 
 ## 0.10.0 (development)

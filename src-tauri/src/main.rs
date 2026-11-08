@@ -14,8 +14,8 @@ mod display;
 mod extra;
 mod media_sessions;
 mod notifications;
-mod parity;
 mod system_details;
+mod wellness;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
 use tauri::{Manager, State};
 
@@ -29,6 +29,7 @@ struct Settings {
     top_margin_px: u32,
     notifications_enabled: bool,
     notifications_show_details: bool,
+    notifications_paused: bool,
     always_on_top: bool,
 }
 impl Default for Settings {
@@ -41,6 +42,7 @@ impl Default for Settings {
             top_margin_px: 12,
             notifications_enabled: false,
             notifications_show_details: false,
+            notifications_paused: false,
             always_on_top: true,
         }
     }
@@ -155,8 +157,8 @@ struct AppData {
     events: Vec<CalendarEvent>,
     habits: Vec<extra::Habit>,
     quick_links: Vec<extra::QuickLink>,
-    health: parity::HealthState,
-    countdown: parity::CountdownState,
+    health: wellness::HealthState,
+    countdown: wellness::CountdownState,
     settings: Settings,
     focus: FocusState,
 }
@@ -167,7 +169,7 @@ impl AppData {
         self.health.break_count = self.health.break_count.min(100);
         self.health.calm_minutes = self.health.calm_minutes.min(600);
         if !(1..=86_400).contains(&self.countdown.duration_seconds) {
-            self.countdown = parity::CountdownState::default();
+            self.countdown = wellness::CountdownState::default();
         }
         self.countdown.remaining_seconds = self.countdown.remaining_seconds.min(86_400);
         self.habits
@@ -832,6 +834,7 @@ fn main() {
             media_sessions::list_media_sessions,
             media_sessions::control_media_session,
             notifications::set_notification_preferences,
+            notifications::set_notifications_paused,
             notifications::notify_test,
             notifications::notify_due_event,
             set_accent,
@@ -855,11 +858,11 @@ fn main() {
             extra::media_key,
             extra::get_autostart,
             extra::set_autostart,
-            parity::health_action,
-            parity::countdown_set,
-            parity::countdown_toggle,
-            parity::countdown_adjust,
-            parity::countdown_reset
+            wellness::health_action,
+            wellness::countdown_set,
+            wellness::countdown_toggle,
+            wellness::countdown_adjust,
+            wellness::countdown_reset
         ])
         .run(tauri::generate_context!())
         .expect("WFS Notch encountered a fatal error");

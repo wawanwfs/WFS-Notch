@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "WFS Notch",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "identifier": "id.wfs.notch",
   "build": {
     "frontendDist": "../src"
