@@ -1187,6 +1187,114 @@ mod tests {
         assert!(restored.calendar_tombstones.contains(key));
     }
 
+    fn source_fixture() -> AppData {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:phase18master@example.org\nSUMMARY:Safe recurrence\nDESCRIPTION:Confidential local note\nDTSTART;TZID=Asia/Jakarta:20270614T090000\nDTEND;TZID=Asia/Jakarta:20270614T100000\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE;COUNT=5\nEXDATE;TZID=Asia/Jakarta:20270616T090000\nRDATE;TZID=Asia/Jakarta:20270630T090000\nBEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT15M\nDESCRIPTION:Reminder\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR";
+        let (events, sources) = parse_ics_bundle(ics, None).unwrap();
+        assert_eq!(events.len(), 5);
+        let mut data = AppData::default();
+        merge_imported_events(&mut data, events).unwrap();
+        for source in sources {
+            data.calendar_series.insert(source.uid.clone(), source);
+        }
+        data
+    }
+
+    #[test]
+    fn phase18_original_master_rrule_export_roundtrips_all_occurrences() {
+        let data = source_fixture();
+        let export = serialize_ics_with_sources(&data).unwrap();
+        assert_eq!(export.matches("BEGIN:VEVENT").count(), 1);
+        assert!(export.contains("RRULE:FREQ=WEEKLY;BYDAY=MO,WE;COUNT=5"));
+        assert!(export.contains("EXDATE;TZID=Asia/Jakarta:20270616T090000"));
+        assert!(export.contains("RDATE;TZID=Asia/Jakarta:20270630T090000"));
+        assert!(export.contains("DTSTART;TZID=Asia/Jakarta:20270614T090000"));
+        assert!(export.contains("TRIGGER:-PT15M"));
+        assert!(!export.contains("Confidential local note\n")); // escaped, never raw newlines
+        let (restored, sources) = parse_ics_bundle(&export, None).unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(restored.len(), 5);
+        for expected in &data.events {
+            let candidate = restored.iter().find(|item| item.id == expected.id).unwrap();
+            assert_eq!(candidate.starts_at_ms, expected.starts_at_ms);
+            assert_eq!(candidate.ends_at_ms, expected.ends_at_ms);
+            assert_eq!(candidate.remind_minutes, expected.remind_minutes);
+            assert_eq!(candidate.all_day, expected.all_day);
+        }
+        // JSON round-trip of the source and event list cannot change eligibility.
+        let state: AppData = serde_json::from_str(&serde_json::to_string(&data).unwrap()).unwrap();
+        assert_eq!(serialize_ics_with_sources(&state).unwrap().matches("BEGIN:VEVENT").count(), 1);
+    }
+
+    #[test]
+    fn phase18_modified_occurrence_is_flattened_without_master_or_duplicate() {
+        let mut data = source_fixture();
+        let id = data.events[1].id.clone();
+        data.events[1].description = "User-specific annotation".into();
+        data.calendar_series.get_mut("ics:phase18master@example.org").unwrap()
+            .modified_occurrence_ids.insert(id);
+        let exported = serialize_ics_with_sources(&data).unwrap();
+        assert!(!exported.contains("RRULE:"));
+        assert_eq!(exported.matches("BEGIN:VEVENT").count(), 5);
+        let restored = parse_ics(&exported, None).unwrap();
+        assert_eq!(restored.len(), 5);
+        assert_eq!(restored.iter().filter(|event| event.description == "User-specific annotation").count(), 1);
+        let mut unknown_edit = source_fixture();
+        unknown_edit.events[0].starts_at_ms += 60_000; // missed metadata marker
+        let safely_flat = serialize_ics_with_sources(&unknown_edit).unwrap();
+        assert!(!safely_flat.contains("RRULE:"));
+    }
+
+    #[test]
+    fn phase18_deleted_occurrence_never_resurrects_on_source_export() {
+        let mut data = source_fixture();
+        let removed = data.events.remove(2);
+        data.calendar_tombstones.insert(removed.id.clone());
+        let exported = serialize_ics_with_sources(&data).unwrap();
+        assert_eq!(exported.matches("BEGIN:VEVENT").count(), 4);
+        assert!(!exported.contains("RRULE:"));
+        let restored = parse_ics(&exported, None).unwrap();
+        assert_eq!(restored.len(), 4);
+        assert!(!restored.iter().any(|event| event.id == removed.id));
+        let mut canceled = source_fixture();
+        canceled.calendar_tombstones.insert("ics:phase18master@example.org".into());
+        assert!(!serialize_ics_with_sources(&canceled).unwrap().contains("RRULE:"));
+    }
+
+    #[test]
+    fn phase18_source_export_keeps_global_rename_and_all_day_rules() {
+        let mut data = source_fixture();
+        let id = data.events[0].id.clone();
+        crate::update_series_title(&mut data, &id, "Renamed series").unwrap();
+        let exported = serialize_ics_with_sources(&data).unwrap();
+        assert!(exported.contains("RRULE:"));
+        assert!(exported.contains("SUMMARY:Renamed series"));
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:phase18allday@example.org\nSUMMARY:Leap day\nDTSTART;VALUE=DATE:20280229\nDTEND;VALUE=DATE:20280302\nRRULE:FREQ=YEARLY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
+        let (events, sources) = parse_ics_bundle(ics, None).unwrap();
+        let mut state = AppData::default();
+        state.events = events;
+        state.calendar_series = sources.into_iter().map(|source| (source.uid.clone(), source)).collect();
+        let text = serialize_ics_with_sources(&state).unwrap();
+        assert!(text.contains("RRULE:FREQ=YEARLY;COUNT=3"));
+        assert!(text.contains("DTSTART;VALUE=DATE:20280229"));
+        assert_eq!(parse_ics(&text, None).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn phase18_legacy_alarm_or_corrupt_source_metadata_falls_back_safely() {
+        let mut data = source_fixture();
+        data.calendar_series.get_mut("ics:phase18master@example.org").unwrap().reminder_minutes = None;
+        let exported = serialize_ics_with_sources(&data).unwrap();
+        assert!(!exported.contains("RRULE:"));
+        assert_eq!(exported.matches("BEGIN:VALARM").count(), 5);
+        let mut unsafe_source = source_fixture();
+        unsafe_source.calendar_series.get_mut("ics:phase18master@example.org").unwrap()
+            .rrule = Some("FREQ=DAILY;COUNT=3\nDESCRIPTION:Injected".into());
+        let text = serialize_ics_with_sources(&unsafe_source).unwrap();
+        assert!(!text.contains("Injected"));
+        assert!(!text.contains("RRULE:"));
+        assert_eq!(parse_ics(&text, None).unwrap().len(), 5);
+    }
+
     #[test]
     fn complex_monthly_and_yearly_ics_are_bounded_and_export_flattens() {
         let monthly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:monthly17@example.org\nSUMMARY:Every last Monday\nDTSTART:20270125T090000Z\nRRULE:FREQ=MONTHLY;BYDAY=-1MO;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
