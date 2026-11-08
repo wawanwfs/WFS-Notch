@@ -1,3 +1,12 @@
+## 0.17.0 — Bounded monthly/yearly RFC5545 recurrence + versioned source series (development)
+
+- Expand bounded DAILY/WEEKLY/MONTHLY/YEARLY RRULE with COUNT/UTC UNTIL/INTERVAL, BYDAY (including supported month-relative ordinals), WKST, BYMONTH and BYMONTHDAY (negative indices); reject unsupported parts rather than silently misreading. Leap days, missing month-end days and DST ambiguity are covered by Rust tests.
+- Persist normalized ICS source metadata v1 alongside materialized instances: original DTSTART, DTEND/DURATION, RRULE, EXDATE/RDATE, user-selected floating timezone and per-instance edit markers. Legacy calendars remain backward compatible; no false reverse-inference from old instances.
+- Per-instance edits retain distinct identity and record override markers; series title rename updates saved source metadata; deleting a series keeps its durable title-free cancellation marker and drops the source metadata. Reimport never overwrites an existing source or local edits without explicit user action.
+- Calendar UI labels saved recurrence source rules or truthfully identifies legacy source metadata as unavailable. New Playwright regression covers scoped edits, renaming and cancellation; original 16 module UI remains.
+- Original ICS export still deliberately flattens instances; source-preserving RRULE export, RECURRENCE-ID overrides, full series schedule changes, native file picker, cloud calendar sync and real interactive Windows QA remain outstanding. REA 38-category weighted parity stays 28.9%.
+- Phase18 next prompt is a much larger multi-workstream batch spanning calendar, reminders, monitors, GSMTC, UI/UX, productivity, Windows controls and package recovery.
+
 ## 0.16.0 — Timed UTC event ends and durable ICS cancellation (development)
 
 - Added optional UTC exclusive timed event end (max 366 days), strict IANA-aware DTEND and positive DURATION subset import/export, DST gap/overlap checks and backward-compatible JSON serialization.
