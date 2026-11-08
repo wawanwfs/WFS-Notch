@@ -173,7 +173,7 @@ pub fn set_display_preference(
     margin_px: u32,
 ) -> Result<AppData, String> {
     if margin_px > MAX_MARGIN {
-        return Err("Top margin must be between 0 and 120 physical pixels".into());
+        return Err("Top margin must be between 0 and 120 logical pixels".into());
     }
     if monitor_id != DEFAULT_MONITOR {
         let connected = window
