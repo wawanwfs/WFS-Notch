@@ -45,10 +45,7 @@ pub(super) fn parse_ics_date(full_key: &str, value: &str) -> Result<NaiveDate, S
     let year = value[0..4].parse::<i32>().map_err(|_| "Invalid year")?;
     let month = value[4..6].parse::<u32>().map_err(|_| "Invalid month")?;
     let day = value[6..8].parse::<u32>().map_err(|_| "Invalid day")?;
-    valid_year(
-        NaiveDate::from_ymd_opt(year, month, day)
-            .ok_or("Invalid all-day date or leap day")?,
-    )
+    valid_year(NaiveDate::from_ymd_opt(year, month, day).ok_or("Invalid all-day date or leap day")?)
 }
 
 impl AllDaySpan {
@@ -120,13 +117,17 @@ mod tests {
         let span = AllDaySpan::new(
             parse_ics_date("DTSTART;VALUE=DATE", "20280229").unwrap(),
             parse_ics_date("DTEND;VALUE=DATE", "20280302").unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(span.start_date, "2028-02-29");
         assert_eq!(span.end_date_exclusive, "2028-03-02");
         assert!(span.valid());
         assert_eq!(span.shift_days(7).unwrap().start_date, "2028-03-07");
         assert_eq!(AllDaySpan::ics_date(&span.start_date).unwrap(), "20280229");
-        assert_eq!(AllDaySpan::ics_date(&span.end_date_exclusive).unwrap(), "20280302");
+        assert_eq!(
+            AllDaySpan::ics_date(&span.end_date_exclusive).unwrap(),
+            "20280302"
+        );
         assert!(parse_ics_date("DTSTART;VALUE=DATE", "20270229").is_err());
         assert!(parse_ics_date("DTSTART;TZID=Asia/Jakarta", "20280614").is_err());
     }
@@ -147,7 +148,8 @@ mod tests {
         let span = AllDaySpan::new(
             parse_iso_date("2027-06-14").unwrap(),
             parse_iso_date("2027-06-15").unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(span.utc_midnight_ms().unwrap(), 1_812_931_200_000);
     }
 }
