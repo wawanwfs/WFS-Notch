@@ -107,7 +107,11 @@ fn geometry(
     }
 }
 
-pub fn place_notch(window: &WebviewWindow, settings: &Settings, expanded: bool) -> Result<(), String> {
+pub fn place_notch(
+    window: &WebviewWindow,
+    settings: &Settings,
+    expanded: bool,
+) -> Result<(), String> {
     let (monitor, _) = select_monitor(window, &settings.monitor_id)?;
     let Some(monitor) = monitor else {
         // No connected display could be reported (e.g. remote/virtual headless session).
