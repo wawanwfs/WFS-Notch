@@ -32,8 +32,7 @@ fn can_notify(settings: &Settings) -> bool {
 
 fn reminder_start(event: &CalendarEvent) -> Option<u128> {
     event.remind_minutes.map(|minutes| {
-        u128::from(event.starts_at_ms)
-            .saturating_sub(u128::from(minutes).saturating_mul(60_000))
+        u128::from(event.starts_at_ms).saturating_sub(u128::from(minutes).saturating_mul(60_000))
     })
 }
 
@@ -184,7 +183,7 @@ pub fn get_reminder_scheduler_status(
         .data
         .events
         .iter()
-        .filter_map(|event| reminder_start(event))
+        .filter_map(reminder_start)
         .filter(|due| *due >= now)
         .collect::<Vec<_>>();
     Ok(ReminderSchedulerStatus {
