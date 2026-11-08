@@ -684,6 +684,33 @@ fn set_pin_open(store: State<'_, Mutex<Store>>, enabled: bool) -> Result<AppData
 }
 
 #[tauri::command]
+fn set_notch_on_top(
+    window: tauri::WebviewWindow,
+    store: State<'_, Mutex<Store>>,
+    enabled: bool,
+) -> Result<AppData, String> {
+    let previous = store
+        .lock()
+        .map_err(|_| "Storage lock unavailable".to_owned())?
+        .data
+        .settings
+        .always_on_top;
+    window
+        .set_always_on_top(enabled)
+        .map_err(|error| error.to_string())?;
+    match with_store(store, |data| {
+        data.settings.always_on_top = enabled;
+        Ok(())
+    }) {
+        Ok(snapshot) => Ok(snapshot),
+        Err(error) => {
+            let _ = window.set_always_on_top(previous);
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
 fn set_focus_duration(store: State<'_, Mutex<Store>>, minutes: u64) -> Result<AppData, String> {
     if ![15, 25, 45, 60].contains(&minutes) {
         return Err("Invalid focus preset".into());
@@ -808,6 +835,7 @@ fn main() {
             set_accent,
             set_hover_to_open,
             set_pin_open,
+            set_notch_on_top,
             set_focus_duration,
             focus_toggle,
             focus_reset,
