@@ -8,8 +8,8 @@ from shutil import which
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-UI = ROOT / "02_APP" / "ui"
-EVIDENCE = ROOT / "06_EVIDENCE"
+UI = ROOT / "src"
+EVIDENCE = ROOT / "test-results"
 EVIDENCE.mkdir(exist_ok=True)
 html = (UI / "index.html").read_text(encoding="utf-8")
 html = re.sub(r'<script src="[^"]+" defer></script>', "", html)
