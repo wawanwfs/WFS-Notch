@@ -437,11 +437,16 @@ mod tests {
 
     #[test]
     fn duplicate_or_unnamed_monitors_keep_legacy_coordinate_identity() {
-        assert_eq!(persisted_monitor_id(Some("Duplicated"), -1920, -1080, false),
-            "origin:-1920:-1080");
+        assert_eq!(
+            persisted_monitor_id(Some("Duplicated"), -1920, -1080, false),
+            "origin:-1920:-1080"
+        );
         assert_eq!(persisted_monitor_id(None, 1920, 0, false), "origin:1920:0");
         assert_eq!(persisted_monitor_id(Some(""), 0, 0, true), "origin:0:0");
-        assert_eq!(persisted_monitor_id(Some("Unsafe\nName"), 0, 0, true), "origin:0:0");
+        assert_eq!(
+            persisted_monitor_id(Some("Unsafe\nName"), 0, 0, true),
+            "origin:0:0"
+        );
         assert!(valid_monitor_preference("origin:-1920:0"));
         assert!(!valid_monitor_preference("origin:0:0:1"));
         assert!(!valid_monitor_preference("name:"));
