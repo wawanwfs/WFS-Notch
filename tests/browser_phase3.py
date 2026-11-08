@@ -5,8 +5,8 @@ from shutil import which
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-UI = ROOT / '02_APP' / 'ui'
-EVIDENCE = ROOT / '06_EVIDENCE'
+UI = ROOT / 'src'
+EVIDENCE = ROOT / 'test-results'
 with sync_playwright() as pw:
     browser_path = which('chromium') or which('chromium-browser') or which('google-chrome')
     browser = pw.chromium.launch(**({'executable_path': browser_path} if browser_path else {}), headless=True,
