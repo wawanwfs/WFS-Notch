@@ -15,6 +15,7 @@ const defaults = () => ({
 let data = defaults();
 let selectedNoteId = null;
 let selectedEventId = null;
+let selectedSeriesEventId = null;
 let boundEditorId = null;
 let pendingDraft = null;
 let noteSaveTimeout = null;
@@ -129,12 +130,48 @@ function previewInvoke(command, args = {}) {
       const title = String(args.title || '').trim();
       if (!title || title.length > 200 || !Number.isFinite(args.startsAtMs) || args.startsAtMs < 946684800000 || args.startsAtMs > 4102444800000) throw new Error('Invalid event title/date');
       if (![null, 0, 5, 15, 30, 60].includes(args.remindMinutes)) throw new Error('Invalid reminder');
-      Object.assign(item, {title, starts_at_ms: args.startsAtMs, remind_minutes: args.remindMinutes, description: args.description || ''});
+      Object.assign(item, {title, starts_at_ms: args.startsAtMs, remind_minutes: args.remindMinutes, description: args.description || '', all_day: null});
       break;
     }
     case 'remove_event': {
       if (!state.events.some(item => item.id === args.id)) throw new Error('Event not found');
       state.events = state.events.filter(item => item.id !== args.id); break;
+    }
+    case 'add_all_day_event':
+    case 'update_all_day_event': {
+      const title = String(args.title || '').trim();
+      const start = String(args.startDate || ''), end = String(args.endDateExclusive || '');
+      const parsed = date => /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+        !Number.isNaN(Date.parse(date + 'T00:00:00Z')) &&
+        new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date;
+      const days = (Date.parse(end + 'T00:00:00Z') - Date.parse(start + 'T00:00:00Z')) / 86400000;
+      if (!title || title.length > 200 || !parsed(start) || !parsed(end) ||
+          days < 1 || days > 366 || start < '2000-01-01' || end > '2100-01-01') throw new Error('Invalid all-day date span');
+      const span = {start_date: start, end_date_exclusive: end};
+      if (command === 'add_all_day_event') {
+        state.events.push({id: nextId(), title, starts_at_ms: Date.parse(start + 'T00:00:00Z'),
+          remind_minutes: null, description: args.description || '', created_ms: Date.now(), all_day: span, series_uid: null});
+      } else {
+        const item = state.events.find(entry => entry.id === args.id);
+        if (!item) throw new Error('Event not found');
+        Object.assign(item, {title, starts_at_ms: Date.parse(start + 'T00:00:00Z'),
+          remind_minutes: null, description: args.description || '', all_day: span});
+      }
+      break;
+    }
+    case 'update_event_series_title':
+    case 'remove_event_series': {
+      const current = state.events.find(item => item.id === args.id);
+      if (!current?.series_uid) throw new Error('This event is not part of an imported recurrence series');
+      const members = state.events.filter(item => item.series_uid === current.series_uid);
+      if (command === 'update_event_series_title') {
+        const title = String(args.title || '').trim();
+        if (!title || title.length > 200) throw new Error('Invalid series title');
+        members.forEach(item => { item.title = title; });
+      } else {
+        state.events = state.events.filter(item => item.series_uid !== current.series_uid);
+      }
+      break;
     }
     case 'add_habit': {
       const title = String(args.title || '').trim();
