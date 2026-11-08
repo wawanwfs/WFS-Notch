@@ -100,7 +100,7 @@
             <small>Deleted imported events and series stay deleted across subsequent imports unless you explicitly clear their local cancellation history here. Backups retain that history.</small>
             <div class="calendar-toolbar"><button id="ics-import-button" class="secondary" type="button">Import events</button><button id="ics-export-button" class="secondary" type="button">Export events</button><button id="ics-export-copy" class="text-button" type="button">Copy export</button></div>
             <textarea id="ics-export-data" readonly aria-label="Exported iCalendar ICS content" placeholder="Exported ICS will appear here"></textarea>
-            <small id="ics-status" role="status">Local-only calendar interchange. No cloud sync.</small>
+            <small id="ics-status" role="status">Local-only. Unchanged series preserve the source recurrence rule on export; edited or canceled instances export safely as independent events. No cloud sync.</small>
           </details>
           <div class="event-hint">Timed start/end dates are stored as UTC instants with an exclusive optional end and shown in the local timezone. All-day dates retain calendar dates without an implicit timezone; end dates are exclusive and have no automatic reminder. Reminders are only displayed while this app is running.</div>
           <div id="event-list" class="event-list" aria-live="polite"></div>
