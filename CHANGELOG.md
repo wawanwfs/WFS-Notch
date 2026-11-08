@@ -1,3 +1,11 @@
+## 0.21.0 — Stable selected-monitor identity and legacy-safe fallback (Phase 18C)
+
+- Identify selected Windows/Tauri monitors with a bounded, local unique device name when available instead of relying on virtual-desktop origin coordinates. Moving a named monitor to another edge, swapping primary, or adjusting DPI no longer changes this saved selector as long as the OS reports the same unique name.
+- If the OS reports an unnamed, duplicated, overly long or unsafe name, continue using the existing coordinate-based monitor identity. Recognize previously saved `origin:X:Y` preferences without migrating or reassigning them silently; UI invites explicit selection to adopt a stable name.
+- Keep fallback to current primary when selected display is unavailable, preserve saved preference for reconnection, avoid altering OS display settings or stealing focus. Detect display-name changes during topology polling even if geometry stays unchanged.
+- Add deterministic Rust unit regressions for stable monitor names, signed virtual origins, duplicate/unsafe names and preference syntax. Physical Windows 10/11 1–3 monitor hotplug/DPI/RDP/fullscreen QA is **NOT TESTED**.
+- Source v0.21.0, unsigned x64 NSIS/portable subject to GitHub Actions. Weighted fixed 38-category parity still 28.9%; monitor behavior remains Partial pending real on-device acceptance.
+
 ## 0.20.0 — Local task priority, due date and non-destructive edit (Phase 18F)
 
 - Extend local tasks with backward-compatible priority (low/normal/high, default Normal) and optional due timestamp with year 2000–2100 bounds. Old tasks, completed status, unique IDs, creation dates, settings and backups remain readable.
