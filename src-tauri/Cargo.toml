@@ -18,4 +18,4 @@ sysinfo = "=0.33.1"
 tauri-plugin-notification = "2"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = ["Foundation", "Media_Control"] }
+windows = { version = "0.62.2", features = ["Foundation", "Foundation_Collections", "Media_Control"] }
