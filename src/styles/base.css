@@ -102,3 +102,30 @@ body.preview .notch{position:relative;width:720px;height:430px;border-radius:22p
 .flashcards-select{width:100%;padding:10px;border-radius:10px;background:#202127;color:#eee;border:1px solid #3a3b45}
 .flashcard-face{display:grid;place-items:center;text-align:center;min-height:126px;padding:20px;border:1px solid #554a3c;background:linear-gradient(140deg,#28242a,#1e1e26);border-radius:14px;margin-top:13px;color:#e3d1ac;font-size:18px;overflow-wrap:anywhere}
 @media(max-width:640px){.health-grid{grid-template-columns:1fr}.day-summary{flex-direction:column;gap:8px}.countdown-form{flex-wrap:wrap}}
+
+/* Phase 18 workstream F — original WFS accessible task controls. */
+.todo-entry { display: grid; gap: 9px; margin-bottom: 9px; }
+.todo-entry .input-row { min-width: 0; }
+.todo-option-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 9px 14px; }
+.todo-option-fields label, .todo-edit-form > label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); min-width: 130px; }
+.todo-option-fields input, .todo-option-fields select, .todo-edit-form > label input {
+  width: 100%; min-height: 35px; padding: 7px 10px; color: var(--text);
+  background: #15171d; border: 1px solid rgba(214,183,122,.25); border-radius: 9px; color-scheme: dark;
+}
+.todo-edit-form:not([hidden]) { display: grid; gap: 10px; padding: 12px; margin: 8px 0 10px;
+  border: 1px solid rgba(214,183,122,.26); border-radius: 14px; background: rgba(214,183,122,.05); }
+.todo-edit-form[hidden] { display: none !important; }
+.todo-edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.todo-help { display: block; color: var(--muted); font-size: 11px; margin-bottom: 12px; line-height: 1.5; }
+.todo-item { flex-wrap: wrap; gap: 7px; }
+.todo-item .title { min-width: 125px; flex: 1 1 125px; overflow-wrap: anywhere; }
+.todo-metadata { color: var(--accent); font-size: 10px; letter-spacing: .03em; flex: 0 1 auto; }
+.todo-metadata.overdue { color: #ffc08a; }
+.todo-edit-button { min-height: 30px; }
+.todo-entry :focus-visible, .todo-edit-form :focus-visible, .todo-edit-button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+@media (max-width: 520px) {
+  .todo-option-fields label { flex: 1 1 100%; }
+  .todo-item .title { flex-basis: calc(100% - 58px); }
+}

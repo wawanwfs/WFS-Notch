@@ -1,3 +1,11 @@
+## 0.20.0 — Local task priority, due date and non-destructive edit (Phase 18F)
+
+- Extend local tasks with backward-compatible priority (low/normal/high, default Normal) and optional due timestamp with year 2000–2100 bounds. Old tasks, completed status, unique IDs, creation dates, settings and backups remain readable.
+- Add validated task title/priority/due update command with atomic local transaction and rollback on failed writes; task editing preserves ID and completion state.
+- Upgrade Tasks panel with original dark/champagne-gold responsive controls, add/edit priority selector and local datetime, due/overdue metadata, keyboard labels and cancelable editor; browser preview mirrors native state safely.
+- Add deterministic Rust tests for legacy migration, due bounds, edit transaction, restart and rollback; new Chromium/Playwright end-to-end task form regression with local reload, completion and cancel, part of full CI alongside 64 screenshots.
+- Task due notifications, recurring task schedule, bulk undo, task sync and natural language recognition are not implemented. Native interactive Windows 10/11 QA NOT TESTED. Fixed 38-category weighted reference parity remains 28.9%.
+
 ## 0.19.0 — Persisted bounded Windows reminder retries (Phase 18.1B)
 
 - Added an opt-in native notification sender failure journal separate from successful enqueue reservations. Windows enqueue errors are retried after 20, 60 and 180 seconds, at most three total attempts; retries do not extend the existing time-based event grace period.

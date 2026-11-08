@@ -57,8 +57,23 @@
         </section>
         <section class="panel" id="panel-todos">
           <div class="section-heading"><div><h2>Tasks</h2><p>Keep your priorities moving.</p></div><span class="section-pill" id="todo-progress">0 complete</span></div>
-          <form class="input-row" id="todo-form"><input id="todo-input" maxlength="200" placeholder="Add a task..." autocomplete="off" aria-label="New task" required><button type="submit" class="primary">Add task</button></form>
-          <div id="todo-list" class="list-scroll"></div>
+          <form class="todo-entry" id="todo-form">
+            <div class="input-row"><input id="todo-input" maxlength="200" placeholder="Add a task..." autocomplete="off" aria-label="New task" required><button type="submit" class="primary">Add task</button></div>
+            <div class="todo-option-fields">
+              <label for="todo-priority">Priority <select id="todo-priority" aria-label="New task priority"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></label>
+              <label for="todo-due">Due (optional, local time) <input id="todo-due" type="datetime-local" aria-label="New task due date and time"></label>
+            </div>
+          </form>
+          <form class="todo-edit-form" id="todo-edit-form" hidden aria-label="Edit selected task">
+            <label for="todo-edit-title">Edit task <input id="todo-edit-title" maxlength="200" required aria-label="Edit task title"></label>
+            <div class="todo-option-fields">
+              <label for="todo-edit-priority">Priority <select id="todo-edit-priority"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></label>
+              <label for="todo-edit-due">Due (optional, local time) <input id="todo-edit-due" type="datetime-local" aria-label="Edit task due date and time"></label>
+            </div>
+            <div class="todo-edit-actions"><button class="primary" type="submit">Save task</button><button class="text-button" id="todo-edit-cancel" type="button">Cancel edit</button></div>
+          </form>
+          <small class="todo-help">Due dates are stored only on this device and shown locally. Task due-time notifications are not yet enabled.</small>
+          <div id="todo-list" class="list-scroll" aria-label="Saved tasks"></div>
         </section>
         <section class="panel" id="panel-notes">
           <div class="section-heading"><div><h2>Notes</h2><p>Capture ideas as they happen.</p></div><button id="note-new" class="primary">+ New note</button></div>

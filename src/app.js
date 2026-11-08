@@ -14,6 +14,7 @@ const defaults = () => ({
 });
 let data = defaults();
 let selectedNoteId = null;
+let selectedTodoId = null;
 let selectedEventId = null;
 let selectedSeriesEventId = null;
 let boundEditorId = null;
@@ -103,8 +104,21 @@ function previewInvoke(command, args = {}) {
   switch (command) {
     case 'add_todo': {
       const title = String(args.title).trim();
+      const priority = args.priority || 'normal';
       if (!title || title.length > 200) throw new Error('Task title must contain 1–200 characters');
-      state.todos.push({ id: nextId(), title, done: false, created_ms: Date.now() });
+      if (!['low', 'normal', 'high'].includes(priority)) throw new Error('Invalid task priority');
+      if (args.dueAtMs != null && (!Number.isSafeInteger(args.dueAtMs) || args.dueAtMs < 946684800000 || args.dueAtMs > 4102444800000)) throw new Error('Invalid task due time');
+      state.todos.push({ id: nextId(), title, done: false, created_ms: Date.now(), priority, due_at_ms: args.dueAtMs ?? null });
+      break;
+    }
+    case 'update_todo': {
+      const todo = state.todos.find(item => item.id === args.id);
+      if (!todo) throw new Error('Task not found');
+      const title = String(args.title || '').trim();
+      if (!title || title.length > 200 || !['low', 'normal', 'high'].includes(args.priority))
+        throw new Error('Invalid task edit');
+      if (args.dueAtMs != null && (!Number.isSafeInteger(args.dueAtMs) || args.dueAtMs < 946684800000 || args.dueAtMs > 4102444800000)) throw new Error('Invalid task due time');
+      Object.assign(todo, { title, priority: args.priority, due_at_ms: args.dueAtMs ?? null });
       break;
     }
     case 'toggle_todo': {
@@ -387,6 +401,21 @@ function node(tag, className, value) {
   return element;
 }
 
+function parseTaskDue(raw) {
+  if (!raw) return null;
+  const ms = new Date(raw).getTime();
+  if (!Number.isSafeInteger(ms) || ms < 946684800000 || ms > 4102444800000 ||
+      asLocalInput(ms) !== raw) {
+    throw new Error('Choose a valid local task due date between years 2000 and 2100.');
+  }
+  return ms;
+}
+
+function cancelTodoEdit() {
+  selectedTodoId = null;
+  $('#todo-edit-form').hidden = true;
+}
+
 function renderTodos() {
   const open = data.todos.filter(item => !item.done).length;
   $('#task-count').textContent = String(open);
@@ -405,11 +434,29 @@ function renderTodos() {
     check.setAttribute('aria-pressed', String(item.done));
     check.addEventListener('click', () => mutation('toggle_todo', { id: item.id }));
     const label = node('span', 'title', item.title);
+    const priority = ['low', 'normal', 'high'].includes(item.priority) ? item.priority : 'normal';
+    const due = item.due_at_ms;
+    const meta = node('small', 'todo-metadata',
+      priority.toUpperCase() + (due == null ? '' : ' · Due ' + new Date(due).toLocaleString()));
+    if (due != null && due < Date.now() && !item.done) meta.classList.add('overdue');
+    const edit = node('button', 'text-button todo-edit-button', 'Edit');
+    edit.type = 'button';
+    edit.setAttribute('aria-label', 'Edit task: ' + item.title);
+    edit.addEventListener('click', () => {
+      selectedTodoId = item.id;
+      $('#todo-edit-title').value = item.title;
+      $('#todo-edit-priority').value = priority;
+      $('#todo-edit-due').value = due == null ? '' : asLocalInput(due);
+      $('#todo-edit-form').hidden = false;
+      $('#todo-edit-title').focus();
+    });
     const remove = node('button', 'remove-task', '×');
     remove.type = 'button';
     remove.setAttribute('aria-label', `Delete task: ${item.title}`);
-    remove.addEventListener('click', () => mutation('remove_todo', { id: item.id }));
-    line.append(check, label, remove);
+    remove.addEventListener('click', async () => {
+      if (await mutation('remove_todo', { id: item.id }) && selectedTodoId === item.id) cancelTodoEdit();
+    });
+    line.append(check, label, meta, edit, remove);
     list.append(line);
   }
 }
@@ -847,8 +894,29 @@ function bind() {
     event.preventDefault();
     const input = $('#todo-input');
     const title = input.value.trim();
-    if (title && await mutation('add_todo', { title })) input.value = '';
+    let dueAtMs;
+    try { dueAtMs = parseTaskDue($('#todo-due').value); }
+    catch (error) { showError(error); return; }
+    if (title && await mutation('add_todo', {
+      title, priority: $('#todo-priority').value, dueAtMs,
+    })) {
+      input.value = '';
+      $('#todo-priority').value = 'normal';
+      $('#todo-due').value = '';
+    }
   });
+  $('#todo-edit-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!selectedTodoId) return;
+    let dueAtMs;
+    try { dueAtMs = parseTaskDue($('#todo-edit-due').value); }
+    catch (error) { showError(error); return; }
+    if (await mutation('update_todo', {
+      id: selectedTodoId, title: $('#todo-edit-title').value,
+      priority: $('#todo-edit-priority').value, dueAtMs,
+    })) cancelTodoEdit();
+  });
+  $('#todo-edit-cancel').addEventListener('click', cancelTodoEdit);
   $('#note-new').addEventListener('click', async () => {
     if (!(await flushNote())) return;
     const previous = new Set(data.notes.map(note => note.id));
