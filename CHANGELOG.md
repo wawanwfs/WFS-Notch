@@ -1,3 +1,10 @@
+## 0.8.0 — Native Windows media session metadata (validation pending)
+
+- Added read-only Windows GSMTC current-session title, artist, album, playback status, track position and duration in Rust.
+- Added native-only now-playing panel and media timeline; browser preview does not invent track titles.
+- Polling only occurs while the Media panel is active, with an explicit Refresh control.
+- Album art, synced lyrics, playlist management, multi-player selection and interactive device runtime QA remain outstanding.
+
 ## 0.7.0 — Native disk and network monitoring (CI validation required)
 
 - Added Rust read-only per-volume capacity/used/available bytes via sysinfo.
