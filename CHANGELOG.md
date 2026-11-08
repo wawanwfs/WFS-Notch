@@ -1,3 +1,11 @@
+## 0.19.0 — Persisted bounded Windows reminder retries (Phase 18.1B)
+
+- Added an opt-in native notification sender failure journal separate from successful enqueue reservations. Windows enqueue errors are retried after 20, 60 and 180 seconds, at most three total attempts; retries do not extend the existing time-based event grace period.
+- The retry journal persists across process restart and is conservatively merged on backup restore so restoring an old snapshot does not unleash repeated OS sender calls. Successful reattempts remove stale retry records without invalidating their durable enqueue reservation.
+- Strict per-event retry count and bounded map size, sanitized entries, and generic sender errors without private titles or raw source UIDs in logs. The Windows OS may still suppress accepted notifications, and an ambiguous OS failure can cause a limited repeat attempt: not exactly-once user-visible delivery.
+- Settings now display pending/exhausted sender retry counts and maximum attempts without exposing event metadata. Added deterministic Rust restart, privacy, timing and restore tests; no new OS privileges or third-party notification reading.
+- Entire feature parity remains the original fixed 38-category weighted 28.9%; interactive Windows 10/11 notification/Focus Assist/DND QA is NOT TESTED.
+
 ## 0.18.0 — Verified ICS recurrence-master export (Phase 18.1A)
 
 - Preserve one original validated RRULE/EXDATE/RDATE ICS master VEVENT for a completely unchanged imported recurrence series, using strict re-expansion to compare every local occurrence, title, description, interval, timezone, all-day range, timed end and reminder.
