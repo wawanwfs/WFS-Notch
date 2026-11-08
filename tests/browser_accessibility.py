@@ -57,6 +57,8 @@ with sync_playwright() as pw:
     assert "cannot detect real monitors" in page.locator("#display-status").inner_text()
     assert page.locator(".tabs .tab").count() >= 14
     assert page.locator("#notification-test").is_disabled(), "Browser must not simulate a Windows toast"
+    assert page.locator("#notification-scheduler-refresh").is_disabled(), "Browser must not invent native scheduler status"
+    assert "installed Windows desktop app" in page.locator("#notification-scheduler-status").inner_text()
     assert not page.locator("#notifications-toggle").is_checked(), "Sensitive toast capability must be opt-in"
     assert page.locator("#notification-details-toggle").is_disabled()
     assert page.locator("#notifications-pause-toggle").is_disabled()
