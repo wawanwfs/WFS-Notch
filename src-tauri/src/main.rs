@@ -840,6 +840,7 @@ fn main() {
             notifications::set_notifications_paused,
             notifications::notify_test,
             notifications::get_reminder_scheduler_status,
+            notifications::get_windows_notification_permission,
             notifications::notify_due_event,
             set_accent,
             set_hover_to_open,
