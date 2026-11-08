@@ -74,6 +74,10 @@ jobs:
         run: node --check 02_APP/ui/system_details.js
       - name: Media sessions JavaScript syntax
         run: node --check 02_APP/ui/media_sessions.js
+      - name: UX accessibility JavaScript syntax
+        run: node --check 02_APP/ui/ux_polish.js
+      - name: Desktop UX 760x470 browser regression
+        run: python 04_TESTS/browser_ux_polish.py
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
