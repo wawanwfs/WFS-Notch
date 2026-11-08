@@ -1,3 +1,11 @@
+## 0.25.0 — Opt-in native Task due reminders (Workstream F)
+
+- New separate `Settings → Notify when a task is due` checkbox, **off by default**. A task alert also requires the existing WFS desktop notification consent, no WFS-only pause, an unfinished task with a valid due timestamp, and the app running in tray or foreground. Browser preview never sends simulated Windows toasts.
+- Shared native 20-second Rust scheduler now checks upcoming calendar events and eligible task due times (through five-minute grace after due, never floods late reminders). Private task titles are hidden by default; optional title disclosure respects the existing notification detail setting.
+- A new namespaced `task:<local_id>:<due_ms>` ledger key durably reserves each enqueue before calling Windows and reuses the existing persisted bounded three-attempt retry/backoff journal. Editing a due time safely generates a new key; completing/deleting tasks blocks sends. Title edits cannot duplicate due-time alerts.
+- Rust tests cover legacy preference migration, independent consent, completed/deleted/edited tasks, privacy redaction and persistence/retry across process restarts; Playwright verifies disabled native-only browser UI. No Windows DND/global settings changed.
+- Automated CI/NSIS+portable and 64 screenshot evidence must pass before merging; real interactive Win10/11 native toast visibility remains **NOT TESTED** and cannot be asserted from CI. Weighted reference parity remains 28.9% because native acceptance and further task capabilities are pending.
+
 ## 0.24.0 — Private local Notes tags and filtering (Workstream F)
 
 - Notes support optional persisted comma-separated tags: up to 8 labels of 1–24 ASCII letters, numbers, dash and underscore, normalized to lowercase. Legacy JSON notes deserialize with empty tags without modifying title or body.
