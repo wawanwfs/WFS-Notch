@@ -3,8 +3,8 @@
 use crate::{with_store, AppData, Settings, Store};
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, PhysicalPosition, State, WebviewWindow};
 use std::time::Duration;
+use tauri::{AppHandle, Manager, PhysicalPosition, State, WebviewWindow};
 
 const COLLAPSED_WIDTH: f64 = 240.0;
 const COLLAPSED_HEIGHT: f64 = 48.0;
@@ -147,7 +147,6 @@ pub fn place_notch(
         .map_err(|e| e.to_string())
 }
 
-
 #[cfg(windows)]
 fn active_fullscreen_on_monitor(window: &WebviewWindow, settings: &Settings) -> bool {
     use windows::Win32::Foundation::{POINT, RECT};
@@ -239,14 +238,22 @@ pub fn start_guard(app: AppHandle) -> std::io::Result<()> {
                         if let Ok(monitors) = window.available_monitors() {
                             let mut fingerprint = monitors
                                 .iter()
-                                .map(|m| format!(
-                                    "{}:{}:{}:{}:{:.3}",
-                                    m.position().x, m.position().y,
-                                    m.size().width, m.size().height, m.scale_factor()
-                                ))
+                                .map(|m| {
+                                    format!(
+                                        "{}:{}:{}:{}:{:.3}",
+                                        m.position().x,
+                                        m.position().y,
+                                        m.size().width,
+                                        m.size().height,
+                                        m.scale_factor()
+                                    )
+                                })
                                 .collect::<Vec<_>>();
                             fingerprint.sort();
-                            if previous_geometry.as_ref().is_some_and(|old| old != &fingerprint) {
+                            if previous_geometry
+                                .as_ref()
+                                .is_some_and(|old| old != &fingerprint)
+                            {
                                 let height = window.inner_size().ok().map(|s| s.height as f64);
                                 let scale = window.scale_factor().unwrap_or(1.0).max(0.1);
                                 let expanded = height.is_some_and(|h| h / scale > 120.0);
