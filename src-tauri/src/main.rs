@@ -14,8 +14,8 @@ mod display;
 mod extra;
 mod media_sessions;
 mod notifications;
-mod wellness;
 mod system_details;
+mod wellness;
 use tauri::{menu::MenuBuilder, tray::TrayIconBuilder};
 use tauri::{Manager, State};
 
