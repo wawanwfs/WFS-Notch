@@ -232,6 +232,8 @@
             <div class="settings-row"><div><b>Include calendar titles in notifications</b><small>Off by default: private calendar titles are hidden in notification text.</small></div><label class="toggle-label"><input id="notification-details-toggle" type="checkbox"><span>Show titles</span></label></div>
             <div class="settings-row"><div><b>Pause desktop reminders</b><small>Do Not Disturb for WFS Notch only; your Windows-wide settings are not changed.</small></div><label class="toggle-label"><input id="notifications-pause-toggle" type="checkbox"><span>Paused</span></label></div>
             <button class="secondary" id="notification-test" type="button">Send test notification</button>
+            <button class="secondary" id="notification-permission-check" type="button">Check Windows permission</button>
+            <p class="event-hint" id="notification-permission-status" role="status" aria-live="polite">Windows toast permission has not been checked. Focus Assist can suppress delivery.</p>
             <p class="event-hint" id="notification-status" role="status">Toasts require the installed Windows desktop app and Windows notification permissions.</p>
             <div class="settings-row">
               <div><b>Background reminder service</b><small>Runs while WFS Notch is open in the tray, even if the panel is hidden. No Windows service is installed.</small></div>
