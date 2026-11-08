@@ -5,6 +5,7 @@ let mediaDetailsPending = false;
 let mediaDetailsLastAt = 0;
 let mediaLastSample = null;
 let mediaLastSampleAt = 0;
+let mediaSessionChoices = [];
 function mediaTime(ms) {
   if (!Number.isFinite(ms) || ms < 0) return '—';
   const secs = Math.floor(ms / 1000);
@@ -93,6 +94,7 @@ function renderSelectedPlayers(sessions, systemCurrentSource) {
   const status = document.querySelector('#media-player-status');
   const safe = Array.isArray(sessions) ? sessions.filter(item => typeof item.source === 'string' && item.source.length > 0) : [];
   const previous = picker.value;
+  mediaSessionChoices = safe;
   picker.replaceChildren();
   if (!safe.length) {
     const empty = document.createElement('option');
@@ -134,8 +136,12 @@ async function controlSelectedPlayer(action) {
     status.textContent = 'Selected media session unavailable. Refresh the list and retry.';
     showError(error);
   } finally {
+    // Do not re-enable controls unsupported by the current player.
+    const snapshot = mediaSessionChoices.find(item => item.source === picker.value);
     for (const button of document.querySelectorAll('[data-selected-media]')) {
-      button.disabled = picker.disabled;
+      const flag = button.dataset.selectedMedia === 'toggle' ? 'can_toggle'
+        : button.dataset.selectedMedia === 'next' ? 'can_next' : 'can_previous';
+      button.disabled = picker.disabled || !snapshot || snapshot[flag] !== true;
     }
   }
 }
