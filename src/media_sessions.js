@@ -3,6 +3,8 @@
 let mediaDetailsInitialized = false;
 let mediaDetailsPending = false;
 let mediaDetailsLastAt = 0;
+let mediaLastSample = null;
+let mediaLastSampleAt = 0;
 function mediaTime(ms) {
   if (!Number.isFinite(ms) || ms < 0) return '—';
   const secs = Math.floor(ms / 1000);
@@ -16,14 +18,27 @@ function renderMediaDetails(snapshot) {
   const duration = document.querySelector('#media-duration');
   const status = document.querySelector('#media-playback-state');
   const bar = document.querySelector('#media-progress-bar');
+  const artwork = document.querySelector('#media-artwork');
+  const card = document.querySelector('#now-playing');
+  mediaLastSample = snapshot;
+  mediaLastSampleAt = Date.now();
   if (!snapshot) {
     track.textContent = 'No active media session';
     artist.textContent = nativeInvoke ? 'Start music in a supported Windows player.' : 'Track metadata requires the installed Windows desktop application.';
     source.textContent = nativeInvoke ? 'Windows global media session' : 'Browser preview — no synthetic media';
     pos.textContent = '—'; duration.textContent = '—'; status.textContent = 'Unavailable';
     bar.style.width = '0%';
+    artwork.hidden = true;
+    artwork.removeAttribute('src');
+    card.classList.remove('has-art');
     return;
   }
+  const url = snapshot.artwork_data_url;
+  const validArt = typeof url === 'string' && url.length <= 750000 && /^data:image\/(png|jpeg|gif);base64,[a-zA-Z0-9+/=]+$/.test(url);
+  artwork.hidden = !validArt;
+  if (validArt) artwork.src = url;
+  else artwork.removeAttribute('src');
+  card.classList.toggle('has-art', validArt);
   track.textContent = snapshot.title || 'Untitled track';
   artist.textContent = snapshot.artist || snapshot.album || 'Unknown artist';
   source.textContent = [snapshot.album, snapshot.source].filter(Boolean).join(' · ').slice(0, 250);
@@ -52,6 +67,19 @@ async function refreshMediaDetails(force = false) {
     mediaDetailsPending = false;
   }
 }
+function updateInterpolatedProgress() {
+  const panel = document.querySelector('#panel-media');
+  const snapshot = mediaLastSample;
+  if (!panel?.classList.contains('active') || !snapshot || snapshot.playback_status !== 'Playing') return;
+  const duration = Number(snapshot.duration_ms);
+  const start = Number(snapshot.position_ms);
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(start)) return;
+  const position = Math.min(duration, start + Math.max(0, Date.now() - mediaLastSampleAt));
+  document.querySelector('#media-position').textContent = mediaTime(position);
+  document.querySelector('#media-progress-bar').style.width =
+    Math.max(0, Math.min(100, 100 * position / duration)).toFixed(1) + '%';
+}
+
 function renderSelectedPlayers(sessions, systemCurrentSource) {
   const picker = document.querySelector('#media-player-picker');
   const status = document.querySelector('#media-player-status');
@@ -117,6 +145,7 @@ function initMediaSessions() {
     });
   }
   setInterval(() => { void refreshMediaDetails(); }, 2500);
+  setInterval(updateInterpolatedProgress, 500);
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initMediaSessions, {once:true});
 else initMediaSessions();
