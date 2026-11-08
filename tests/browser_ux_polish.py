@@ -56,6 +56,20 @@ with sync_playwright() as pw:
     assert page.locator("#display-apply").is_disabled()
     assert "cannot detect real monitors" in page.locator("#display-status").inner_text()
     assert page.locator(".tabs .tab").count() >= 14
+    assert page.locator("#notification-test").is_disabled(), "Browser must not simulate a Windows toast"
+    assert not page.locator("#notifications-toggle").is_checked(), "Sensitive toast capability must be opt-in"
+    assert page.locator("#notification-details-toggle").is_disabled()
+    page.locator("#nav-settings").click()
+    page.locator("#notifications-toggle").check()
+    page.wait_for_function("document.querySelector('#notification-details-toggle').disabled === false")
+    assert not page.locator("#notification-details-toggle").is_checked()
+    page.locator("#notifications-toggle").uncheck()
+    page.wait_for_function("document.querySelector('#notification-details-toggle').disabled === true")
+    assert page.locator("#notification-test").is_disabled()
+    page.locator("#on-top-toggle").uncheck()
+    page.wait_for_function("document.querySelector('#on-top-toggle').checked === false")
+    page.locator("#on-top-toggle").check()
+    page.locator("#nav-home").click()
     assert page.locator("#nav-home").get_attribute("aria-current") == "page"
     assert page.locator("#nav-todos").get_attribute("aria-controls") == "panel-todos"
 
