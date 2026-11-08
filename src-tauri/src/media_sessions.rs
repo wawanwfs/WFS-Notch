@@ -14,6 +14,24 @@ pub struct ActiveMediaSnapshot {
     artwork_data_url: Option<String>,
 }
 
+/// Media SourceAppUserModelId is an application ID, NOT a tab/instance ID.
+ /// Only select a player when exactly one currently visible session matches.
+fn select_unique_source<T>(
+    requested: &str,
+    candidates: impl IntoIterator<Item = (String, T)>,
+) -> Result<Option<T>, String> {
+    let mut chosen = None;
+    for (source, session) in candidates {
+        if source == requested {
+            if chosen.is_some() {
+                return Err("Ambiguous Windows media app ID: multiple sessions match".into());
+            }
+            chosen = Some(session);
+        }
+    }
+    Ok(chosen)
+}
+
 fn non_negative_ms(time_100ns: i64) -> u64 {
     (time_100ns.max(0) / 10_000) as u64
 }
@@ -87,25 +105,14 @@ fn read_session_with_source(
         if count > 64 {
             return Err("Too many Windows media sessions to select safely".into());
         }
-        let mut selected = None;
+        let mut candidates = Vec::new();
         for i in 0..count {
-            let Ok(candidate) = sessions.GetAt(i) else {
-                continue;
-            };
-            if candidate
-                .SourceAppUserModelId()
-                .ok()
-                .map(|s| s.to_string())
-                .as_deref()
-                == Some(requested)
-            {
-                if selected.is_some() {
-                    return Err("Multiple Windows sessions share this app ID; selection is ambiguous".into());
-                }
-                selected = Some(candidate);
-            }
+            let candidate = sessions.GetAt(i).map_err(|_| "Cannot inspect all Windows media sessions")?;
+            let source = candidate.SourceAppUserModelId()
+                .map_err(|_| "Cannot verify Windows media app identity")?.to_string();
+            candidates.push((source, candidate));
         }
-        match selected {
+        match select_unique_source(requested, candidates)? {
             Some(session) => session,
             None => return Ok(None), // Disconnected; never substitute another player.
         }
@@ -211,6 +218,21 @@ pub async fn get_active_media_session() -> Result<Option<ActiveMediaSnapshot>, S
 mod tests {
     use super::*;
     #[test]
+    fn gsmct_source_identity_is_not_sufficient_for_multiple_tabs_or_players() {
+        let candidates = vec![
+            ("browser.id".to_owned(), "Tab one"),
+            ("spotify.id".to_owned(), "Spotify"),
+            ("browser.id".to_owned(), "Tab two"),
+        ];
+        assert!(select_unique_source("browser.id", candidates.clone()).is_err());
+        assert_eq!(
+            select_unique_source("spotify.id", candidates.clone()).unwrap(),
+            Some("Spotify")
+        );
+        assert_eq!(select_unique_source("disconnected", candidates).unwrap(), None);
+    }
+
+    #[test]
     fn artwork_mime_strictly_limits_local_image_types() {
         assert_eq!(
             artwork_mime(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -274,7 +296,7 @@ fn read_media_choices() -> Result<Vec<MediaSessionChoice>, String> {
     if count > 64 {
         return Err("Too many Windows media sessions to enumerate safely".into());
     }
-    let mut result = Vec::new();
+    let mut result: Vec<MediaSessionChoice> = Vec::new();
     for index in 0..count {
         let Ok(session) = view.GetAt(index) else {
             continue;
@@ -288,7 +310,7 @@ fn read_media_choices() -> Result<Vec<MediaSessionChoice>, String> {
         }
         if let Some(existing) = result
             .iter_mut()
-            .find(|item: &&mut MediaSessionChoice| item.source == source)
+            .find(|item| item.source == source)
         {
             existing.ambiguous = true;
             existing.can_toggle = false;
@@ -376,23 +398,16 @@ fn apply_media_control(source: &str, action: &str) -> Result<bool, String> {
     if count > 64 {
         return Err("Too many Windows media sessions to control safely".into());
     }
-    let mut chosen = None;
+    let mut candidates = Vec::new();
     for index in 0..count {
-        let session = view.GetAt(index).map_err(|e| e.to_string())?;
-        let id = session
-            .SourceAppUserModelId()
-            .map(|v| v.to_string())
-            .unwrap_or_default();
-        if id == source {
-            if chosen.is_some() {
-                return Err("Multiple Windows media sessions share this app ID; action refused".into());
-            }
-            chosen = Some(session);
-        }
+        let session = view.GetAt(index).map_err(|_| "Cannot inspect all Windows media sessions")?;
+        let id = session.SourceAppUserModelId()
+            .map_err(|_| "Cannot verify Windows media app identity")?.to_string();
+        candidates.push((id, session));
     }
-    let session = chosen.ok_or("Selected Windows media session was disconnected")?;
-    {
-        // Query controls again on the *current* session, not stale UI metadata.
+    let session = select_unique_source(source, candidates)?
+        .ok_or("Selected Windows media session was disconnected")?;
+    // Query controls again on the *current* session, not stale UI metadata.
         let controls = session
             .GetPlaybackInfo()
             .ok()
@@ -415,10 +430,9 @@ fn apply_media_control(source: &str, action: &str) -> Result<bool, String> {
             _ => return Err("Unsupported media action".into()),
         }
         .map_err(|e| format!("Media player rejected control: {e}"))?;
-        return operation
-            .join()
-            .map_err(|e| format!("Media player did not respond: {e}"));
-    }
+    operation
+        .join()
+        .map_err(|e| format!("Media player did not respond: {e}"))
 }
 
 #[cfg(not(windows))]
