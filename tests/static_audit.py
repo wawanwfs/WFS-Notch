@@ -11,7 +11,7 @@ app = root
 html = (app / 'ui/index.html').read_text()
 js = '\n'.join((app / 'src' / filename).read_text() for filename in ('app.js', 'modules.js', 'parity.js', 'calendar_plus.js', 'system_details.js', 'media_sessions.js', 'ux_polish.js', 'display_ui.js'))
 rust = (app / 'src-tauri/src/main.rs').read_text()
-all_rust = '\n'.join((app / 'src-tauri/src' / filename).read_text() for filename in ('main.rs', 'extra.rs', 'parity.rs', 'calendar_ics.rs', 'system_details.rs', 'media_sessions.rs', 'display.rs'))
+all_rust = '\n'.join((app / 'src-tauri/src' / filename).read_text() for filename in ('main.rs', 'extra.rs', 'parity.rs', 'calendar_ics.rs', 'system_details.rs', 'media_sessions.rs', 'display.rs', 'notifications.rs'))
 config = json.loads((app / 'src-tauri/tauri.conf.json').read_text())
 capabilities = json.loads((app / 'src-tauri/capabilities/default.json').read_text())
 
@@ -46,6 +46,6 @@ assert len(commands) >= 20
 extra = (app / 'src-tauri/src/extra.rs').read_text()
 extra_commands = set(re.findall(r'\#\[tauri::command\]\s*pub fn\s+(\w+)', extra))
 assert {'add_habit', 'open_quick_link', 'media_key'} <= extra_commands
-assert {'import_ics', 'export_ics', 'get_active_media_session', 'get_display_options', 'set_display_preference'} <= commands
+assert {'import_ics', 'export_ics', 'get_active_media_session', 'get_display_options', 'set_display_preference', 'set_notification_preferences', 'notify_due_event', 'notify_test', 'list_media_sessions', 'control_media_session', 'set_notch_on_top'} <= commands
 assert 'calendar_ics::import_ics' in rust and 'calendar_ics::export_ics' in rust
 print('PASS: static audit |', len(ids), 'unique element IDs |', len(frontend_calls), 'bound frontend commands |', len(commands), 'Rust commands | JSON/SVG/icons checked')
