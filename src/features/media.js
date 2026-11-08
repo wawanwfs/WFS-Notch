@@ -57,8 +57,16 @@ async function refreshMediaDetails(force = false) {
   mediaDetailsPending = true;
   try {
     const active = await invoke('get_active_media_session');
-    renderMediaDetails(active);
-    renderSelectedPlayers(await invoke('list_media_sessions'), active?.source);
+    const sessions = await invoke('list_media_sessions');
+    renderSelectedPlayers(sessions, active?.source);
+    const selected = document.querySelector('#media-player-picker').value;
+    const snapshot = selected && selected !== active?.source
+      ? await invoke('get_media_session_by_source', { source: selected }) : active;
+    renderMediaDetails(snapshot);
+    if (selected && !snapshot) {
+      document.querySelector('#media-player-status').textContent =
+        'Selected session disconnected. Refresh or choose another player.';
+    }
     mediaDetailsLastAt = Date.now();
   } catch (error) {
     renderMediaDetails(null);
@@ -105,8 +113,12 @@ function renderSelectedPlayers(sessions, systemCurrentSource) {
     picker.disabled = false;
     status.textContent = 'Playback actions are sent only to the selected app. Availability depends on the player.';
   }
+  const chosen = safe.find(item => item.source === picker.value);
   for (const button of document.querySelectorAll('[data-selected-media]')) {
-    button.disabled = picker.disabled;
+    const action = button.dataset.selectedMedia;
+    const flag = action === 'toggle' ? 'can_toggle'
+      : action === 'next' ? 'can_next' : 'can_previous';
+    button.disabled = picker.disabled || !chosen || chosen[flag] !== true;
   }
 }
 async function controlSelectedPlayer(action) {
@@ -122,7 +134,9 @@ async function controlSelectedPlayer(action) {
     status.textContent = 'Selected media session unavailable. Refresh the list and retry.';
     showError(error);
   } finally {
-    for (const button of document.querySelectorAll('[data-selected-media]')) button.disabled = picker.disabled;
+    for (const button of document.querySelectorAll('[data-selected-media]')) {
+      button.disabled = picker.disabled;
+    }
   }
 }
 function initMediaSessions() {
@@ -133,6 +147,9 @@ function initMediaSessions() {
     button.addEventListener('click', () => { void controlSelectedPlayer(button.dataset.selectedMedia); });
     button.disabled = !nativeInvoke;
   }
+  document.querySelector('#media-player-picker').addEventListener('change', () => {
+    void refreshMediaDetails(true);
+  });
   document.querySelector('#media-refresh').addEventListener('click', () => {
     void refreshMediaDetails(true);
   });
