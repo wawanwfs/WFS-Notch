@@ -1023,9 +1023,10 @@ mod tests {
         merge_imported_events(&mut restored, occurrences).unwrap();
         assert_eq!(restored.events.len(), 4);
         assert_eq!(restored.events[1].description, "A user edit");
-        crate::update_series_title(&mut restored, &restored.events[0].id.clone(), "Retitled").unwrap();
+        let first_id = restored.events[0].id.clone();
+        crate::update_series_title(&mut restored, &first_id, "Retitled").unwrap();
         assert_eq!(restored.calendar_series.get(key).unwrap().title, "Retitled");
-        crate::remove_series(&mut restored, &restored.events[0].id.clone()).unwrap();
+        crate::remove_series(&mut restored, &first_id).unwrap();
         assert!(restored.calendar_series.is_empty());
         assert!(restored.calendar_tombstones.contains(key));
     }
