@@ -727,18 +727,40 @@ function bind() {
   $$('.tab').forEach(button => button.addEventListener('click', () => void switchTab(button.dataset.tab)));
   $('#go-timer').addEventListener('click', () => void switchTab('timer'));
   $('#go-calendar').addEventListener('click', () => void switchTab('calendar'));
+  $('#event-all-day').addEventListener('change', () => setAllDayEditor($('#event-all-day').checked));
   $('#event-form').addEventListener('submit', async event => {
     event.preventDefault();
     const title = $('#event-title').value.trim();
-    const raw = $('#event-time').value;
-    const startsAtMs = new Date(raw).getTime();
-    if (!title || !Number.isFinite(startsAtMs)) { showError('Choose a valid event title and date'); return; }
+    if (!title) { showError('Enter an event title'); return; }
+    if (selectedSeriesEventId) {
+      if (await mutation('update_event_series_title', {id: selectedSeriesEventId, title})) {
+        cancelEventEdit();
+        showInfo('All imported series occurrence titles updated.');
+      }
+      return;
+    }
+    const prior = selectedEventId && data.events.find(entry => entry.id === selectedEventId);
+    const description = prior?.description || '';
+    if ($('#event-all-day').checked) {
+      const startDate = $('#event-start-date').value;
+      const endDateExclusive = $('#event-end-date').value;
+      const mode = selectedEventId ? 'update_all_day_event' : 'add_all_day_event';
+      if (await mutation(mode, {
+        ...(selectedEventId ? {id: selectedEventId} : {}),
+        title, startDate, endDateExclusive, description
+      })) {
+        cancelEventEdit();
+        showInfo('All-day calendar dates saved (exclusive end; no reminder).');
+      }
+      return;
+    }
+    const startsAtMs = new Date($('#event-time').value).getTime();
+    if (!Number.isFinite(startsAtMs)) { showError('Choose a valid date and time'); return; }
     const remind = $('#event-remind').value;
     const mode = selectedEventId ? 'update_event' : 'add_event';
     if (await mutation(mode, {
       ...(selectedEventId ? { id: selectedEventId } : {}),
-      title, startsAtMs,
-      description: '',
+      title, startsAtMs, description,
       remindMinutes: remind === 'off' ? null : Number(remind),
     })) {
       cancelEventEdit();
