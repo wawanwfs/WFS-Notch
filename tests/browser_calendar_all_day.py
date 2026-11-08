@@ -86,9 +86,12 @@ with sync_playwright() as pw:
     assert page.locator("#event-time").is_disabled()
     page.locator("#event-title").fill("Updated series")
     page.get_by_role("button", name="Rename entire series", exact=True).click()
-    assert page.get_by_role("button", name="Rename entire series: Updated series").count() == 2
+    updated = page.get_by_role("button", name="Rename entire series: Updated series")
+    updated.first.wait_for(state="visible")
+    assert updated.count() == 2
     page.get_by_role("button", name="Delete entire series: Updated series").first.click()
-    assert page.get_by_role("button", name="Rename entire series: Updated series").count() == 0
+    updated.first.wait_for(state="detached")
+    assert updated.count() == 0
     assert page.get_by_text("Company retreat", exact=True).count() == 1
     assert not issues, f"Calendar all-day/series browser errors: {issues}"
     browser.close()
