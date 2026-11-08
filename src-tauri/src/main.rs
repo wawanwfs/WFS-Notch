@@ -37,6 +37,10 @@ struct Settings {
     task_due_reminders_enabled: bool,
     always_on_top: bool,
     auto_lower_fullscreen: bool,
+    // Optional local-only accessibility presets; legacy state uses defaults.
+    ui_density: String,
+    reduce_motion: bool,
+    high_contrast: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -52,6 +56,9 @@ impl Default for Settings {
             task_due_reminders_enabled: false,
             always_on_top: true,
             auto_lower_fullscreen: false,
+            ui_density: "comfortable".into(),
+            reduce_motion: false,
+            high_contrast: false,
         }
     }
 }
@@ -317,6 +324,9 @@ impl AppData {
         self.settings.top_margin_px = self.settings.top_margin_px.min(display::MAX_MARGIN);
         if !self.settings.notifications_enabled {
             self.settings.notifications_show_details = false;
+        }
+        if !matches!(self.settings.ui_density.as_str(), "comfortable" | "compact") {
+            self.settings.ui_density = Settings::default().ui_density;
         }
         if !display::valid_monitor_preference(&self.settings.monitor_id) {
             self.settings.monitor_id = display::DEFAULT_MONITOR.into();
@@ -1230,6 +1240,24 @@ fn set_accent(store: State<'_, Mutex<Store>>, accent: String) -> Result<AppData,
 }
 
 #[tauri::command]
+fn set_appearance(
+    store: State<'_, Mutex<Store>>,
+    density: String,
+    reduce_motion: bool,
+    high_contrast: bool,
+) -> Result<AppData, String> {
+    if !matches!(density.as_str(), "comfortable" | "compact") {
+        return Err("Invalid appearance density".into());
+    }
+    with_store(store, |state| {
+        state.settings.ui_density = density;
+        state.settings.reduce_motion = reduce_motion;
+        state.settings.high_contrast = high_contrast;
+        Ok(())
+    })
+}
+
+#[tauri::command]
 fn set_hover_to_open(store: State<'_, Mutex<Store>>, enabled: bool) -> Result<AppData, String> {
     with_store(store, |state| {
         state.settings.hover_to_open = enabled;
@@ -1431,6 +1459,7 @@ fn main() {
             notifications::get_windows_notification_permission,
             notifications::notify_due_event,
             set_accent,
+            set_appearance,
             set_hover_to_open,
             set_pin_open,
             set_notch_on_top,
@@ -1473,6 +1502,49 @@ mod tests {
             std::process::id(),
             new_id()
         ))
+    }
+
+    #[test]
+    fn appearance_presets_migrate_validate_and_roundtrip_with_unrelated_settings() {
+        let old: Settings = serde_json::from_str(
+            r##"{"accent":"#d6b77a","notifications_enabled":true,"pin_open":true}"##,
+        )
+        .unwrap();
+        assert_eq!(old.ui_density, "comfortable");
+        assert!(!old.reduce_motion);
+        assert!(!old.high_contrast);
+        let path = temp_file("appearance-presets");
+        let mut store = Store::open(path.clone()).unwrap();
+        store
+            .transact(|data| {
+                data.settings = old.clone();
+                data.settings.ui_density = "compact".into();
+                data.settings.reduce_motion = true;
+                data.settings.high_contrast = true;
+                Ok(())
+            })
+            .unwrap();
+        let restored = Store::open(path.clone()).unwrap();
+        assert_eq!(restored.data.settings.ui_density, "compact");
+        assert!(restored.data.settings.reduce_motion);
+        assert!(restored.data.settings.high_contrast);
+        assert!(restored.data.settings.notifications_enabled);
+        assert!(restored.data.settings.pin_open);
+        let mut malformed = restored.data.clone();
+        malformed.settings.ui_density = "<script>".into();
+        malformed.sanitize();
+        assert_eq!(malformed.settings.ui_density, "comfortable");
+        let snapshot = restored.data.clone();
+        let mut store = restored;
+        assert!(store
+            .transact(|data| {
+                data.settings.ui_density = "invalid".into();
+                Err("invalid update rejected".into())
+            })
+            .is_err());
+        assert_eq!(store.data, snapshot);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("json.bak"));
     }
 
     #[test]

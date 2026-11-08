@@ -34,7 +34,8 @@ function wfsInitNavigation() {
   const select = button => {
     button.focus({preventScroll:true});
     button.scrollIntoView({
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      behavior: document.documentElement.dataset.uiMotion === 'reduced'
+        || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
       block:'nearest',
       inline:'nearest'
     });
