@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
@@ -155,6 +156,8 @@ struct AppData {
     todos: Vec<Todo>,
     notes: Vec<Note>,
     events: Vec<CalendarEvent>,
+    // Local, title-free, persistent reservation ledger. Kept in state.json atomically.
+    reminder_deliveries: HashMap<String, u128>,
     habits: Vec<extra::Habit>,
     quick_links: Vec<extra::QuickLink>,
     health: wellness::HealthState,
@@ -769,7 +772,6 @@ fn main() {
             let store = Store::open(directory.join("state.json")).map_err(std::io::Error::other)?;
             app.manage(Mutex::new(store));
             app.manage(Mutex::new(System::new_all()));
-            app.manage(notifications::SentNotices::default());
             notifications::start_scheduler(app.handle().clone())?;
             let tray_menu = MenuBuilder::new(app)
                 .text("show", "Show WFS Notch")
