@@ -1,3 +1,11 @@
+## 0.15.0 — Civil-date calendar and series actions (development)
+
+- True iCalendar all-day DTSTART;VALUE=DATE/DTEND;VALUE=DATE import/export with exclusive end dates, timezone-neutral display, non-destructive UTC legacy state compatibility and no automatic midnight reminders.
+- Simple bounded DAILY/WEEKLY RRULE exceptions via EXDATE/RDATE (both date-only and timed), stable source UID + per-instance identities and repeat-import deduplication.
+- Transactional rename-all-occurrence titles and remove-entire-imported-series actions; per-event edit remains independent. Removal is local, and re-import can restore the series. Complex source recurrence/series schedule edits remain out of scope.
+- All-day create/edit UI, multi-day month badges, clear exclusive-end labeling, accessible series actions and new Playwright regression for preview mode.
+- Date-only/leap/DST test coverage, 38-category parity still 3 Implemented / 16 Partial / 19 Gap = 28.9%. Native Windows 10/11 interactive tests remain NOT TESTED; installer and portable builds are unsigned.
+
 ## 0.14.0 — Safe IANA calendar import and native QA inventory (development)
 
 - Added a separate Rust timezone/recurrence module for iCalendar DTSTART with UTC, IANA TZID and explicitly chosen floating IANA timezones. DST nonexistent/ambiguous local instants are rejected rather than silently shifted; UTC persisted event schema remains unchanged for existing backup/reminder migration.

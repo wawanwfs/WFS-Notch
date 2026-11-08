@@ -338,6 +338,8 @@ mod tests {
             remind_minutes,
             description: String::new(),
             created_ms: 0,
+            all_day: None,
+            series_uid: None,
         }
     }
 

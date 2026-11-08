@@ -15,6 +15,7 @@ const defaults = () => ({
 let data = defaults();
 let selectedNoteId = null;
 let selectedEventId = null;
+let selectedSeriesEventId = null;
 let boundEditorId = null;
 let pendingDraft = null;
 let noteSaveTimeout = null;
@@ -129,12 +130,48 @@ function previewInvoke(command, args = {}) {
       const title = String(args.title || '').trim();
       if (!title || title.length > 200 || !Number.isFinite(args.startsAtMs) || args.startsAtMs < 946684800000 || args.startsAtMs > 4102444800000) throw new Error('Invalid event title/date');
       if (![null, 0, 5, 15, 30, 60].includes(args.remindMinutes)) throw new Error('Invalid reminder');
-      Object.assign(item, {title, starts_at_ms: args.startsAtMs, remind_minutes: args.remindMinutes, description: args.description || ''});
+      Object.assign(item, {title, starts_at_ms: args.startsAtMs, remind_minutes: args.remindMinutes, description: args.description || '', all_day: null});
       break;
     }
     case 'remove_event': {
       if (!state.events.some(item => item.id === args.id)) throw new Error('Event not found');
       state.events = state.events.filter(item => item.id !== args.id); break;
+    }
+    case 'add_all_day_event':
+    case 'update_all_day_event': {
+      const title = String(args.title || '').trim();
+      const start = String(args.startDate || ''), end = String(args.endDateExclusive || '');
+      const parsed = date => /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+        !Number.isNaN(Date.parse(date + 'T00:00:00Z')) &&
+        new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date;
+      const days = (Date.parse(end + 'T00:00:00Z') - Date.parse(start + 'T00:00:00Z')) / 86400000;
+      if (!title || title.length > 200 || !parsed(start) || !parsed(end) ||
+          days < 1 || days > 366 || start < '2000-01-01' || end > '2100-01-01') throw new Error('Invalid all-day date span');
+      const span = {start_date: start, end_date_exclusive: end};
+      if (command === 'add_all_day_event') {
+        state.events.push({id: nextId(), title, starts_at_ms: Date.parse(start + 'T00:00:00Z'),
+          remind_minutes: null, description: args.description || '', created_ms: Date.now(), all_day: span, series_uid: null});
+      } else {
+        const item = state.events.find(entry => entry.id === args.id);
+        if (!item) throw new Error('Event not found');
+        Object.assign(item, {title, starts_at_ms: Date.parse(start + 'T00:00:00Z'),
+          remind_minutes: null, description: args.description || '', all_day: span});
+      }
+      break;
+    }
+    case 'update_event_series_title':
+    case 'remove_event_series': {
+      const current = state.events.find(item => item.id === args.id);
+      if (!current?.series_uid) throw new Error('This event is not part of an imported recurrence series');
+      const members = state.events.filter(item => item.series_uid === current.series_uid);
+      if (command === 'update_event_series_title') {
+        const title = String(args.title || '').trim();
+        if (!title || title.length > 200) throw new Error('Invalid series title');
+        members.forEach(item => { item.title = title; });
+      } else {
+        state.events = state.events.filter(item => item.series_uid !== current.series_uid);
+      }
+      break;
     }
     case 'add_habit': {
       const title = String(args.title || '').trim();
@@ -381,17 +418,49 @@ function asLocalInput(epoch) {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function setAllDayEditor(enabled) {
+  $('#event-all-day').checked = enabled;
+  $('#event-all-day-fields').hidden = !enabled;
+  $('#event-time').hidden = enabled;
+  $('#event-time').required = !enabled;
+  $('#event-remind').disabled = enabled;
+  if (enabled) $('#event-remind').value = 'off';
+  if (enabled && !$('#event-start-date').value) {
+    const date = ($('#event-time').value || asLocalInput(Date.now())).slice(0, 10);
+    $('#event-start-date').value = date;
+    const next = new Date(date + 'T12:00:00');
+    next.setDate(next.getDate() + 1);
+    const pad = n => String(n).padStart(2, '0');
+    $('#event-end-date').value = [next.getFullYear(), pad(next.getMonth() + 1), pad(next.getDate())].join('-');
+  }
+}
+function eventDisplayDate(event) {
+  if (!event.all_day) return eventDate(event.starts_at_ms);
+  const end = new Date(Date.parse(event.all_day.end_date_exclusive + 'T00:00:00Z') - 86400000)
+    .toISOString().slice(0, 10);
+  return event.all_day.start_date === end ? end + ' · All day'
+    : event.all_day.start_date + ' – ' + end + ' · All day';
+}
 function cancelEventEdit() {
   selectedEventId = null;
+  selectedSeriesEventId = null;
   $('#event-submit').textContent = 'Add event';
   $('#event-cancel').hidden = true;
   $('#event-title').value = '';
+  $('#event-time').disabled = false;
+  $('#event-all-day').disabled = false;
+  setAllDayEditor(false);
+  $('#event-start-date').value = '';
+  $('#event-end-date').value = '';
 }
 function renderCalendar() {
   const events = [...data.events].sort((a, b) => a.starts_at_ms - b.starts_at_ms);
   $('#calendar-count').textContent = `${events.length} EVENT${events.length === 1 ? '' : 'S'}`;
-  const upcoming = events.find(item => item.starts_at_ms >= Date.now() - 60000);
-  $('#next-event').textContent = upcoming ? `${upcoming.title} · ${eventDate(upcoming.starts_at_ms)}` : 'No upcoming events';
+  const localDay = asLocalInput(Date.now()).slice(0, 10);
+  const upcoming = events.find(item => item.all_day
+    ? item.all_day.end_date_exclusive > localDay
+    : item.starts_at_ms >= Date.now() - 60000);
+  $('#next-event').textContent = upcoming ? upcoming.title + ' · ' + eventDisplayDate(upcoming) : 'No upcoming events';
   const list = $('#event-list');
   list.replaceChildren();
   if (!events.length) {
@@ -399,19 +468,30 @@ function renderCalendar() {
     return;
   }
   for (const event of events) {
-    const line = node('div', 'event-item' + (event.starts_at_ms < Date.now() ? ' past' : ''));
-    const date = node('time', 'event-date', eventDate(event.starts_at_ms));
-    date.dateTime = new Date(event.starts_at_ms).toISOString();
+    const past = event.all_day ? event.all_day.end_date_exclusive <= localDay : event.starts_at_ms < Date.now();
+    const line = node('div', 'event-item' + (past ? ' past' : ''));
+    const date = node('time', 'event-date', eventDisplayDate(event));
+    date.dateTime = event.all_day ? event.all_day.start_date : new Date(event.starts_at_ms).toISOString();
     const info = node('div', 'event-info');
     info.append(node('b', '', event.title));
-    info.append(node('small', '', event.remind_minutes == null ? 'Reminder off' : `${event.remind_minutes === 0 ? 'At event time' : `${event.remind_minutes} min before`}`));
+    const reminderLabel = event.all_day ? 'All day · no midnight reminder'
+      : event.remind_minutes == null ? 'Reminder off'
+      : event.remind_minutes === 0 ? 'At event time'
+      : String(event.remind_minutes) + ' min before';
+    info.append(node('small', '', reminderLabel));
     const edit = node('button', 'text-button', 'Edit');
     edit.type = 'button';
     edit.setAttribute('aria-label', `Edit event: ${event.title}`);
     edit.addEventListener('click', () => {
+      cancelEventEdit();
       selectedEventId = event.id;
       $('#event-title').value = event.title;
       $('#event-time').value = asLocalInput(event.starts_at_ms);
+      if (event.all_day) {
+        $('#event-start-date').value = event.all_day.start_date;
+        $('#event-end-date').value = event.all_day.end_date_exclusive;
+        setAllDayEditor(true);
+      }
       $('#event-remind').value = event.remind_minutes == null ? 'off' : String(event.remind_minutes);
       $('#event-submit').textContent = 'Save changes';
       $('#event-cancel').hidden = false;
@@ -425,6 +505,30 @@ function renderCalendar() {
       if (await mutation('remove_event', { id: event.id }) && selectedEventId === event.id) cancelEventEdit();
     });
     line.append(date, info, edit, remove);
+    if (event.series_uid) {
+      const rename = node('button', 'text-button', 'Rename series');
+      rename.type = 'button';
+      rename.setAttribute('aria-label', 'Rename entire series: ' + event.title);
+      rename.addEventListener('click', () => {
+        cancelEventEdit();
+        selectedSeriesEventId = event.id;
+        $('#event-title').value = event.title;
+        $('#event-time').disabled = true;
+        $('#event-time').required = false;
+        $('#event-all-day').disabled = true;
+        $('#event-submit').textContent = 'Rename entire series';
+        $('#event-cancel').hidden = false;
+        $('#event-title').focus();
+      });
+      const deleteSeries = node('button', 'text-button', 'Delete series');
+      deleteSeries.type = 'button';
+      deleteSeries.setAttribute('aria-label', 'Delete entire series: ' + event.title);
+      deleteSeries.addEventListener('click', async () => {
+        if (!window.confirm('Delete all local occurrences of this imported series? Re-import can restore them.')) return;
+        if (await mutation('remove_event_series', {id: event.id})) cancelEventEdit();
+      });
+      line.append(rename, deleteSeries);
+    }
     list.append(line);
   }
 }
@@ -628,18 +732,40 @@ function bind() {
   $$('.tab').forEach(button => button.addEventListener('click', () => void switchTab(button.dataset.tab)));
   $('#go-timer').addEventListener('click', () => void switchTab('timer'));
   $('#go-calendar').addEventListener('click', () => void switchTab('calendar'));
+  $('#event-all-day').addEventListener('change', () => setAllDayEditor($('#event-all-day').checked));
   $('#event-form').addEventListener('submit', async event => {
     event.preventDefault();
     const title = $('#event-title').value.trim();
-    const raw = $('#event-time').value;
-    const startsAtMs = new Date(raw).getTime();
-    if (!title || !Number.isFinite(startsAtMs)) { showError('Choose a valid event title and date'); return; }
+    if (!title) { showError('Enter an event title'); return; }
+    if (selectedSeriesEventId) {
+      if (await mutation('update_event_series_title', {id: selectedSeriesEventId, title})) {
+        cancelEventEdit();
+        showInfo('All imported series occurrence titles updated.');
+      }
+      return;
+    }
+    const prior = selectedEventId && data.events.find(entry => entry.id === selectedEventId);
+    const description = prior?.description || '';
+    if ($('#event-all-day').checked) {
+      const startDate = $('#event-start-date').value;
+      const endDateExclusive = $('#event-end-date').value;
+      const mode = selectedEventId ? 'update_all_day_event' : 'add_all_day_event';
+      if (await mutation(mode, {
+        ...(selectedEventId ? {id: selectedEventId} : {}),
+        title, startDate, endDateExclusive, description
+      })) {
+        cancelEventEdit();
+        showInfo('All-day calendar dates saved (exclusive end; no reminder).');
+      }
+      return;
+    }
+    const startsAtMs = new Date($('#event-time').value).getTime();
+    if (!Number.isFinite(startsAtMs)) { showError('Choose a valid date and time'); return; }
     const remind = $('#event-remind').value;
     const mode = selectedEventId ? 'update_event' : 'add_event';
     if (await mutation(mode, {
       ...(selectedEventId ? { id: selectedEventId } : {}),
-      title, startsAtMs,
-      description: '',
+      title, startsAtMs, description,
       remindMinutes: remind === 'off' ? null : Number(remind),
     })) {
       cancelEventEdit();

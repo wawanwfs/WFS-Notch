@@ -3,10 +3,12 @@
 //! Simple daily/weekly recurrence is materialized as stable local event occurrences.
 //! All-day dates, complex RRULE and unsupported recurrence metadata fail closed.
 use crate::{
-    ics_time::CalendarStart, new_id, now_ms, validate_event, with_store, AppData, CalendarEvent,
-    Store,
+    all_day::{parse_ics_date, AllDaySpan},
+    ics_time::CalendarStart,
+    new_id, now_ms, validate_event, with_store, AppData, CalendarEvent, Store,
 };
-use std::sync::Mutex;
+use chrono::{DateTime, NaiveDate, Utc};
+use std::{collections::HashSet, sync::Mutex};
 use tauri::State;
 
 const MAX_ICS_BYTES: usize = 256 * 1024;
@@ -18,9 +20,13 @@ struct PartialEvent {
     title: Option<String>,
     description: String,
     start: Option<CalendarStart>,
+    all_day_start: Option<NaiveDate>,
+    end_property: Option<(String, String)>,
     uid: Option<String>,
     reminder: Option<u32>,
     recurrence: Option<String>,
+    exdates: Vec<(String, String)>,
+    rdates: Vec<(String, String)>,
 }
 #[cfg(test)]
 fn days_in_month(year: i64, month: i64) -> i64 {
@@ -148,7 +154,7 @@ fn folded_line(text: &str) -> String {
 }
 fn valid_uid(raw: &str) -> bool {
     !raw.is_empty()
-        && raw.len() <= 128
+        && raw.len() <= 192
         && raw
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"-_.:@".contains(&b))
@@ -166,6 +172,39 @@ fn event_id(uid: Option<&str>) -> String {
         _ => new_id(),
     }
 }
+// Parse RFC 5545 EXDATE / RDATE lists as the same kind of start as the event.
+// No implicit timezone, no mixed DATE/DATE-TIME, no unbounded exception lists.
+fn occurrence_date_values(
+    properties: &[(String, String)],
+    all_day: bool,
+    floating_timezone: Option<&str>,
+) -> Result<Vec<u64>, String> {
+    let mut result = Vec::new();
+    for (key, values) in properties {
+        for raw in values.split(',') {
+            if raw.is_empty() || result.len() >= MAX_IMPORT_EVENTS {
+                return Err(
+                    "Calendar exception list contains an empty date or exceeds 250 values".into(),
+                );
+            }
+            let instant = if all_day {
+                let date = parse_ics_date(key, raw)?;
+                let span =
+                    AllDaySpan::new(date, date.succ_opt().ok_or("Calendar date out of range")?)?;
+                span.utc_midnight_ms()?
+            } else {
+                CalendarStart::parse(key, raw, floating_timezone)?
+                    .occurrences(None)?
+                    .into_iter()
+                    .next()
+                    .ok_or("Missing occurrence timestamp")?
+            };
+            result.push(instant);
+        }
+    }
+    Ok(result)
+}
+
 fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<CalendarEvent>, String> {
     if source.len() > MAX_ICS_BYTES {
         return Err("ICS input exceeds 256 KiB safety limit".into());
@@ -217,20 +256,100 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
             ("END", "VEVENT") => {
                 let event = current.take().ok_or("VEVENT end without start")?;
                 let title = event.title.ok_or("VEVENT is missing SUMMARY")?;
-                let start = event.start.ok_or("VEVENT is missing DTSTART")?;
-                // Recurring UID + original instant is a stable local occurrence ID.
-                // Flattening is explicit: export produces individual UTC events.
+                let is_all_day = event.all_day_start.is_some();
+                if is_all_day && event.start.is_some() {
+                    return Err("Mixed date-only and timed DTSTART values".into());
+                }
+                if !is_all_day && event.start.is_none() {
+                    return Err("VEVENT is missing DTSTART".into());
+                }
                 let base_id = event_id(event.uid.as_deref());
-                for (index, starts_at_ms) in start
-                    .occurrences(event.recurrence.as_deref())?
-                    .into_iter()
-                    .enumerate()
-                {
-                    validate_event(&title, &event.description, starts_at_ms, event.reminder)?;
-                    let id = if index == 0 {
-                        base_id.clone()
+                let base_span = if let Some(start) = event.all_day_start {
+                    let end = if let Some((key, raw)) = event.end_property.as_ref() {
+                        parse_ics_date(key, raw)?
                     } else {
+                        start.succ_opt().ok_or("All-day end date overflow")?
+                    };
+                    if event.reminder.is_some() {
+                        return Err(
+                            "All-day VALARM is unsupported; cannot schedule at UTC midnight".into(),
+                        );
+                    }
+                    Some(AllDaySpan::new(start, end)?)
+                } else {
+                    if event.end_property.is_some() {
+                        return Err(
+                            "Timed DTEND is not modeled yet; no silent duration loss".into()
+                        );
+                    }
+                    None
+                };
+                let mut instants = if let Some(span) = base_span.as_ref() {
+                    let date = span.start_date.replace('-', "");
+                    let source = CalendarStart::parse("DTSTART", &format!("{date}T000000Z"), None)?;
+                    source.occurrences(event.recurrence.as_deref())?
+                } else {
+                    event
+                        .start
+                        .as_ref()
+                        .ok_or("Missing DTSTART")?
+                        .occurrences(event.recurrence.as_deref())?
+                };
+                let exclusions =
+                    occurrence_date_values(&event.exdates, is_all_day, floating_timezone)?;
+                let additions =
+                    occurrence_date_values(&event.rdates, is_all_day, floating_timezone)?;
+                instants.extend(additions);
+                let excluded: HashSet<_> = exclusions.into_iter().collect();
+                instants.retain(|instant| !excluded.contains(instant));
+                instants.sort_unstable();
+                instants.dedup();
+                if instants.is_empty() || instants.len() + events.len() > MAX_IMPORT_EVENTS {
+                    return Err("ICS event has no remaining occurrences or exceeds the 250-event import limit".into());
+                }
+                let is_series = event.recurrence.is_some() || !event.rdates.is_empty();
+                if is_series
+                    && !event
+                        .uid
+                        .as_deref()
+                        .is_some_and(|uid| valid_uid(uid) && uid.len() <= 128)
+                {
+                    return Err(
+                        "Recurring imports require a stable UID of at most 128 bytes".into(),
+                    );
+                }
+                let series_uid = is_series.then_some(base_id.clone());
+                let first_instant = base_span
+                    .as_ref()
+                    .map(AllDaySpan::utc_midnight_ms)
+                    .transpose()?;
+                for starts_at_ms in instants {
+                    let all_day =
+                        if let (Some(span), Some(first)) = (base_span.as_ref(), first_instant) {
+                            let current_day = DateTime::<Utc>::from_timestamp_millis(
+                                i64::try_from(starts_at_ms).map_err(|_| "Date out of range")?,
+                            )
+                            .ok_or("Invalid occurrence timestamp")?
+                            .date_naive();
+                            let original_day = DateTime::<Utc>::from_timestamp_millis(
+                                i64::try_from(first).map_err(|_| "Start date out of range")?,
+                            )
+                            .ok_or("Invalid start date")?
+                            .date_naive();
+                            Some(span.shift_days(
+                                current_day.signed_duration_since(original_day).num_days(),
+                            )?)
+                        } else {
+                            None
+                        };
+                    validate_event(&title, &event.description, starts_at_ms, event.reminder)?;
+                    // Keep legacy single-UID identity for nonrecurring imports.
+                    // In a series use the absolute occurrence key independent of
+                    // EXDATE/order; never silently remap another occurrence's ID.
+                    let id = if is_series {
                         format!("{base_id}:{starts_at_ms}")
+                    } else {
+                        base_id.clone()
                     };
                     events.push(CalendarEvent {
                         id,
@@ -239,10 +358,9 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                         remind_minutes: event.reminder,
                         description: event.description.clone(),
                         created_ms: now_ms(),
+                        all_day,
+                        series_uid: series_uid.clone(),
                     });
-                    if events.len() > MAX_IMPORT_EVENTS {
-                        return Err("ICS contains more than 250 expanded events".into());
-                    }
                 }
             }
             ("BEGIN", "VALARM") if current.is_some() => in_alarm = true,
@@ -268,11 +386,23 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                         "DESCRIPTION" => event.description = unescape_text(value),
                         "UID" => event.uid = Some(value.to_owned()),
                         "DTSTART" => {
-                            if event.start.is_some() {
+                            if event.start.is_some() || event.all_day_start.is_some() {
                                 return Err("Duplicate DTSTART".into());
                             }
-                            event.start =
-                                Some(CalendarStart::parse(full_key, value, floating_timezone)?);
+                            if full_key.to_ascii_uppercase().contains("VALUE=DATE")
+                                || value.len() == 8
+                            {
+                                event.all_day_start = Some(parse_ics_date(full_key, value)?);
+                            } else {
+                                event.start =
+                                    Some(CalendarStart::parse(full_key, value, floating_timezone)?);
+                            }
+                        }
+                        "DTEND" => {
+                            if event.end_property.is_some() {
+                                return Err("Duplicate DTEND".into());
+                            }
+                            event.end_property = Some((full_key.to_owned(), value.to_owned()));
                         }
                         "RRULE" => {
                             if event.recurrence.is_some() {
@@ -280,9 +410,12 @@ fn parse_ics(source: &str, floating_timezone: Option<&str>) -> Result<Vec<Calend
                             }
                             event.recurrence = Some(value.to_owned());
                         }
-                        "EXDATE" | "RDATE" | "RECURRENCE-ID" => {
+                        "EXDATE" => event.exdates.push((full_key.to_owned(), value.to_owned())),
+                        "RDATE" => event.rdates.push((full_key.to_owned(), value.to_owned())),
+                        "RECURRENCE-ID" => {
                             return Err(
-                                "EXDATE, RDATE and RECURRENCE-ID are not yet supported; no partial import".into(),
+                                "RECURRENCE-ID overrides are not yet supported; no partial import"
+                                    .into(),
                             );
                         }
                         _ => {}
@@ -318,7 +451,31 @@ fn serialize_ics(events: &[CalendarEvent]) -> Result<String, String> {
             "BEGIN:VEVENT".to_owned(),
             format!("UID:{}", escape_text(&uid)),
             format!("DTSTAMP:{}", ms_to_utc(now_ms() as u64)),
-            format!("DTSTART:{}", ms_to_utc(event.starts_at_ms)),
+        ] {
+            output.push_str(&folded_line(&line));
+        }
+        if let Some(span) = event.all_day.as_ref() {
+            if !span.valid()
+                || span.utc_midnight_ms()? != event.starts_at_ms
+                || event.remind_minutes.is_some()
+            {
+                return Err("Invalid all-day calendar span in persisted data".into());
+            }
+            output.push_str(&folded_line(&format!(
+                "DTSTART;VALUE=DATE:{}",
+                AllDaySpan::ics_date(&span.start_date)?
+            )));
+            output.push_str(&folded_line(&format!(
+                "DTEND;VALUE=DATE:{}",
+                AllDaySpan::ics_date(&span.end_date_exclusive)?
+            )));
+        } else {
+            output.push_str(&folded_line(&format!(
+                "DTSTART:{}",
+                ms_to_utc(event.starts_at_ms)
+            )));
+        }
+        for line in [
             format!("SUMMARY:{}", escape_text(&event.title)),
             format!("DESCRIPTION:{}", escape_text(&event.description)),
         ] {
@@ -342,12 +499,29 @@ pub fn export_ics(store: State<'_, Mutex<Store>>) -> Result<String, String> {
     serialize_ics(&state.data.events)
 }
 fn merge_imported_events(data: &mut AppData, incoming: Vec<CalendarEvent>) -> Result<(), String> {
-    let mut known: std::collections::HashSet<String> =
-        data.events.iter().map(|event| event.id.clone()).collect();
-    let fresh: Vec<_> = incoming
-        .into_iter()
-        .filter(|event| known.insert(event.id.clone()))
-        .collect();
+    // A Phase 14 series used its root UID for the first occurrence and
+    // :timestamp for later ones. Upgrading those records MUST NOT duplicate
+    // the first instance, or lose an edited title on reimport.
+    let mut known: HashSet<String> = data.events.iter().map(|event| event.id.clone()).collect();
+    let mut fresh = Vec::new();
+    for candidate in incoming {
+        if let Some(series) = candidate.series_uid.as_ref() {
+            if let Some(existing) = data.events.iter_mut().find(|entry| {
+                entry.starts_at_ms == candidate.starts_at_ms
+                    && (entry.id == *series
+                        || entry.id == candidate.id
+                        || entry.series_uid.as_ref() == Some(series))
+            }) {
+                if existing.series_uid.is_none() {
+                    existing.series_uid = Some(series.clone());
+                }
+                continue;
+            }
+        }
+        if known.insert(candidate.id.clone()) {
+            fresh.push(candidate);
+        }
+    }
     if data.events.len() + fresh.len() > 1000 {
         return Err("Event limit (1000) exceeded".into());
     }
@@ -398,6 +572,8 @@ mod tests {
             remind_minutes: Some(15),
             description: "Notes; second line".into(),
             created_ms: 0,
+            all_day: None,
+            series_uid: None,
         };
         let serialized = serialize_ics(&[event]).unwrap();
         let parsed = parse_ics(&serialized, None).unwrap();
@@ -454,19 +630,95 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_exceptions_and_all_day_are_rejected_atomically() {
+    fn unsupported_rrule_override_and_timed_end_fail_atomically() {
         for suffix in [
             "RRULE:FREQ=MONTHLY;COUNT=2\n",
-            "RRULE:FREQ=DAILY;COUNT=2\nEXDATE:20270615T113000Z\n",
             "RRULE:FREQ=DAILY;COUNT=251\n",
+            "RRULE:FREQ=DAILY;COUNT=2\nRECURRENCE-ID:20270615T113000Z\n",
+            "DTEND:20270614T133000Z\n",
         ] {
             let input = format!(
                 "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:series@example.org\nSUMMARY:Series\nDTSTART:20270614T113000Z\n{suffix}END:VEVENT\nEND:VCALENDAR"
             );
             assert!(parse_ics(&input, None).is_err());
         }
-        let all_day = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:All day\nDTSTART;VALUE=DATE:20270614\nEND:VEVENT\nEND:VCALENDAR";
-        assert!(parse_ics(all_day, Some("Asia/Jakarta")).is_err());
+    }
+
+    #[test]
+    fn all_day_date_and_exclusive_end_roundtrip_without_timezone_shift() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:festival@example.org\nSUMMARY:Leap day event\nDTSTART;VALUE=DATE:20280229\nDTEND;VALUE=DATE:20280302\nEND:VEVENT\nEND:VCALENDAR";
+        let items = parse_ics(input, Some("Pacific/Honolulu")).unwrap();
+        assert_eq!(items.len(), 1);
+        let span = items[0].all_day.as_ref().unwrap();
+        assert_eq!(span.start_date, "2028-02-29");
+        assert_eq!(span.end_date_exclusive, "2028-03-02");
+        assert_eq!(items[0].remind_minutes, None);
+        let serialized = serialize_ics(&items).unwrap();
+        assert!(serialized.contains("DTSTART;VALUE=DATE:20280229"));
+        assert!(serialized.contains("DTEND;VALUE=DATE:20280302"));
+        assert!(!serialized.contains("T000000Z"));
+        let other = parse_ics(&serialized, Some("Asia/Jakarta")).unwrap();
+        assert_eq!(items[0].all_day, other[0].all_day);
+        assert_eq!(items[0].starts_at_ms, other[0].starts_at_ms);
+        assert_eq!(items[0].id, other[0].id);
+    }
+
+    #[test]
+    fn date_only_rrule_exdate_rdate_and_series_identity_are_stable() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:dates@example.org\nSUMMARY:Holiday sequence\nDTSTART;VALUE=DATE:20270614\nDTEND;VALUE=DATE:20270616\nRRULE:FREQ=DAILY;COUNT=3\nEXDATE;VALUE=DATE:20270615\nRDATE;VALUE=DATE:20270620\nEND:VEVENT\nEND:VCALENDAR";
+        let items = parse_ics(input, None).unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(
+            items
+                .iter()
+                .map(|e| e.all_day.as_ref().unwrap().start_date.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2027-06-14", "2027-06-16", "2027-06-20"]
+        );
+        assert_eq!(
+            items[1].all_day.as_ref().unwrap().end_date_exclusive,
+            "2027-06-18"
+        );
+        assert_eq!(
+            items[2].all_day.as_ref().unwrap().end_date_exclusive,
+            "2027-06-22"
+        );
+        assert!(items
+            .iter()
+            .all(|event| event.series_uid.as_deref() == Some("ics:dates@example.org")));
+        let mut data = AppData::default();
+        merge_imported_events(&mut data, items.clone()).unwrap();
+        merge_imported_events(&mut data, items).unwrap();
+        assert_eq!(data.events.len(), 3);
+        let exported = serialize_ics(&data.events).unwrap();
+        assert_eq!(parse_ics(&exported, None).unwrap().len(), 3);
+        assert!(!exported.contains("RRULE:"));
+    }
+
+    #[test]
+    fn timed_exception_lists_resolve_dst_and_reject_invalid_values() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:timed@example.org\nSUMMARY:NY schedule\nDTSTART;TZID=America/New_York:20270313T093000\nRRULE:FREQ=DAILY;COUNT=3\nEXDATE;TZID=America/New_York:20270314T093000\nRDATE;TZID=America/New_York:20270320T093000\nEND:VEVENT\nEND:VCALENDAR";
+        let events = parse_ics(input, None).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(
+            events[0].starts_at_ms,
+            utc_to_ms("20270313T143000Z").unwrap()
+        );
+        assert_eq!(
+            events[1].starts_at_ms,
+            utc_to_ms("20270315T133000Z").unwrap()
+        );
+        assert_eq!(
+            events[2].starts_at_ms,
+            utc_to_ms("20270320T133000Z").unwrap()
+        );
+        let malformed = input.replace(
+            "RDATE;TZID=America/New_York:20270320T093000",
+            "RDATE;TZID=Unknown/Place:20270320T093000",
+        );
+        assert!(parse_ics(&malformed, None).is_err());
+        let invalid_date = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Impossible day\nDTSTART;VALUE=DATE:20270229\nEND:VEVENT\nEND:VCALENDAR";
+        assert!(parse_ics(invalid_date, None).is_err());
     }
 
     #[test]
@@ -481,6 +733,8 @@ mod tests {
             description: String::new(),
             remind_minutes: Some(15),
             created_ms: 0,
+            all_day: None,
+            series_uid: None,
         });
         merge_imported_events(&mut state, parsed.clone()).unwrap();
         assert_eq!(state.events.len(), 4);
