@@ -44,7 +44,10 @@ fn monitor_id(monitor: &tauri::Monitor) -> String {
     format!("origin:{}:{}", position.x, position.y)
 }
 
-fn select_monitor(window: &WebviewWindow, preference: &str) -> Result<(Option<tauri::Monitor>, bool), String> {
+fn select_monitor(
+    window: &WebviewWindow,
+    preference: &str,
+) -> Result<(Option<tauri::Monitor>, bool), String> {
     let monitors = window.available_monitors().map_err(|e| e.to_string())?;
     let preferred = if preference == DEFAULT_MONITOR {
         window.primary_monitor().map_err(|e| e.to_string())?
