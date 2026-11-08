@@ -142,7 +142,13 @@ fn deliver_by_id(app: &AppHandle, store: &Mutex<Store>, id: &str) -> Result<bool
         .lock()
         .map_err(|_| "Storage lock unavailable".to_owned())?;
     let now = now_ms();
-    let Some(event) = guard.data.events.iter().find(|event| event.id == id).cloned() else {
+    let Some(event) = guard
+        .data
+        .events
+        .iter()
+        .find(|event| event.id == id)
+        .cloned()
+    else {
         return Ok(false);
     };
     let settings = guard.data.settings.clone();
@@ -245,7 +251,12 @@ pub fn get_reminder_scheduler_status(
             .min()
             .and_then(|value| u64::try_from(*value).ok()),
         poll_interval_seconds: POLL_INTERVAL.as_secs(),
-        persisted_delivery_count: guard.data.reminder_deliveries.values().filter(|expiry| **expiry > now).count(),
+        persisted_delivery_count: guard
+            .data
+            .reminder_deliveries
+            .values()
+            .filter(|expiry| **expiry > now)
+            .count(),
     })
 }
 
@@ -348,7 +359,8 @@ mod tests {
         let changed = event(1_100_000, Some(5));
         assert!(needs_delivery(&changed, &settings, 800_000, &sent));
         // Same key survives a restart, but an edited event gets a fresh key.
-        let restored: HashMap<String, u128> = serde_json::from_str(&serde_json::to_string(&sent).unwrap()).unwrap();
+        let restored: HashMap<String, u128> =
+            serde_json::from_str(&serde_json::to_string(&sent).unwrap()).unwrap();
         assert!(!needs_delivery(&upcoming, &settings, 700_000, &restored));
     }
 
@@ -362,8 +374,10 @@ mod tests {
 
     #[test]
     fn wake_up_and_clock_changes_do_not_duplicate_deliveries() {
-        let mut settings = Settings::default();
-        settings.notifications_enabled = true;
+        let settings = Settings {
+            notifications_enabled: true,
+            ..Settings::default()
+        };
         let appointment = event(3_600_000, Some(60));
         let due = reminder_start(&appointment).unwrap();
         let mut sent = HashMap::new();
@@ -371,8 +385,18 @@ mod tests {
         sent.insert(delivery_key(&appointment), 3_900_000);
         let disk = serde_json::to_string(&sent).unwrap();
         let after_restart: HashMap<String, u128> = serde_json::from_str(&disk).unwrap();
-        assert!(!needs_delivery(&appointment, &settings, due + 20_000, &after_restart));
-        assert!(!needs_delivery(&appointment, &settings, due, &after_restart)); // clock moved back
+        assert!(!needs_delivery(
+            &appointment,
+            &settings,
+            due + 20_000,
+            &after_restart
+        ));
+        assert!(!needs_delivery(
+            &appointment,
+            &settings,
+            due,
+            &after_restart
+        )); // clock moved back
         assert!(!event_due(&appointment, 3_900_000)); // stale after resume
         let changed = event(3_660_000, Some(60));
         assert!(needs_delivery(&changed, &settings, 60_000, &after_restart));
