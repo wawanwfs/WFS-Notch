@@ -491,9 +491,8 @@ function checkReminders(now = Date.now()) {
     if (now >= due && now < due + 10 * 60000 && !reminderSeen.has(event.id)) {
       reminderSeen.add(event.id);
       showInfo(`Calendar reminder: ${event.title} · ${eventDate(event.starts_at_ms)}`);
-      if (nativeInvoke && data.settings.notifications_enabled && !data.settings.notifications_paused) {
-        void invoke('notify_due_event', { id: event.id }).catch(showError);
-      }
+      // Native OS reminders are dispatched by the Rust scheduler, not this WebView.
+      // The in-app banner is intentionally independent of OS notification consent.
       break; // Show at most one reminder at a time.
     }
   }
@@ -516,6 +515,7 @@ function renderSettings() {
   $('#notifications-pause-toggle').checked = Boolean(data.settings.notifications_paused);
   $('#notifications-pause-toggle').disabled = !data.settings.notifications_enabled;
   $('#notification-test').disabled = !nativeInvoke || !data.settings.notifications_enabled || Boolean(data.settings.notifications_paused);
+  $('#notification-scheduler-refresh').disabled = !nativeInvoke;
   const pinButton = $('#pin-button');
   pinButton.setAttribute('aria-pressed', String(data.settings.pin_open));
   pinButton.classList.toggle('on', data.settings.pin_open);
@@ -697,6 +697,25 @@ function bind() {
   $('#notifications-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: event.target.checked, showDetails: event.target.checked && $('#notification-details-toggle').checked }));
   $('#notification-details-toggle').addEventListener('change', event => void mutation('set_notification_preferences', { enabled: $('#notifications-toggle').checked, showDetails: event.target.checked }));
   $('#notifications-pause-toggle').addEventListener('change', event => void mutation('set_notifications_paused', { paused: event.target.checked }));
+  $('#notification-scheduler-refresh').addEventListener('click', async () => {
+    if (!nativeInvoke) return;
+    try {
+      const status = await invoke('get_reminder_scheduler_status');
+      const state = !status.enabled ? 'Disabled' : status.paused ? 'Paused' : 'Active';
+      const count = Number(status.scheduled_count || 0);
+      const upcoming = Number(status.next_due_at_ms);
+      const next = Number.isFinite(upcoming) && upcoming > 0
+        ? ' Next reminder: ' + new Date(upcoming).toLocaleString() + '.'
+        : '';
+      $('#notification-scheduler-status').textContent =
+        'Native reminder scheduler: ' + state + '. ' + count +
+        ' upcoming reminder(s); checks every ' + status.poll_interval_seconds +
+        ' seconds while WFS Notch is running.' + next;
+    } catch (error) {
+      $('#notification-scheduler-status').textContent = 'Native scheduler status unavailable.';
+      showError(error);
+    }
+  });
   $('#notification-test').addEventListener('click', async () => {
     if (!nativeInvoke || !data.settings.notifications_enabled) return;
     try {
