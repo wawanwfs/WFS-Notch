@@ -265,6 +265,10 @@
         <section class="panel" id="panel-settings">
           <div class="section-heading"><div><h2>Appearance</h2><p>Personalize your command center.</p></div><span class="section-pill">LOCAL</span></div>
           <div class="settings-row"><div><b>Accent color</b><small>Choose a highlight for your workspace</small></div><div class="swatches"><button class="swatch" data-color="#d6b77a" style="--swatch:#d6b77a" aria-label="Champagne"></button><button class="swatch" data-color="#73c9e5" style="--swatch:#73c9e5" aria-label="Ice"></button><button class="swatch" data-color="#ae91f2" style="--swatch:#ae91f2" aria-label="Lavender"></button><button class="swatch" data-color="#8bd7ab" style="--swatch:#8bd7ab" aria-label="Mint"></button></div></div>
+          <div class="settings-row"><div><b>Interface density</b><small>Choose comfortable spacing or compact layout across the notch modules.</small></div><label class="appearance-choice" for="ui-density"><span class="sr-only">Interface density</span><select id="ui-density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></div>
+          <div class="settings-row"><div><b>Reduce animations</b><small>Use minimal movement; your Windows reduced-motion preference is always respected.</small></div><label class="toggle-label"><input id="ui-reduce-motion" type="checkbox"><span>Minimal motion</span></label></div>
+          <div class="settings-row"><div><b>High contrast</b><small>Improve separation between text, controls and surfaces throughout the workspace.</small></div><label class="toggle-label"><input id="ui-high-contrast" type="checkbox"><span>High contrast</span></label></div>
+          <div class="settings-row"><div><b>Reset layout preferences</b><small>Restore comfortable spacing and system-motion behavior without changing notes, themes or notifications.</small></div><button id="ui-reset" class="secondary" type="button">Reset appearance</button></div>
           <div class="settings-row"><div><b>Hover to open</b><small>Expand the notch when the pointer enters</small></div><label class="toggle-label"><input id="hover-toggle" type="checkbox"><span>Enabled</span></label></div>
           <div class="settings-row"><div><b>Keep panel open</b><small>Prevent automatic collapsing when your pointer leaves</small></div><label class="toggle-label"><input id="pin-toggle" type="checkbox"><span>Pinned</span></label></div>
           <div class="settings-row"><div><b>Always on top</b><small>Keep WFS Notch above normal desktop windows.</small></div><label class="toggle-label"><input id="on-top-toggle" type="checkbox" checked><span>On top</span></label></div>
@@ -309,7 +313,7 @@
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.25.0 · DEVELOPMENT</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.26.0 · DEVELOPMENT</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>

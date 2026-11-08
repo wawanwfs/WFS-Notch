@@ -99,3 +99,9 @@ PR [#27](https://github.com/wawanwfs/WFS-Notch/pull/27) was merged into main at 
 ## Workstream F — v0.25.0 task reminders candidate
 
 On `feat/phase24f-opt-in-task-reminders`, implement task due alerts as a separate opt-in, reusing the 20-second native Windows scheduler and durable at-most-once enqueue + bounded sender retry. Only incomplete, currently due tasks in a 5-minute grace period qualify; task IDs/due timestamps are namespaced and private titles redacted by default. Browser never fakes OS delivery. Unit tests cover opt-in, edits, completions, restarts and retry. **Status: candidate only** until exact PR-head CI and final main CI independently PASS; no real native Windows 10/11 acceptance has been performed.
+
+## Phase26E — accessibility appearance settings PR candidate
+
+Baseline verified main v0.25.0 `9ba9c9e37361ec84b934eda564cb881bb516cf33`, exact postmerge [CI 42515389548](https://github.com/wawanwfs/WFS-Notch/actions/runs/42515389548) ALL PASS, including 88 Rust tests, Chromium/64 screenshots, unsigned Windows NSIS+portable, SHA256 and commit identity.
+
+Feature branch `feat/phase26e-accessible-appearance-presets` implements persisted compact/comfortable spacing, independent reduced motion, high contrast, reset and test coverage. **Candidate only until its exact PR-head and post-merge main GitHub Actions are green.** Device Win10/11 UI/keyboard/screen-reader behavior remains NOT TESTED. Fixed 38-category parity stays 28.9%.

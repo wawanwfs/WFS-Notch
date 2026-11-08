@@ -9,11 +9,11 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.25.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.26.0 source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware placement with unique bounded monitor-name persistence (legacy coordinate fallback), opt-in Win32 foreground fullscreen guard (excluding spanning windows) and display hotplug polling; real Win10/11 device/hover/pass-through and RDP QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
-| Appearance / glass / animations | Partial | Accent, reduced-motion-friendly compact/expanded transitions and narrow-viewport scrolling; reference glass/animation library/layout editor missing |
+| Appearance / glass / animations | Partial | Accent plus persisted compact/comfortable density, optional high contrast and user minimal motion (OS reduce-motion always respected); reference custom animation library/layout editor and native Win10/11 proof missing |
 | Music & transport controls | Partial | GSMTC selected session metadata, artwork, timeline normalization, control capability checks, explicit safety rejection for duplicate browser/tab AUMIDs, stale selection protection and post-resume progress limits; lyrics, true per-tab selection and native Windows Spotify/browser/Media Player regression missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
 | Desktop calendar | Partial | Month grid, date-only DATE/DTEND all-day spans, timed UTC/IANA TZID/explicit floating import, bounded DAILY/WEEKLY/MONTHLY/YEARLY expansion with BYDAY, BYMONTH, BYMONTHDAY, WKST, EXDATE/RDATE, versioned saved source rule/exception metadata, strict UTC/IANA timed DTEND/DURATION with 366-day maximum, validated unchanged-master RRULE/EXDATE/RDATE ICS export with flattened fallback for edited/deleted/legacy series, edit-one or rename/delete-series actions, guarded one-time source-backed UTC/all-day whole-series day shift preview with atomic reflow (TZID/floating and already-edited series fail closed), durable cancellation keys preventing unintended reimport, and local reminders; source-preserving export of modified recurrence overrides, BYSETPOS/other unsupported RFC combinations, RECURRENCE-ID overrides, full series schedule editing, file picker and cloud sync missing |

@@ -1,6 +1,6 @@
 [package]
 name = "wfs-notch"
-version = "0.25.0"
+version = "0.26.0"
 description = "WFS Notch — original Windows interactive notch implementation"
 authors = ["WFS"]
 edition = "2021"

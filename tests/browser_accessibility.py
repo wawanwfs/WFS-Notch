@@ -63,6 +63,34 @@ with sync_playwright() as pw:
     assert page.locator("#notification-details-toggle").is_disabled()
     assert page.locator("#notifications-pause-toggle").is_disabled()
     page.locator("#nav-settings").click()
+    # Three local-first display options, all default-safe for legacy persisted data.
+    assert page.locator("#ui-density").input_value() == "comfortable"
+    assert not page.locator("#ui-reduce-motion").is_checked()
+    assert not page.locator("#ui-high-contrast").is_checked()
+    page.locator("#ui-density").select_option("compact")
+    page.wait_for_function("document.documentElement.dataset.uiDensity === 'compact'")
+    assert page.evaluate("getComputedStyle(document.querySelector('.topbar')).minHeight") == "57px"
+    page.locator("#ui-reduce-motion").check()
+    page.wait_for_function("document.documentElement.dataset.uiMotion === 'reduced'")
+    assert page.evaluate(
+        "parseFloat(getComputedStyle(document.querySelector('.signal span')).animationDuration) < .01"
+    )
+    page.locator("#ui-high-contrast").check()
+    page.wait_for_function("document.documentElement.dataset.uiContrast === 'high'")
+    assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()") == "#d4d7e0"
+    page.evaluate("""async () => { data = await previewInvoke('load_data'); render(); }""")
+    assert page.locator("#ui-density").input_value() == "compact"
+    assert page.locator("#ui-reduce-motion").is_checked()
+    assert page.locator("#ui-high-contrast").is_checked()
+    assert page.evaluate("""async () => {
+      try { await previewInvoke('set_appearance',
+        {density:'<script>',reduceMotion:false,highContrast:false}); return false; }
+      catch { return data.settings.ui_density === 'compact'; }
+    }""")
+    page.locator("#ui-reset").click()
+    page.wait_for_function("document.documentElement.dataset.uiDensity === 'comfortable'")
+    assert not page.locator("#ui-reduce-motion").is_checked()
+    assert not page.locator("#ui-high-contrast").is_checked()
     page.locator("#notifications-toggle").check()
     page.wait_for_function("document.querySelector('#notification-details-toggle').disabled === false")
     assert not page.locator("#notification-details-toggle").is_checked()
@@ -105,6 +133,7 @@ with sync_playwright() as pw:
     page.keyboard.press("Alt+1")
     assert page.locator("#panel-notes.active").count() == 1, "Shortcut must not steal focus from text input"
 
+    # Cross-module navigation survives display preset writes and reset.
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     assert page.evaluate("getComputedStyle(document.querySelector('.notch')).borderTopWidth === '1px'")
     page.emulate_media(reduced_motion="reduce")

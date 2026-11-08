@@ -1,3 +1,11 @@
+## 0.26.0 — Workstream E: accessibility preferences and interface density
+
+- Native local Settings now persist `comfortable`/`compact` interface density, an independent minimal-motion override and optional high-contrast palette. Defaults preserve old-state layout and are backwards-compatible with previous JSON/backups. No OS settings, external network, note/task content or notifications are changed by these controls.
+- A single validated Rust `set_appearance` command atomically persists the full preference tuple. Invalid densities are rejected before writes; corrupted/unknown legacy densities are sanitized to comfortable. Reset affects only these three appearance preferences, not theme, consent, timers or user content.
+- Shared CSS covers navigation, all panel surfaces, cards, lists and controls; keyboard navigation respects either the OS reduced-motion request or the new local override. System reduced-motion CSS remains authoritative even when the local override is off.
+- Playwright covers control changes, persisted browser reload, invalid input, CSS computed state, reset, keyboard navigation and motion; Rust unit regression covers migrated settings, disk round-trip, unrelated settings and rejected mutation rollback.
+- Windows 10/11 native device accessibility inspection remains NOT TESTED. Fixed reference parity remains 28.9% while design feature gaps remain.
+
 ## 0.25.0 — Opt-in native Task due reminders (Workstream F)
 
 - New separate `Settings → Notify when a task is due` checkbox, **off by default**. A task alert also requires the existing WFS desktop notification consent, no WFS-only pause, an unfinished task with a valid due timestamp, and the app running in tray or foreground. Browser preview never sends simulated Windows toasts.

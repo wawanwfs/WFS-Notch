@@ -9,7 +9,7 @@ const defaults = () => ({
   todos: [], notes: [], events: [], calendar_tombstones: [], calendar_series: {}, reminder_retries: {}, habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
-  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, task_due_reminders_enabled: false, always_on_top: true, auto_lower_fullscreen: false },
+  settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, task_due_reminders_enabled: false, always_on_top: true, auto_lower_fullscreen: false, ui_density: 'comfortable', reduce_motion: false, high_contrast: false },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
 });
 let data = defaults();
@@ -302,6 +302,16 @@ function previewInvoke(command, args = {}) {
     }
     case 'countdown_reset': state.countdown = { ...defaults().countdown }; break;
     case 'set_accent': state.settings.accent = args.accent; break;
+    case 'set_appearance':
+      if (!['comfortable', 'compact'].includes(args.density)) throw new Error('Invalid appearance density');
+      if (typeof args.reduceMotion !== 'boolean' || typeof args.highContrast !== 'boolean') {
+        throw new Error('Invalid accessibility preference');
+      }
+      Object.assign(state.settings, {
+        ui_density: args.density, reduce_motion: args.reduceMotion,
+        high_contrast: args.highContrast
+      });
+      break;
     case 'set_hover_to_open': state.settings.hover_to_open = args.enabled; break;
     case 'set_pin_open': state.settings.pin_open = args.enabled; break;
     case 'set_notch_on_top': state.settings.always_on_top = args.enabled; break;
@@ -737,6 +747,14 @@ function checkReminders(now = Date.now()) {
 function renderSettings() {
   const accent = data.settings.accent || '#d6b77a';
   document.documentElement.style.setProperty('--accent', accent);
+  const density = ['comfortable', 'compact'].includes(data.settings.ui_density)
+    ? data.settings.ui_density : 'comfortable';
+  document.documentElement.dataset.uiDensity = density;
+  document.documentElement.dataset.uiMotion = data.settings.reduce_motion ? 'reduced' : 'system';
+  document.documentElement.dataset.uiContrast = data.settings.high_contrast ? 'high' : 'standard';
+  $('#ui-density').value = density;
+  $('#ui-reduce-motion').checked = Boolean(data.settings.reduce_motion);
+  $('#ui-high-contrast').checked = Boolean(data.settings.high_contrast);
   $$('.swatch').forEach(button => {
     const chosen = button.dataset.color === accent;
     button.classList.toggle('chosen', chosen);
@@ -991,6 +1009,21 @@ function bind() {
     } else { pendingDraft = draft; }
   });
   $$('.swatch').forEach(button => button.addEventListener('click', () => void mutation('set_accent', { accent: button.dataset.color })));
+  const saveAppearance = () => {
+    void mutation('set_appearance', {
+      density: $('#ui-density').value,
+      reduceMotion: $('#ui-reduce-motion').checked,
+      highContrast: $('#ui-high-contrast').checked,
+    });
+  };
+  for (const control of [$('#ui-density'), $('#ui-reduce-motion'), $('#ui-high-contrast')]) {
+    control.addEventListener('change', saveAppearance);
+  }
+  $('#ui-reset').addEventListener('click', () => {
+    void mutation('set_appearance', {
+      density: 'comfortable', reduceMotion: false, highContrast: false,
+    });
+  });
   $('#hover-toggle').addEventListener('change', event => void mutation('set_hover_to_open', { enabled: event.target.checked }));
   $('#pin-toggle').addEventListener('change', event => void mutation('set_pin_open', { enabled: event.target.checked }));
   $('#on-top-toggle').addEventListener('change', event => void mutation('set_notch_on_top', { enabled: event.target.checked }));
