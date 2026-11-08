@@ -9,7 +9,7 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.19.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch 0.20.0 source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware manual placement plus opt-in Win32 foreground fullscreen guard (excluding spanning windows) / display hotplug polling; real device/hover/pass-through QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
@@ -17,7 +17,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Music & transport controls | Partial | GSMTC selected session metadata, artwork, timeline normalization and control capability checks; lyrics and native Windows player regression missing |
 | Synced lyrics | Gap | LRCLIB matching, offsets, romanization |
 | Desktop calendar | Partial | Month grid, date-only DATE/DTEND all-day spans, timed UTC/IANA TZID/explicit floating import, bounded DAILY/WEEKLY/MONTHLY/YEARLY expansion with BYDAY, BYMONTH, BYMONTHDAY, WKST, EXDATE/RDATE, versioned saved source rule/exception metadata, strict UTC/IANA timed DTEND/DURATION with 366-day maximum, validated unchanged-master RRULE/EXDATE/RDATE ICS export with flattened fallback for edited/deleted/legacy series, edit-one or rename/delete-series actions, durable cancellation keys preventing unintended reimport, and local reminders; source-preserving export of modified recurrence overrides, BYSETPOS/other unsupported RFC combinations, RECURRENCE-ID overrides, full series schedule editing, file picker and cloud sync missing |
-| Todo | Partial | CRUD; reminders, recurring, natural language parsing, snooze missing |
+| Todo | Partial | Local add/complete/delete and edit with persisted low/normal/high priority, optional local due date, legacy JSON migration and UI regression; task due-date notifications, recurring schedules, natural-language input, snooze and undo still missing |
 | Notes | Partial | Local CRUD/autosave, full-text search and question::answer flashcards; rich editing and tagging missing |
 | Focus/Pomodoro | Partial | Preset focus; automatic work-break cycles and sounds missing |
 | Stopwatch | Implemented | Browser UI + localStorage; native runtime still unverified |
