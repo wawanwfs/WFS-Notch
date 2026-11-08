@@ -3,7 +3,10 @@
 ## 0.10.0 (development)
 - Replaced phase-numbered/research-bundle repository layout with standard Rust/Tauri project folders.
 - Retained all existing application source and original WFS branding.
-- Native notification preferences and explicit media controls are planned for this phase and require CI validation.
+- Added opt-in WFS native calendar toast reminders, private by default; Windows notification reading is not implemented.
+- Added explicit Windows GSMTC player session selection and controls, bounded PNG/JPEG/GIF cover artwork and interpolated playback progress.
+- Added manual always-on-top toggle for presentations/fullscreen games; automatic fullscreen detection remains pending.
+- All new native Windows functionality still requires physical device QA; do not infer 100% parity from a CI build.
 
 ## 0.9.0
 - DPI-aware monitor preference and persistent notch placement.
