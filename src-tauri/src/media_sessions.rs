@@ -11,10 +11,52 @@ pub struct ActiveMediaSnapshot {
     playback_status: String,
     position_ms: Option<u64>,
     duration_ms: Option<u64>,
+    artwork_data_url: Option<String>,
 }
 
 fn non_negative_ms(time_100ns: i64) -> u64 {
     (time_100ns.max(0) / 10_000) as u64
+}
+
+fn artwork_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn artwork_data_url(
+    properties: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties,
+) -> Option<String> {
+    use base64::Engine;
+    use windows::Storage::Streams::DataReader;
+
+    const MAX_ARTWORK_BYTES: u64 = 512 * 1024;
+    let reference = properties.Thumbnail().ok()?;
+    let stream = reference.OpenReadAsync().ok()?.join().ok()?;
+    let size = stream.Size().ok()?;
+    if size == 0 || size > MAX_ARTWORK_BYTES {
+        return None;
+    }
+    let input = stream.GetInputStreamAt(0).ok()?;
+    let reader = DataReader::CreateDataReader(&input).ok()?;
+    let loaded = reader.LoadAsync(size as u32).ok()?.join().ok()?;
+    if loaded == 0 || u64::from(loaded) > size {
+        return None;
+    }
+    let mut image = vec![0_u8; loaded as usize];
+    reader.ReadBytes(&mut image).ok()?;
+    let mime = artwork_mime(&image)?;
+    Some(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(image)
+    ))
 }
 
 #[cfg(windows)]
@@ -88,6 +130,7 @@ fn read_session() -> Result<Option<ActiveMediaSnapshot>, String> {
         playback_status: status,
         position_ms,
         duration_ms,
+        artwork_data_url: artwork_data_url(&properties),
     }))
 }
 
@@ -106,6 +149,15 @@ pub async fn get_active_media_session() -> Result<Option<ActiveMediaSnapshot>, S
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn artwork_mime_strictly_limits_local_image_types() {
+        assert_eq!(artwork_mime(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]), Some("image/png"));
+        assert_eq!(artwork_mime(&[0xff, 0xd8, 0xff, 0x00]), Some("image/jpeg"));
+        assert_eq!(artwork_mime(b"GIF89a"), Some("image/gif"));
+        assert_eq!(artwork_mime(b"<svg onload=alert(1)>"), None);
+        assert_eq!(artwork_mime(b"<html>"), None);
+    }
+
     #[test]
     fn time_conversion_clamps_negative_and_100ns_units() {
         assert_eq!(non_negative_ms(1_234_560), 123);
