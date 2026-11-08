@@ -19,6 +19,7 @@ struct PartialEvent {
     reminder: Option<u32>,
     recurrence: Option<String>,
 }
+#[cfg(test)]
 fn days_in_month(year: i64, month: i64) -> i64 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -29,6 +30,7 @@ fn days_in_month(year: i64, month: i64) -> i64 {
     }
 }
 // Howard Hinnant's proleptic Gregorian civil-date algorithms.
+#[cfg(test)]
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let y = year - i64::from(month <= 2);
     let era = y.div_euclid(400);
@@ -51,6 +53,7 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     year += i64::from(month <= 2);
     (year, month, day)
 }
+#[cfg(test)]
 fn utc_to_ms(value: &str) -> Result<u64, String> {
     let b = value.as_bytes();
     if b.len() != 16
@@ -338,6 +341,20 @@ pub fn export_ics(store: State<'_, Mutex<Store>>) -> Result<String, String> {
         .map_err(|_| "Storage lock poisoned".to_owned())?;
     serialize_ics(&state.data.events)
 }
+fn merge_imported_events(data: &mut AppData, incoming: Vec<CalendarEvent>) -> Result<(), String> {
+    let mut known: std::collections::HashSet<String> =
+        data.events.iter().map(|event| event.id.clone()).collect();
+    let fresh: Vec<_> = incoming
+        .into_iter()
+        .filter(|event| known.insert(event.id.clone()))
+        .collect();
+    if data.events.len() + fresh.len() > 1000 {
+        return Err("Event limit (1000) exceeded".into());
+    }
+    data.events.extend(fresh);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn import_ics(
     store: State<'_, Mutex<Store>>,
@@ -345,19 +362,7 @@ pub fn import_ics(
     floating_timezone: Option<String>,
 ) -> Result<AppData, String> {
     let incoming = parse_ics(&ics_text, floating_timezone.as_deref())?;
-    with_store(store, move |data| {
-        let mut known: std::collections::HashSet<String> =
-            data.events.iter().map(|event| event.id.clone()).collect();
-        let fresh: Vec<_> = incoming
-            .into_iter()
-            .filter(|event| known.insert(event.id.clone()))
-            .collect();
-        if data.events.len() + fresh.len() > 1000 {
-            return Err("Event limit (1000) exceeded".into());
-        }
-        data.events.extend(fresh);
-        Ok(())
-    })
+    with_store(store, move |data| merge_imported_events(data, incoming))
 }
 
 #[cfg(test)]
@@ -454,6 +459,30 @@ mod tests {
         }
         let all_day = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:All day\nDTSTART;VALUE=DATE:20270614\nEND:VEVENT\nEND:VCALENDAR";
         assert!(parse_ics(all_day, Some("Asia/Jakarta")).is_err());
+    }
+
+    #[test]
+    fn import_merge_is_idempotent_and_preserves_legacy_utc_state() {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:stable@example.org\nSUMMARY:Daily meeting\nDTSTART:20270614T113000Z\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR";
+        let parsed = parse_ics(ics, None).unwrap();
+        let mut state = AppData::default();
+        state.events.push(CalendarEvent {
+            id: "legacy".into(),
+            title: "Existing calendar event".into(),
+            starts_at_ms: utc_to_ms("20270601T120000Z").unwrap(),
+            description: String::new(),
+            remind_minutes: Some(15),
+            created_ms: 0,
+        });
+        merge_imported_events(&mut state, parsed.clone()).unwrap();
+        assert_eq!(state.events.len(), 4);
+        merge_imported_events(&mut state, parsed).unwrap();
+        assert_eq!(state.events.len(), 4);
+        assert_eq!(state.events[0].id, "legacy");
+        let serialized = serde_json::to_string(&state).unwrap();
+        let recovered: AppData = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(recovered.events.len(), 4);
+        assert_eq!(recovered.events[0].title, "Existing calendar event");
     }
 
     #[test]
