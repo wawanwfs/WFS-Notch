@@ -47,6 +47,25 @@ with sync_playwright() as pw:
     page.locator("#note-body").fill("Rust / Tauri calendar interoperability design.")
     page.get_by_role("button", name="Save now").click()
     page.get_by_text("Saved locally", exact=True).wait_for()
+    page.locator("#note-tags").fill("Release, ARCH, release")
+    page.get_by_role("button", name="Save now").click()
+    page.wait_for_function("""() => data.notes.some(note =>
+      note.title === 'Architecture Roadmap' &&
+      JSON.stringify(note.tags) === JSON.stringify(['release', 'arch']))""")
+    page.evaluate("""async () => { data = await previewInvoke('load_data'); render(); }""")
+    assert page.evaluate("() => JSON.stringify(data.notes[0].tags)") == '["release","arch"]'
+    page.locator("#note-search").fill("RELEASE")
+    page.get_by_role("button", name="Architecture Roadmap").wait_for(state="visible")
+    page.locator("#note-search").clear()
+    page.locator("#note-tag-filter").select_option("arch")
+    page.get_by_role("button", name="Architecture Roadmap").wait_for(state="visible")
+    page.locator("#note-tag-filter").select_option("")
+    assert page.evaluate("""async () => {
+      const note = data.notes[0];
+      try { await previewInvoke('update_note', {id:note.id,title:note.title,
+        body:note.body,tags:['<script>']}); return false; }
+      catch { return data.notes[0].tags.includes('release'); }
+    }""")
     page.locator("#note-search").fill("INTEROPERABILITY")
     page.get_by_role("button", name="Architecture Roadmap").wait_for(state="visible")
     page.locator("#note-search").fill("no matching phrase here")
