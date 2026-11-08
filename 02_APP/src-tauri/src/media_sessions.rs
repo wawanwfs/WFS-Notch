@@ -34,38 +34,57 @@ fn read_session() -> Result<Option<ActiveMediaSnapshot>, String> {
         Ok(session) => session,
         Err(_) => return Ok(None),
     };
-    let properties = session.TryGetMediaPropertiesAsync()
+    let properties = session
+        .TryGetMediaPropertiesAsync()
         .map_err(|error| format!("Media properties unavailable: {error}"))?
         .join()
         .map_err(|error| format!("Cannot read current track: {error}"))?;
 
-    let status = session.GetPlaybackInfo()
+    let status = session
+        .GetPlaybackInfo()
         .ok()
         .and_then(|info| info.PlaybackStatus().ok())
         .map(|value| {
-            if value == Status::Playing { "Playing" }
-            else if value == Status::Paused { "Paused" }
-            else if value == Status::Stopped { "Stopped" }
-            else { "Inactive" }
+            if value == Status::Playing {
+                "Playing"
+            } else if value == Status::Paused {
+                "Paused"
+            } else if value == Status::Stopped {
+                "Stopped"
+            } else {
+                "Inactive"
+            }
         })
         .unwrap_or("Unknown")
         .to_owned();
 
     let timeline = session.GetTimelineProperties().ok();
-    let position_ms = timeline.as_ref()
+    let position_ms = timeline
+        .as_ref()
         .and_then(|timeline| timeline.Position().ok())
         .map(|value| non_negative_ms(value.Duration));
-    let duration_ms = timeline.as_ref()
-        .and_then(|timeline| {
-            let end = timeline.EndTime().ok()?.Duration;
-            let start = timeline.StartTime().ok()?.Duration;
-            Some(non_negative_ms(end.saturating_sub(start)))
-        });
+    let duration_ms = timeline.as_ref().and_then(|timeline| {
+        let end = timeline.EndTime().ok()?.Duration;
+        let start = timeline.StartTime().ok()?.Duration;
+        Some(non_negative_ms(end.saturating_sub(start)))
+    });
     Ok(Some(ActiveMediaSnapshot {
-        source: session.SourceAppUserModelId().map(|x| x.to_string()).unwrap_or_default(),
-        title: properties.Title().map(|x| x.to_string()).unwrap_or_default(),
-        artist: properties.Artist().map(|x| x.to_string()).unwrap_or_default(),
-        album: properties.AlbumTitle().map(|x| x.to_string()).unwrap_or_default(),
+        source: session
+            .SourceAppUserModelId()
+            .map(|x| x.to_string())
+            .unwrap_or_default(),
+        title: properties
+            .Title()
+            .map(|x| x.to_string())
+            .unwrap_or_default(),
+        artist: properties
+            .Artist()
+            .map(|x| x.to_string())
+            .unwrap_or_default(),
+        album: properties
+            .AlbumTitle()
+            .map(|x| x.to_string())
+            .unwrap_or_default(),
         playback_status: status,
         position_ms,
         duration_ms,
