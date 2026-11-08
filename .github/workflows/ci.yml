@@ -72,6 +72,8 @@ jobs:
         run: python tests/browser_wellness.py
       - name: Calendar month and Notes search regression
         run: python tests/browser_calendar_notes.py
+      - name: Phase 15 date-only calendar and recurring-series preview
+        run: python tests/browser_calendar_all_day.py
       - name: Calendar UI JavaScript syntax
         run: node --check src/features/calendar.js
       - name: System details JavaScript syntax
