@@ -49,7 +49,10 @@ fn select_monitor(window: &WebviewWindow, preference: &str) -> Result<(Option<ta
     let preferred = if preference == DEFAULT_MONITOR {
         window.primary_monitor().map_err(|e| e.to_string())?
     } else {
-        monitors.iter().find(|monitor| monitor_id(monitor) == preference).cloned()
+        monitors
+            .iter()
+            .find(|monitor| monitor_id(monitor) == preference)
+            .cloned()
     };
     if preferred.is_some() {
         return Ok((preferred, false));
@@ -74,8 +77,16 @@ fn geometry(
     } else {
         1.0
     };
-    let desired_width = if expanded { EXPANDED_WIDTH } else { COLLAPSED_WIDTH };
-    let desired_height = if expanded { EXPANDED_HEIGHT } else { COLLAPSED_HEIGHT };
+    let desired_width = if expanded {
+        EXPANDED_WIDTH
+    } else {
+        COLLAPSED_WIDTH
+    };
+    let desired_height = if expanded {
+        EXPANDED_HEIGHT
+    } else {
+        COLLAPSED_HEIGHT
+    };
     let available_width = (monitor_width as f64 / scale - 16.0).max(200.0);
     let available_height = (monitor_height as f64 / scale - 24.0).max(40.0);
     let logical_width = desired_width.min(available_width);
@@ -115,7 +126,10 @@ pub fn place_notch(window: &WebviewWindow, settings: &Settings, expanded: bool) 
         expanded,
     );
     window
-        .set_size(tauri::LogicalSize::new(target.logical_width, target.logical_height))
+        .set_size(tauri::LogicalSize::new(
+            target.logical_width,
+            target.logical_height,
+        ))
         .map_err(|e| e.to_string())?;
     window
         .set_position(PhysicalPosition::new(
@@ -148,7 +162,10 @@ pub fn get_display_options(
         .into_iter()
         .map(|monitor| DisplayOption {
             id: monitor_id(&monitor),
-            name: monitor.name().cloned().unwrap_or_else(|| "Unnamed display".into()),
+            name: monitor
+                .name()
+                .cloned()
+                .unwrap_or_else(|| "Unnamed display".into()),
             width: monitor.size().width,
             height: monitor.size().height,
             scale_factor: monitor.scale_factor(),
