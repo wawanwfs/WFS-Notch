@@ -531,6 +531,7 @@ function eventDisplayDate(event) {
     : event.all_day.start_date + ' – ' + end + ' · All day';
 }
 function cancelEventEdit() {
+  if (typeof closeSeriesShift === 'function') closeSeriesShift();
   selectedEventId = null;
   selectedSeriesEventId = null;
   $('#event-submit').textContent = 'Add event';
