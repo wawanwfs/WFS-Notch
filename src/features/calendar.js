@@ -97,13 +97,14 @@ function initCalendarPlus() {
       if (!(await flushNote())) return;
       await writeQueue;
       const before = data.events.length;
-      data = await invoke('import_ics', {icsText: text});
+      const floatingTimezone = document.querySelector('#ics-floating-timezone').value.trim();
+      data = await invoke('import_ics', {icsText: text, floatingTimezone: floatingTimezone || null});
       render();
       const imported = data.events.length - before;
-      status.textContent = imported + ' new event(s) imported. Existing UIDs skipped.';
+      status.textContent = imported + ' new event(s) imported (recurrence flattened to UTC). Existing UIDs skipped.';
       showInfo(status.textContent);
     } catch (error) {
-      status.textContent = 'Import not applied. Check UTC times, event size and structure.';
+      status.textContent = 'Import not applied. Check the IANA timezone, DST ambiguity, rule support and event size.';
       showError(error);
     } finally {
       button.disabled = false;

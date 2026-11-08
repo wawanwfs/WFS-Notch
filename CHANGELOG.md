@@ -1,3 +1,12 @@
+## 0.14.0 — Safe IANA calendar import and native QA inventory (development)
+
+- Added a separate Rust timezone/recurrence module for iCalendar DTSTART with UTC, IANA TZID and explicitly chosen floating IANA timezones. DST nonexistent/ambiguous local instants are rejected rather than silently shifted; UTC persisted event schema remains unchanged for existing backup/reminder migration.
+- Import bounded DAILY/WEEKLY RRULE with COUNT or UTC UNTIL and optional INTERVAL; materialize up to 250 standalone UTC occurrences with stable per-occurrence identifiers to keep repeated imports idempotent. Reject all-day VALUE=DATE, complex RRULE, EXDATE/RDATE/RECURRENCE-ID and unbounded recurrence rather than silently truncating.
+- Added deterministic tests for Asia/Jakarta offsets, New York DST rollover/gaps/overlaps, recurring occurrence identities, JSON state preservation, UTC export and input bounds.
+- Added a clearly labeled floating-timezone field to calendar ICS import UI, with no implicit OS/device-timezone conversion.
+- Added a local-only PowerShell acceptance inventory and manual Windows 10/11 native QA checklist; do not confuse hardware inventory or green CI packaging with interactive Windows behavioral proof.
+- 38-category parity remains **3 Implemented, 16 Partial, 19 Gap = 28.9%**; native WebView2, monitor hotplug and GSMTC physical tests remain NOT TESTED.
+
 ## 0.13.0 — Deterministic notification recovery & fullscreen QA (development)
 
 - Refactored WFS reminder dispatch into a production-used time-injected sender seam to deterministically exercise real Rust state transactions, restart, clock changes, edited/cancelled reminders, opt-out and notification-API failure retry without invoking Windows on test runners.
