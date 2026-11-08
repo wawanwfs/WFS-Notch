@@ -755,7 +755,7 @@ function renderSettings() {
   $('#ui-density').value = density;
   $('#ui-reduce-motion').checked = Boolean(data.settings.reduce_motion);
   $('#ui-high-contrast').checked = Boolean(data.settings.high_contrast);
-  $('.swatch').forEach(button => {
+  $$('.swatch').forEach(button => {
     const chosen = button.dataset.color === accent;
     button.classList.toggle('chosen', chosen);
     button.setAttribute('aria-pressed', String(chosen));
@@ -1008,7 +1008,7 @@ function bind() {
       renderNotes();
     } else { pendingDraft = draft; }
   });
-  $('.swatch').forEach(button => button.addEventListener('click', () => void mutation('set_accent', { accent: button.dataset.color })));
+  $$('.swatch').forEach(button => button.addEventListener('click', () => void mutation('set_accent', { accent: button.dataset.color })));
   const saveAppearance = () => {
     void mutation('set_appearance', {
       density: $('#ui-density').value,
