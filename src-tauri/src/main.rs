@@ -1057,8 +1057,6 @@ mod tests {
                     title: "Ship features".into(),
                     done: false,
                     created_ms: now_ms(),
-                    all_day: None,
-                    series_uid: None,
                 });
                 Ok(())
             })
