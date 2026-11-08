@@ -76,6 +76,8 @@ jobs:
         run: python tests/browser_calendar_all_day.py
       - name: Phase 16 timed calendar and cancellation preview
         run: python tests/browser_calendar_timed.py
+      - name: Phase 17 source recurrence metadata and scoped edit preview
+        run: python tests/browser_calendar_series_metadata.py
       - name: Calendar UI JavaScript syntax
         run: node --check src/features/calendar.js
       - name: System details JavaScript syntax
