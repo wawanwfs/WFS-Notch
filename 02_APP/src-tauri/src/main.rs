@@ -840,6 +840,8 @@ mod tests {
         let mut store = Store::open(path.clone()).unwrap();
         assert_eq!(store.data.focus.remaining_seconds, 1500);
         assert!(!store.data.settings.pin_open);
+        assert_eq!(store.data.settings.monitor_id, "primary");
+        assert_eq!(store.data.settings.top_margin_px, 12);
         store
             .transact(|state| {
                 state.todos.push(Todo {
