@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="system_details.css">
   <link rel="stylesheet" href="media_sessions.css">
   <link rel="stylesheet" href="ux_polish.css">
+  <link rel="stylesheet" href="display_ui.css">
 </head>
 <body>
   <div id="notch" class="notch" aria-label="WFS Notch">
@@ -214,6 +215,25 @@
           <div class="settings-row"><div><b>Accent color</b><small>Choose a highlight for your workspace</small></div><div class="swatches"><button class="swatch" data-color="#d6b77a" style="--swatch:#d6b77a" aria-label="Champagne"></button><button class="swatch" data-color="#73c9e5" style="--swatch:#73c9e5" aria-label="Ice"></button><button class="swatch" data-color="#ae91f2" style="--swatch:#ae91f2" aria-label="Lavender"></button><button class="swatch" data-color="#8bd7ab" style="--swatch:#8bd7ab" aria-label="Mint"></button></div></div>
           <div class="settings-row"><div><b>Hover to open</b><small>Expand the notch when the pointer enters</small></div><label class="toggle-label"><input id="hover-toggle" type="checkbox"><span>Enabled</span></label></div>
           <div class="settings-row"><div><b>Keep panel open</b><small>Prevent automatic collapsing when your pointer leaves</small></div><label class="toggle-label"><input id="pin-toggle" type="checkbox"><span>Pinned</span></label></div>
+          <div class="display-options" aria-labelledby="display-options-title">
+            <div class="settings-row">
+              <div>
+                <b id="display-options-title">Notch display &amp; position</b>
+                <small>Choose a monitor and distance from the top edge. Saved locally in Rust.</small>
+              </div>
+              <button type="button" class="secondary" id="display-refresh">Detect</button>
+            </div>
+            <div class="display-inputs">
+              <label for="display-monitor">Show notch on
+                <select id="display-monitor" aria-label="Notch monitor"><option value="primary">Primary display</option></select>
+              </label>
+              <label for="display-top-gap">Top gap (0–120 px)
+                <input id="display-top-gap" inputmode="numeric" type="number" min="0" max="120" step="4" value="12">
+              </label>
+              <button id="display-apply" class="primary" type="button">Apply position</button>
+            </div>
+            <p id="display-status" class="event-hint" role="status" aria-live="polite">Checking Windows display layout…</p>
+          </div>
           <div class="settings-row"><div><b>Start with Windows</b><small>Optional HKCU autostart; no admin access required</small></div><label class="toggle-label"><input id="autostart-toggle" type="checkbox"><span>Enabled</span></label></div>
           <div class="settings-row"><div><b>System tray</b><small>Close to hide; restore or quit from the Windows tray icon</small></div><span class="section-pill">AVAILABLE</span></div>
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
@@ -234,5 +254,6 @@
   <script src="system_details.js" defer></script>
   <script src="media_sessions.js" defer></script>
   <script src="ux_polish.js" defer></script>
+  <script src="display_ui.js" defer></script>
 </body>
 </html>
