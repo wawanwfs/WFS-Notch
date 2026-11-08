@@ -46,6 +46,7 @@ assert len(commands) >= 20
 extra = (app / 'src-tauri/src/extra.rs').read_text()
 extra_commands = set(re.findall(r'\#\[tauri::command\]\s*pub fn\s+(\w+)', extra))
 assert {'add_habit', 'open_quick_link', 'media_key'} <= extra_commands
-assert {'import_ics', 'export_ics', 'get_active_media_session', 'get_display_options', 'set_display_preference', 'set_notification_preferences', 'set_notifications_paused', 'notify_due_event', 'notify_test', 'list_media_sessions', 'control_media_session', 'set_notch_on_top'} <= commands
+assert {'import_ics', 'export_ics', 'get_active_media_session', 'get_display_options', 'set_display_preference', 'set_notification_preferences', 'set_notifications_paused', 'get_reminder_scheduler_status', 'notify_due_event', 'notify_test', 'list_media_sessions', 'control_media_session', 'set_notch_on_top'} <= commands
+assert 'notifications::start_scheduler(app.handle().clone())' in rust
 assert 'calendar_ics::import_ics' in rust and 'calendar_ics::export_ics' in rust
 print('PASS: static audit |', len(ids), 'unique element IDs |', len(frontend_calls), 'bound frontend commands |', len(commands), 'Rust commands | JSON/SVG/icons checked')
