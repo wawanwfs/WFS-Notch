@@ -1,3 +1,5 @@
+> **Reverse Engineering toolchain:** [REA (official)](https://github.com/morluto/rea), [Craft Anything](https://github.com/storytold/craft-anything), and [LeanREA](https://github.com/aicodeking/leanrea) can be used as complementary research tools. Windows opt-in setup and private reference analysis scripts: [REA + Craft Anything integration guide](01_ANALYSIS/REA_CRAFT_ANYTHING_INTEGRATION.md). Tools have not been run against the reference in this GitHub CI environment; no 100% parity is claimed.
+
 # WFS Notch — Phase 7 / v0.7.0 (development)
 
 **GitHub CI / publisher instructions:** [README_GITHUB.md](README_GITHUB.md). GitHub Actions builds Windows x64 installers; CI results are available in the repository Actions tab. Successful CI is not a native Windows user-interaction parity test.
