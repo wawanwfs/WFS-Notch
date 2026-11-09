@@ -5,6 +5,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const nativeInvoke = window.__TAURI__?.core?.invoke;
 const previewKey = 'wfs-notch-browser-preview-v2';
 const previewBackupsKey = 'wfs-notch-browser-backups-v3';
+const noteDraftKey = 'wfs-notch-local-note-draft-v1';
 const defaults = () => ({
   todos: [], notes: [], events: [], calendar_tombstones: [], calendar_series: {}, reminder_retries: {}, habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
@@ -21,6 +22,7 @@ let boundEditorId = null;
 let pendingDraft = null;
 let noteSaveTimeout = null;
 let noteSaveInFlight = null;
+let noteConflictDraft = null;
 let toastTimeout = null;
 let activeTab = 'home';
 let backupList = [];
@@ -35,6 +37,43 @@ let writeQueue = Promise.resolve();
 function validTimedEnd(start, end) {
   return end == null || (Number.isSafeInteger(end) && end > start &&
     end <= 4102444800000 && end - start <= 366 * 86400000);
+}
+
+function normalizeDraftTags(raw) {
+  if (!Array.isArray(raw) || raw.length > 8) throw new Error('A note supports at most 8 tags');
+  const result = [];
+  for (const value of raw) {
+    if (typeof value !== 'string') throw new Error('Invalid note tag');
+    const tag = value.trim().toLowerCase();
+    if (!/^[a-z0-9_-]{1,24}$/.test(tag))
+      throw new Error('Each tag must be 1–24 ASCII letters, numbers, - or _');
+    if (!result.includes(tag)) result.push(tag);
+  }
+  return result;
+}
+
+function persistPendingNote(draft) {
+  try {
+    if (draft) localStorage.setItem(noteDraftKey, JSON.stringify(draft));
+    else localStorage.removeItem(noteDraftKey);
+    return true;
+  } catch (error) {
+    console.warn('Unable to persist an unsaved local note draft', error?.message);
+    return false;
+  }
+}
+function readPendingNote() {
+  try {
+    const raw = localStorage.getItem(noteDraftKey);
+    if (!raw || raw.length > 120000) return null;
+    const draft = JSON.parse(raw);
+    if (!draft || typeof draft.id !== 'string' || draft.id.length > 128 ||
+      typeof draft.title !== 'string' || draft.title.length > 200 ||
+      typeof draft.body !== 'string' || draft.body.length > 50000 ||
+      !Number.isSafeInteger(draft.expectedRevision) || draft.expectedRevision < 0) return null;
+    normalizeDraftTags(draft.tags);
+    return draft;
+  } catch (_) { return null; }
 }
 
 function focusView(focus, current = Date.now()) {
@@ -130,24 +169,30 @@ function previewInvoke(command, args = {}) {
       if (!state.todos.some(item => item.id === args.id)) throw new Error('Task not found');
       state.todos = state.todos.filter(item => item.id !== args.id); break;
     }
-    case 'add_note': state.notes.push({ id: nextId(), title: 'Untitled', body: '', updated_ms: Date.now(), tags: [] }); break;
+    case 'add_note': state.notes.push({ id: nextId(), title: 'Untitled', body: '', updated_ms: Date.now(), tags: [], revision: 0 }); break;
+    case 'create_note_from_draft': {
+      if (String(args.title).length > 200 || String(args.body).length > 50_000) throw new Error('Note is too long');
+      const tags = normalizeDraftTags(args.tags);
+      state.notes.push({id:nextId(), title:args.title, body:args.body, tags,
+        updated_ms:Date.now(), revision:0});
+      break;
+    }
     case 'update_note': {
       const note = state.notes.find(item => item.id === args.id);
       if (!note) throw new Error('Note not found');
+      if ((note.revision || 0) !== args.expectedRevision) throw new Error('NOTE_CONFLICT: this note changed since the editor loaded it');
       if (args.title.length > 200 || args.body.length > 50_000) throw new Error('Note is too long');
-      const rawTags = args.tags == null ? (note.tags || []) : args.tags;
-      if (!Array.isArray(rawTags) || rawTags.length > 8) throw new Error('A note supports at most 8 tags');
-      const tags = [];
-      for (const item of rawTags) {
-        if (typeof item !== 'string') throw new Error('Invalid note tag');
-        const tag = item.trim().toLowerCase();
-        if (!/^[a-z0-9_-]{1,24}$/.test(tag)) throw new Error('Each tag must be 1–24 ASCII letters, numbers, - or _');
-        if (!tags.includes(tag)) tags.push(tag);
-      }
-      Object.assign(note, { title: args.title, body: args.body, tags, updated_ms: Date.now() }); break;
+      const tags = args.tags == null ? (note.tags || []) : normalizeDraftTags(args.tags);
+      const same = note.title === args.title && note.body === args.body &&
+        JSON.stringify(note.tags || []) === JSON.stringify(tags);
+      if (!same) Object.assign(note, {title:args.title, body:args.body, tags,
+        revision:(note.revision || 0) + 1, updated_ms:Date.now()});
+      break;
     }
     case 'remove_note': {
-      if (!state.notes.some(item => item.id === args.id)) throw new Error('Note not found');
+      const note = state.notes.find(item => item.id === args.id);
+      if (!note) throw new Error('Note not found');
+      if ((note.revision || 0) !== args.expectedRevision) throw new Error('NOTE_CONFLICT: note changed before deletion');
       state.notes = state.notes.filter(item => item.id !== args.id); break;
     }
     case 'add_event': {
@@ -402,7 +447,9 @@ async function requestCollapse() {
 
 async function switchTab(tab) {
   if (tab === activeTab) return;
-  if (!(await flushNote())) return;
+  // Opening Notes must never silently commit a recovered draft; only leaving
+  // the Notes workspace flushes the active editor first.
+  if (tab !== 'notes' && !(await flushNote())) return;
   activeTab = tab;
   $$('.tab').forEach(button => {
     const selected = button.dataset.tab === tab;
@@ -523,8 +570,12 @@ function renderNotes() {
     $('#note-tags').value = Array.isArray(current?.tags) ? current.tags.join(', ') : '';
     boundEditorId = selectedNoteId;
   }
-  const message = !current ? 'Choose or create a note'
-    : pendingDraft ? 'Unsaved changes' : 'Saved locally';
+  const conflicted = Boolean(noteConflictDraft && noteConflictDraft.id === selectedNoteId);
+  $('#note-conflict').hidden = !conflicted;
+  $('#note-conflict-reload').disabled = !current;
+  const message = conflicted ? 'Conflict — your draft is safe. Choose an action below.'
+    : !current ? 'Choose or create a note'
+      : pendingDraft ? 'Unsaved changes' : 'Saved locally';
   $('#save-status').textContent = message;
 }
 
@@ -822,22 +873,63 @@ function render() {
   if (typeof renderParity === 'function') renderParity();
 }
 
+async function saveRevisionNote(draft) {
+  // Match mutation() write ordering, but surface an optimistic-lock conflict
+  // without discarding local editor input or silently retrying an overwrite.
+  const task = writeQueue.catch(() => {}).then(async () => {
+    try {
+      const updated = await invoke('update_note', draft);
+      data = updated;
+      const committed = data.notes.find(note => note.id === draft.id);
+      if (pendingDraft?.id === draft.id && committed) {
+        // Rebase only a newer local keystroke after our own successful write.
+        pendingDraft.expectedRevision = committed.revision || 0;
+        persistPendingNote(pendingDraft);
+      } else if (!pendingDraft) {
+        persistPendingNote(null);
+      }
+      noteConflictDraft = null;
+      render();
+      return true;
+    } catch (error) {
+      if (!pendingDraft) pendingDraft = draft;
+      persistPendingNote(pendingDraft);
+      if (String(error).includes('NOTE_CONFLICT')) {
+        noteConflictDraft = pendingDraft;
+        renderNotes();
+      } else {
+        $('#save-status').textContent = 'Save failed — draft retained locally';
+        showError(error);
+      }
+      return false;
+    }
+  });
+  writeQueue = task;
+  return task;
+}
+
 async function flushNote() {
   clearTimeout(noteSaveTimeout);
   noteSaveTimeout = null;
+  if (noteConflictDraft) return false;
   if (!pendingDraft) return noteSaveInFlight ? noteSaveInFlight : true;
   const draft = pendingDraft;
   pendingDraft = null;
   $('#save-status').textContent = 'Saving…';
   const previous = noteSaveInFlight;
   const job = (async () => {
-    if (previous && !(await previous)) return false;
-    const success = await mutation('update_note', draft);
-    if (!success && !pendingDraft) {
-      pendingDraft = draft;
-      $('#save-status').textContent = 'Save failed — retry';
+    if (previous) {
+      if (!(await previous)) {
+        if (!pendingDraft) pendingDraft = draft;
+        persistPendingNote(pendingDraft);
+        return false;
+      }
+      // Only a successful preceding save from this editor can advance its
+      // revision. An out-of-process modification still fails in Rust.
+      draft.expectedRevision = data.notes.find(note => note.id === draft.id)?.revision ??
+        draft.expectedRevision;
     }
-    return success;
+    return saveRevisionNote(draft);
   })();
   noteSaveInFlight = job;
   try { return await job; }
@@ -846,15 +938,20 @@ async function flushNote() {
 
 function scheduleNoteSave() {
   if (!selectedNoteId) return;
+  const note = data.notes.find(item => item.id === selectedNoteId);
   pendingDraft = {
     id: selectedNoteId,
     title: $('#note-title').value,
     body: $('#note-body').value,
     tags: $('#note-tags').value.split(',').map(tag => tag.trim()).filter(Boolean),
+    expectedRevision: note?.revision || 0,
   };
-  $('#save-status').textContent = 'Unsaved changes';
+  if (noteConflictDraft) noteConflictDraft = pendingDraft;
+  const persisted = persistPendingNote(pendingDraft);
+  $('#save-status').textContent = noteConflictDraft ? 'Conflict — choose an action below'
+    : persisted ? 'Unsaved changes' : 'Unsaved changes — local recovery unavailable';
   clearTimeout(noteSaveTimeout);
-  noteSaveTimeout = setTimeout(() => { void flushNote(); }, 650);
+  if (!noteConflictDraft) noteSaveTimeout = setTimeout(() => { void flushNote(); }, 650);
 }
 
 function clockTick() {
@@ -996,17 +1093,48 @@ function bind() {
   $('#note-tags').addEventListener('blur', () => { void flushNote(); });
   $('#note-tag-filter').addEventListener('change', renderNotes);
   $('#note-save').addEventListener('click', () => { void flushNote(); });
-  $('#note-delete').addEventListener('click', async () => {
-    if (!selectedNoteId) return;
-    clearTimeout(noteSaveTimeout);
-    noteSaveTimeout = null;
-    const id = selectedNoteId;
-    const draft = pendingDraft;
+  $('#note-conflict-reload').addEventListener('click', async () => {
+    if (!noteConflictDraft || !window.confirm('Discard the unsaved draft and load the latest stored note?')) return;
+    await writeQueue;
+    try {
+      data = await invoke('load_data');
+      const latest = data.notes.find(note => note.id === selectedNoteId);
+      if (!latest) { showError('The original note no longer exists. Save the draft as a new note.'); return; }
+      noteConflictDraft = null;
+      pendingDraft = null;
+      persistPendingNote(null);
+      boundEditorId = null;
+      render();
+    } catch (error) { showError(error); }
+  });
+  $('#note-conflict-copy').addEventListener('click', async () => {
+    if (!noteConflictDraft) return;
+    const draft = pendingDraft || noteConflictDraft;
+    const before = new Set(data.notes.map(note => note.id));
+    const copied = await mutation('create_note_from_draft', {
+      title:draft.title, body:draft.body, tags:draft.tags
+    });
+    if (!copied) return;
+    noteConflictDraft = null;
     pendingDraft = null;
-    if (await mutation('remove_note', { id })) {
+    persistPendingNote(null);
+    selectedNoteId = data.notes.find(note => !before.has(note.id))?.id || null;
+    boundEditorId = null;
+    renderNotes();
+    showInfo('Saved a separate note; the newer original was not changed.');
+  });
+  $('#note-delete').addEventListener('click', async () => {
+    if (!selectedNoteId || noteConflictDraft || !(await flushNote())) return;
+    const id = selectedNoteId;
+    const current = data.notes.find(note => note.id === id);
+    if (!current) return;
+    if (await mutation('remove_note', { id, expectedRevision:current.revision || 0 })) {
       selectedNoteId = null;
+      boundEditorId = null;
+      pendingDraft = null;
+      persistPendingNote(null);
       renderNotes();
-    } else { pendingDraft = draft; }
+    }
   });
   $$('.swatch').forEach(button => button.addEventListener('click', () => void mutation('set_accent', { accent: button.dataset.color })));
   const saveAppearance = () => {
@@ -1120,8 +1248,22 @@ async function start() {
   data.health = { ...defaults().health, ...data.health };
   data.countdown = { ...defaults().countdown, ...data.countdown };
   $('#event-time').value = asLocalInput(Date.now() + 15 * 60000);
+  const recoveredDraft = readPendingNote();
+  if (recoveredDraft) {
+    selectedNoteId = recoveredDraft.id;
+    pendingDraft = recoveredDraft;
+    boundEditorId = recoveredDraft.id;
+    $('#note-title').value = recoveredDraft.title;
+    $('#note-body').value = recoveredDraft.body;
+    $('#note-tags').value = recoveredDraft.tags.join(', ');
+    const current = data.notes.find(note => note.id === recoveredDraft.id);
+    if (!current || (current.revision || 0) !== recoveredDraft.expectedRevision) {
+      noteConflictDraft = recoveredDraft;
+    }
+  }
   if (!nativeInvoke || data.settings.pin_open) await setExpanded(true);
   render();
+  if (recoveredDraft) showInfo('An unsaved local note draft was recovered. Open Notes to review it.');
   void refreshBackups();
   clockTick();
   setInterval(clockTick, 250);

@@ -78,7 +78,11 @@
         <section class="panel" id="panel-notes">
           <div class="section-heading"><div><h2>Notes</h2><p>Capture ideas as they happen.</p></div><button id="note-new" class="primary">+ New note</button></div>
           <div class="note-search-row"><input id="note-search" type="search" autocomplete="off" placeholder="Search notes, including tags..." aria-label="Search notes"><select id="note-tag-filter" aria-label="Filter notes by tag"><option value="">All tags</option></select></div>
-          <div class="note-layout"><div id="note-list" class="note-list"></div><div class="note-editor"><input id="note-title" placeholder="Note title" maxlength="200"><label class="note-tags-label" for="note-tags">Tags · comma-separated, max 8</label><input id="note-tags" placeholder="e.g. work, idea, urgent" aria-label="Note tags, comma-separated" maxlength="200" spellcheck="false"><textarea id="note-body" placeholder="Start writing your thoughts..." maxlength="50000"></textarea><div class="note-foot"><small id="save-status" aria-live="polite">Choose or create a note</small><div class="note-actions"><button class="text-button" id="note-save" type="button">Save now</button><button class="danger-link" id="note-delete" type="button">Delete note</button></div></div></div></div>
+          <div class="note-layout"><div id="note-list" class="note-list"></div><div class="note-editor"><input id="note-title" placeholder="Note title" maxlength="200"><label class="note-tags-label" for="note-tags">Tags · comma-separated, max 8</label><input id="note-tags" placeholder="e.g. work, idea, urgent" aria-label="Note tags, comma-separated" maxlength="200" spellcheck="false"><textarea id="note-body" placeholder="Start writing your thoughts..." maxlength="50000"></textarea><div id="note-conflict" class="note-conflict" role="alert" hidden>
+              <strong>Saved note changed elsewhere</strong>
+              <p>Your unsaved draft is retained locally. Reload the latest saved note or save the draft as a separate note. No automatic overwrite is allowed.</p>
+              <div class="note-actions"><button id="note-conflict-reload" class="secondary" type="button">Discard draft &amp; reload</button><button id="note-conflict-copy" class="primary" type="button">Save draft as new note</button></div>
+            </div><div class="note-foot"><small id="save-status" aria-live="polite">Choose or create a note</small><div class="note-actions"><button class="text-button" id="note-save" type="button">Save now</button><button class="danger-link" id="note-delete" type="button">Delete note</button></div></div></div></div>
         </section>
         <section class="panel" id="panel-calendar">
           <div class="section-heading"><div><h2>Calendar</h2><p>Local events and in-app reminders while WFS Notch is running.</p></div><span class="section-pill" id="calendar-count">0 EVENTS</span></div>
@@ -313,7 +317,7 @@
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.27.0 · DEVELOPMENT</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.28.0 · DEVELOPMENT</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>
