@@ -693,7 +693,6 @@ fn remove_note(
     })
 }
 
-
 const NOTES_TRANSFER_FORMAT: &str = "wfs-notch-notes";
 const NOTES_TRANSFER_MAX_BYTES: usize = 1024 * 1024;
 const NOTES_TRANSFER_MAX_COUNT: usize = 250;
@@ -718,8 +717,27 @@ fn validate_notes_transfer(payload: &str) -> Result<Vec<Note>, String> {
     if payload.len() > NOTES_TRANSFER_MAX_BYTES {
         return Err("Notes JSON exceeds the 1 MiB limit".into());
     }
-    let imported: NotesTransfer =
+    // Note itself must stay serde-compatible with legacy application state,
+    // but portable imports are a strict schema: never silently discard fields.
+    let value: serde_json::Value =
         serde_json::from_str(payload).map_err(|error| format!("Invalid Notes JSON: {error}"))?;
+    let entries = value
+        .get("notes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("Notes JSON requires a notes array")?;
+    for entry in entries {
+        let fields = entry.as_object().ok_or("Notes JSON entries must be objects")?;
+        if fields.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "id" | "title" | "body" | "updated_ms" | "tags" | "revision"
+            )
+        }) {
+            return Err("Notes JSON contains unsupported fields".into());
+        }
+    }
+    let imported: NotesTransfer =
+        serde_json::from_value(value).map_err(|error| format!("Invalid Notes JSON: {error}"))?;
     if imported.format != NOTES_TRANSFER_FORMAT || imported.version != 1 {
         return Err("Unsupported Notes JSON format/version".into());
     }
@@ -743,6 +761,7 @@ fn validate_notes_transfer(payload: &str) -> Result<Vec<Note>, String> {
         if note.title.chars().count() > 200
             || note.body.chars().count() > 50_000
             || note.revision > 1_000_000_000
+            || note.updated_ms > 9_007_199_254_740_991
         {
             return Err("Notes JSON contains oversized note content or revision".into());
         }
@@ -753,7 +772,10 @@ fn validate_notes_transfer(payload: &str) -> Result<Vec<Note>, String> {
     Ok(imported.notes)
 }
 
-fn notes_import_preview(existing: &[Note], imported: &[Note]) -> Result<NotesImportPreview, String> {
+fn notes_import_preview(
+    existing: &[Note],
+    imported: &[Note],
+) -> Result<NotesImportPreview, String> {
     let known: HashSet<&str> = existing.iter().map(|note| note.id.as_str()).collect();
     let new_count = imported
         .iter()
@@ -769,7 +791,10 @@ fn notes_import_preview(existing: &[Note], imported: &[Note]) -> Result<NotesImp
     })
 }
 
-fn import_notes_into(data: &mut AppData, imported: Vec<Note>) -> Result<NotesImportPreview, String> {
+fn import_notes_into(
+    data: &mut AppData,
+    imported: Vec<Note>,
+) -> Result<NotesImportPreview, String> {
     let preview = notes_import_preview(&data.notes, &imported)?;
     let known: HashSet<String> = data.notes.iter().map(|note| note.id.clone()).collect();
     data.notes.extend(
@@ -1775,7 +1800,6 @@ mod tests {
         let _ = fs::remove_file(path.with_extension("json.bak"));
     }
 
-
     #[test]
     fn notes_json_import_preview_rejects_bad_data_and_remains_idempotent() {
         let original = Note {
@@ -1833,7 +1857,10 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        assert_eq!(Store::open(path.clone()).unwrap().data.notes, vec![original, other]);
+        assert_eq!(
+            Store::open(path.clone()).unwrap().data.notes,
+            vec![original, other]
+        );
         let mut doubled = transfer.notes.clone();
         doubled.push(doubled[0].clone());
         let bad = serde_json::to_string(&NotesTransfer {
