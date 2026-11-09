@@ -726,7 +726,9 @@ fn validate_notes_transfer(payload: &str) -> Result<Vec<Note>, String> {
         .and_then(serde_json::Value::as_array)
         .ok_or("Notes JSON requires a notes array")?;
     for entry in entries {
-        let fields = entry.as_object().ok_or("Notes JSON entries must be objects")?;
+        let fields = entry
+            .as_object()
+            .ok_or("Notes JSON entries must be objects")?;
         if fields.keys().any(|key| {
             !matches!(
                 key.as_str(),
