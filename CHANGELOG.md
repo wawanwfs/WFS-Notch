@@ -1,3 +1,10 @@
+## 0.30.0 — Phase 28A3: protect Notes revisions across backup restore
+
+- User-confirmed local backup restoration now advances each shared Note ID to a revision **greater than both** the backed-up and currently stored revisions. A stale Notes editor cannot write over a restored note merely because an old snapshot reused its previous revision number.
+- The revision calculation runs before the native storage transaction. Overflow fails closed; original note bodies, tags, timestamps and IDs from the selected backup remain intact. Notes present only in the backup retain their original revision; no previously deleted IDs are reinterpreted.
+- Browser preview restore uses the same monotonic-token policy. Added Rust tests for restoration, old-editor conflict rejection and overflow, plus Playwright backup/restore stale-write regression.
+- Retains existing two-generation state recovery, native reminder delivery/retry history and local-only JSON import/export; no new OS permission or network service. Interactive Windows 10/11 and restore of a previously deleted note into an independently open editor remain NOT TESTED.
+
 ## 0.29.0 — Phase 28A2: local Notes JSON preview/export/import
 
 - Native WFS Notes JSON schema `{"format":"wfs-notch-notes","version":1,"notes":[...]}` with strict 1 MiB UTF-8 payload limit, max 250 entries/snapshot and 500 total notes. Validate IDs, title/body size, revision bounds, canonical tags and duplicate IDs **before** any write.

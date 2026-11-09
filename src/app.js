@@ -154,7 +154,16 @@ function previewInvoke(command, args = {}) {
     const backups = JSON.parse(localStorage.getItem(previewBackupsKey) || '[]');
     const backup = backups.find(item => item.info.id === args.id);
     if (!backup) throw new Error('Backup not found');
-    state = JSON.parse(JSON.stringify(backup.snapshot));
+    const restored = JSON.parse(JSON.stringify(backup.snapshot));
+    const currentRevisions = new Map(state.notes.map(note =>
+      [note.id, note.revision || 0]));
+    for (const note of restored.notes) {
+      if (!currentRevisions.has(note.id)) continue;
+      const revision = Math.max(note.revision || 0, currentRevisions.get(note.id));
+      if (!Number.isSafeInteger(revision + 1)) throw new Error('Cannot restore: note revision limit exceeded');
+      note.revision = revision + 1;
+    }
+    state = restored;
     localStorage.setItem(previewKey, JSON.stringify(state));
     return Promise.resolve(state);
   }
