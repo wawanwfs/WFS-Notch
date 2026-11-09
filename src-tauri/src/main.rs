@@ -1860,11 +1860,9 @@ mod tests {
         assert_eq!(recovered.notes[0].tags, vec!["backup"]);
         assert_eq!(recovered.notes[1].revision, 3);
         let before = recovered.notes[0].clone();
-        assert!(apply_note_update(&mut recovered.notes[0], "Stale", "Clobber", None, 6)
-            .is_err());
+        assert!(apply_note_update(&mut recovered.notes[0], "Stale", "Clobber", None, 6).is_err());
         assert_eq!(recovered.notes[0], before);
-        assert!(apply_note_update(&mut recovered.notes[0], "Stale", "Clobber", None, 1)
-            .is_err());
+        assert!(apply_note_update(&mut recovered.notes[0], "Stale", "Clobber", None, 1).is_err());
         assert_eq!(recovered.notes[0], before);
 
         // Reject overflow before transaction; even badly formed old snapshots
