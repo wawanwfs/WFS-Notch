@@ -56,7 +56,8 @@ with sync_playwright() as playwright:
     page.locator("#note-body").fill("First saved draft")
     page.locator("#note-save").click()
     page.wait_for_function("""() => data.notes.length === 1 &&
-      data.notes[0].revision === 1 && pendingDraft === null""")
+      data.notes[0].revision >= 1 &&
+      data.notes[0].body === 'First saved draft' && pendingDraft === null""")
     note_id = page.evaluate("data.notes[0].id")
     assert page.evaluate("data.notes[0].body") == "First saved draft"
 

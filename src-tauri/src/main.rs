@@ -1652,14 +1652,17 @@ mod tests {
         assert_eq!(note.revision, 1);
         assert_eq!(note.tags, vec!["work"]);
         let before = note.clone();
-        assert!(apply_note_update(&mut note, "Stale edit", "overwrite", None, 0)
-            .unwrap_err()
-            .starts_with("NOTE_CONFLICT"));
+        assert!(
+            apply_note_update(&mut note, "Stale edit", "overwrite", None, 0)
+                .unwrap_err()
+                .starts_with("NOTE_CONFLICT")
+        );
         assert_eq!(note, before);
         apply_note_update(&mut note, "A", "First save", None, 1).unwrap();
         assert_eq!(note.revision, 1); // No-op does not make unrelated editors stale.
-        assert!(apply_note_update(&mut note, "A", "Test", Some(vec!["BAD TAG".into()]), 1)
-            .is_err());
+        assert!(
+            apply_note_update(&mut note, "A", "Test", Some(vec!["BAD TAG".into()]), 1).is_err()
+        );
         assert_eq!(note, before);
         let path = temp_file("note-revision");
         let mut store = Store::open(path.clone()).unwrap();
@@ -1670,15 +1673,11 @@ mod tests {
             })
             .unwrap();
         assert!(store
-            .transact(|data| {
-                apply_note_update(&mut data.notes[0], "Old", "Stale", None, 0)
-            })
+            .transact(|data| { apply_note_update(&mut data.notes[0], "Old", "Stale", None, 0) })
             .is_err());
         assert_eq!(Store::open(path.clone()).unwrap().data.notes, vec![before]);
         store
-            .transact(|data| {
-                apply_note_update(&mut data.notes[0], "New", "Safe content", None, 1)
-            })
+            .transact(|data| apply_note_update(&mut data.notes[0], "New", "Safe content", None, 1))
             .unwrap();
         let reopened = Store::open(path.clone()).unwrap();
         assert_eq!(reopened.data.notes[0].revision, 2);
