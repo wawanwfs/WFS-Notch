@@ -101,6 +101,9 @@ struct Note {
     // Notes created before v0.24 still load unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<String>,
+    // Explicit optimistic-concurrency token, absent in pre-v0.28 Notes.
+    #[serde(default)]
+    revision: u64,
 }
 
 /// Bounded plain-text local labels; never interpret them as markup.
@@ -585,6 +588,66 @@ fn add_note(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
             body: String::new(),
             updated_ms: now_ms(),
             tags: Vec::new(),
+            revision: 0,
+        });
+        Ok(())
+    })
+}
+
+fn apply_note_update(
+    note: &mut Note,
+    title: &str,
+    body: &str,
+    tags: Option<Vec<String>>,
+    expected_revision: u64,
+) -> Result<(), String> {
+    if note.revision != expected_revision {
+        return Err("NOTE_CONFLICT: this note changed since the editor loaded it".into());
+    }
+    if title.chars().count() > 200 || body.chars().count() > 50_000 {
+        return Err("Note is too long".into());
+    }
+    // A missing tag list preserves legacy caller tags instead of erasing them.
+    let next_tags = tags.map(normalize_note_tags).transpose()?;
+    if note.title == title
+        && note.body == body
+        && next_tags.as_ref().is_none_or(|items| note.tags == *items)
+    {
+        return Ok(());
+    }
+    let next_revision = note
+        .revision
+        .checked_add(1)
+        .ok_or("Note revision limit exceeded")?;
+    note.title = title.to_owned();
+    note.body = body.to_owned();
+    if let Some(tags) = next_tags {
+        note.tags = tags;
+    }
+    note.revision = next_revision;
+    note.updated_ms = now_ms();
+    Ok(())
+}
+
+#[tauri::command]
+fn create_note_from_draft(
+    store: State<'_, Mutex<Store>>,
+    title: String,
+    body: String,
+    tags: Vec<String>,
+) -> Result<AppData, String> {
+    if title.chars().count() > 200 || body.chars().count() > 50_000 {
+        return Err("Note is too long".into());
+    }
+    let tags = normalize_note_tags(tags)?;
+    with_store(store, |state| {
+        state.notes.push(Note {
+            id: new_id(),
+            title,
+            body,
+            updated_ms: now_ms(),
+            tags,
+            revision: 0,
         });
         Ok(())
     })
@@ -597,36 +660,35 @@ fn update_note(
     title: String,
     body: String,
     tags: Option<Vec<String>>,
+    expected_revision: u64,
 ) -> Result<AppData, String> {
-    if title.chars().count() > 200 || body.chars().count() > 50_000 {
-        return Err("Note is too long".into());
-    }
-    // Legacy caller omitting tags must never erase previously saved tags.
-    let tags = tags.map(normalize_note_tags).transpose()?;
+    // State write and revision check share the same Mutex and disk transaction.
     with_store(store, |state| {
         let note = state
             .notes
             .iter_mut()
             .find(|note| note.id == id)
             .ok_or("Note not found")?;
-        note.title = title;
-        note.body = body;
-        if let Some(tags) = tags {
-            note.tags = tags;
-        }
-        note.updated_ms = now_ms();
-        Ok(())
+        apply_note_update(note, &title, &body, tags, expected_revision)
     })
 }
 
 #[tauri::command]
-fn remove_note(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
+fn remove_note(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    expected_revision: u64,
+) -> Result<AppData, String> {
     with_store(store, |state| {
-        let previous = state.notes.len();
-        state.notes.retain(|note| note.id != id);
-        if previous == state.notes.len() {
-            return Err("Note not found".into());
+        let index = state
+            .notes
+            .iter()
+            .position(|note| note.id == id)
+            .ok_or("Note not found")?;
+        if state.notes[index].revision != expected_revision {
+            return Err("NOTE_CONFLICT: note changed before deletion".into());
         }
+        state.notes.remove(index);
         Ok(())
     })
 }
@@ -1461,6 +1523,7 @@ fn main() {
             toggle_todo,
             remove_todo,
             add_note,
+            create_note_from_draft,
             update_note,
             remove_note,
             add_event,
@@ -1578,6 +1641,51 @@ mod tests {
         assert_eq!(store.data, snapshot);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn note_revision_migrates_detects_stale_writes_and_preserves_disk_state() {
+        let old = r#"{"id":"legacy","title":"A","body":"Original","updated_ms":9,"tags":["work"]}"#;
+        let mut note: Note = serde_json::from_str(old).unwrap();
+        assert_eq!(note.revision, 0);
+        apply_note_update(&mut note, "A", "First save", None, 0).unwrap();
+        assert_eq!(note.revision, 1);
+        assert_eq!(note.tags, vec!["work"]);
+        let before = note.clone();
+        assert!(apply_note_update(&mut note, "Stale edit", "overwrite", None, 0)
+            .unwrap_err()
+            .starts_with("NOTE_CONFLICT"));
+        assert_eq!(note, before);
+        apply_note_update(&mut note, "A", "First save", None, 1).unwrap();
+        assert_eq!(note.revision, 1); // No-op does not make unrelated editors stale.
+        assert!(apply_note_update(&mut note, "A", "Test", Some(vec!["BAD TAG".into()]), 1)
+            .is_err());
+        assert_eq!(note, before);
+        let path = temp_file("note-revision");
+        let mut store = Store::open(path.clone()).unwrap();
+        store
+            .transact(|data| {
+                data.notes.push(note.clone());
+                Ok(())
+            })
+            .unwrap();
+        assert!(store
+            .transact(|data| {
+                apply_note_update(&mut data.notes[0], "Old", "Stale", None, 0)
+            })
+            .is_err());
+        assert_eq!(Store::open(path.clone()).unwrap().data.notes, vec![before]);
+        store
+            .transact(|data| {
+                apply_note_update(&mut data.notes[0], "New", "Safe content", None, 1)
+            })
+            .unwrap();
+        let reopened = Store::open(path.clone()).unwrap();
+        assert_eq!(reopened.data.notes[0].revision, 2);
+        assert_eq!(reopened.data.notes[0].title, "New");
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("json.bak"));
+        let _ = fs::remove_file(path.with_extension("json.bak.prev"));
     }
 
     #[test]

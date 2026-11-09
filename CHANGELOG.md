@@ -1,3 +1,11 @@
+## 0.28.0 — Phase 28A1: Notes conflict-safe revisions and locally recoverable drafts
+
+- New `revision` on each Note, default 0 for legacy JSON, increments only when content/tags change. Native `update_note` requires `expectedRevision` and checks under the storage mutex before disk write. `remove_note` also checks a revision, preventing stale destructive deletion.
+- The existing autosave retains the most recent typed draft in app-local browser storage before enqueueing writes; never silently retries a stale optimistic write. Interrupted editor sessions restore local drafts on startup and flag an external revision conflict explicitly.
+- The Notes editor exposes two real conflict choices: discard local draft and reload current saved note, or save the draft as a **new** note preserving the independently updated original. All writes remain private and atomic in Rust. Existing note IDs/tags/bodies and original state backups are retained.
+- Added deterministic Rust migration/concurrent write/no-op/invalid-tag/disk rollback coverage and dedicated Playwright conflict workflow + new copy / reload / browser restart tests.
+- No network, remote sync, auto overwrite, arbitrary file path, new Windows permission or cloud service introduced. Notes JSON export/import, cross-process live change notifications and full native Win10/11 GUI acceptance are **still unimplemented/not tested**.
+
 ## 0.27.0 — Workstream I: two-generation local recovery and safer rotation
 
 - Local `state.json` writes now rotate the previous `state.json.bak` into `state.json.bak.prev`, retaining one additional **local** recovery generation rather than deleting the older snapshot before the primary is safely rotated. No external storage or telemetry is added.
