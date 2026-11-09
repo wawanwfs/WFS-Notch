@@ -144,6 +144,8 @@ with sync_playwright() as playwright:
     result = page4.evaluate("""async () => {
       const before = JSON.parse(localStorage.getItem(previewKey)).notes[0];
       const backups = await previewInvoke('list_backups');
+      const snapshot = JSON.parse(localStorage.getItem(previewBackupsKey))[0].snapshot;
+      const backupTitle = snapshot.notes.find(item => item.id === before.id).title;
       const restored = await previewInvoke('restore_backup', {id:backups[0].id});
       const note = restored.notes.find(item => item.id === before.id);
       let rejected = false;
@@ -152,11 +154,11 @@ with sync_playwright() as playwright:
           body:'Do not overwrite',tags:note.tags,expectedRevision:before.revision});
       } catch (error) { rejected = String(error).includes('NOTE_CONFLICT'); }
       return {oldRevision:before.revision, restoredRevision:note.revision,
-        restoredTitle:note.title, rejected};
+        restoredTitle:note.title, backupTitle, rejected};
     }""")
     assert result["restoredRevision"] > result["oldRevision"]
     assert result["rejected"] is True
-    assert result["restoredTitle"] == "Newer stored content"
+    assert result["restoredTitle"] == result["backupTitle"]
 
     assert not (errors + errors2 + errors3 + errors4), "JS exceptions: " + str(
         errors + errors2 + errors3 + errors4)
