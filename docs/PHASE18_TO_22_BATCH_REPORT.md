@@ -140,3 +140,7 @@ Branch `feat/phase28a-notes-json-interchange` adds native JSON export/preview/ap
 ## Phase28A3 — backup-restore revision safety PR candidate
 
 Source baseline v0.29.0 `408744a28e2886b5dbc7bade957a52a48a6e7a5d`, exact-main [CI 42544852146](https://github.com/wawanwfs/WFS-Notch/actions/runs/42544852146) ALL FOUR PASS (93 Rust tests). Branch `fix/phase28a-notes-restore-revisions` prevents backed-up Notes from resetting optimistic revisions for overlapping note IDs and introduces focused Rust+browser regressions. Validate exact head and post-merge main CI before declaring this safe to ship. No interactive Win10/11 acceptance evidence; fixed REA remains 28.9%.
+
+## Phase 28B1 — scoped RECURRENCE-ID source support (candidate)
+
+Baseline v0.30.0 `e9647bd2fd647999a1931268c11552df073031a5`, [CI 42546126393](https://github.com/wawanwfs/WFS-Notch/actions/runs/42546126393) all four PASS, 94 Rust tests, unsigned Windows NSIS and portable. Candidate `feat/phase28b-rfc5545-occurrence-overrides` implements explicit same-UID original-occurrence overrides with fail-closed DST/RANGE/cancellation and verified source-export roundtrip; PR checks and post-merge exact-main CI must be verified before marked shipped. Native Win10/11 remains NOT TESTED; reference parity 28.9%.

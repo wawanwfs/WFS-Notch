@@ -1,3 +1,10 @@
+## 0.31.0 — Phase 28B1: verified scoped RFC5545 RECURRENCE-ID overrides
+
+- Parse explicit original-occurrence `RECURRENCE-ID` VEVENT overrides only when the matching recurrence master UID, original expanded occurrence timestamp, exact DTSTART/TZID/DATE kind, required durations and reminder semantics are proven. Overrides retain the original occurrence ID while applying a new timestamp/title/body/duration. Refuse RANGE=THISANDFUTURE, unknown/mismatched recurrence IDs, DST gap/overlap, collisions, duplicate overrides, unsupported cancellation tombstones, and mixed timed/all-day payloads.
+- Retain version-one source metadata backward compatibility using optional persisted `overrides` list. Export master and separate original-RECURRENCE-ID exceptions only when a fresh strict reimport reproduces the local event set; edits/tombstones fall back to flattened events without duplicate IDs.
+- All input processing and exception application is in-memory before the existing transactional ICS import. No network, system-calendar changes or OS notification permission changes.
+- Expanded Rust regression tests for master/exception roundtrip, bad master match, collision, DST and unsupported RANGE. Native Windows 10/11 physical acceptance NOT TESTED. Fixed reference parity remains 28.9%.
+
 ## 0.30.0 — Phase 28A3: protect Notes revisions across backup restore
 
 - User-confirmed local backup restoration now advances each shared Note ID to a revision **greater than both** the backed-up and currently stored revisions. A stale Notes editor cannot write over a restored note merely because an old snapshot reused its previous revision number.
