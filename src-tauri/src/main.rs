@@ -693,6 +693,162 @@ fn remove_note(
     })
 }
 
+const NOTES_TRANSFER_FORMAT: &str = "wfs-notch-notes";
+const NOTES_TRANSFER_MAX_BYTES: usize = 1024 * 1024;
+const NOTES_TRANSFER_MAX_COUNT: usize = 250;
+const NOTES_TOTAL_MAX_COUNT: usize = 500;
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NotesTransfer {
+    format: String,
+    version: u32,
+    notes: Vec<Note>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct NotesImportPreview {
+    incoming: usize,
+    new_count: usize,
+    existing_count: usize,
+}
+
+fn validate_notes_transfer(payload: &str) -> Result<Vec<Note>, String> {
+    if payload.len() > NOTES_TRANSFER_MAX_BYTES {
+        return Err("Notes JSON exceeds the 1 MiB limit".into());
+    }
+    // Note itself must stay serde-compatible with legacy application state,
+    // but portable imports are a strict schema: never silently discard fields.
+    let value: serde_json::Value =
+        serde_json::from_str(payload).map_err(|error| format!("Invalid Notes JSON: {error}"))?;
+    let entries = value
+        .get("notes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("Notes JSON requires a notes array")?;
+    for entry in entries {
+        let fields = entry
+            .as_object()
+            .ok_or("Notes JSON entries must be objects")?;
+        if fields.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "id" | "title" | "body" | "updated_ms" | "tags" | "revision"
+            )
+        }) {
+            return Err("Notes JSON contains unsupported fields".into());
+        }
+    }
+    let imported: NotesTransfer =
+        serde_json::from_value(value).map_err(|error| format!("Invalid Notes JSON: {error}"))?;
+    if imported.format != NOTES_TRANSFER_FORMAT || imported.version != 1 {
+        return Err("Unsupported Notes JSON format/version".into());
+    }
+    if imported.notes.len() > NOTES_TRANSFER_MAX_COUNT {
+        return Err("A Notes import supports at most 250 entries".into());
+    }
+    let mut ids = HashSet::new();
+    for note in &imported.notes {
+        if note.id.is_empty()
+            || note.id.len() > 128
+            || !note
+                .id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err("Notes JSON contains an invalid note ID".into());
+        }
+        if !ids.insert(note.id.clone()) {
+            return Err("Notes JSON contains duplicate note IDs".into());
+        }
+        if note.title.chars().count() > 200
+            || note.body.chars().count() > 50_000
+            || note.revision > 1_000_000_000
+            || note.updated_ms > 9_007_199_254_740_991
+        {
+            return Err("Notes JSON contains oversized note content or revision".into());
+        }
+        if normalize_note_tags(note.tags.clone())? != note.tags {
+            return Err("Notes JSON tags must be canonical; no implicit rewriting".into());
+        }
+    }
+    Ok(imported.notes)
+}
+
+fn notes_import_preview(
+    existing: &[Note],
+    imported: &[Note],
+) -> Result<NotesImportPreview, String> {
+    let known: HashSet<&str> = existing.iter().map(|note| note.id.as_str()).collect();
+    let new_count = imported
+        .iter()
+        .filter(|note| !known.contains(note.id.as_str()))
+        .count();
+    if existing.len().saturating_add(new_count) > NOTES_TOTAL_MAX_COUNT {
+        return Err("Notes import would exceed the 500 note safety limit".into());
+    }
+    Ok(NotesImportPreview {
+        incoming: imported.len(),
+        new_count,
+        existing_count: imported.len() - new_count,
+    })
+}
+
+fn import_notes_into(
+    data: &mut AppData,
+    imported: Vec<Note>,
+) -> Result<NotesImportPreview, String> {
+    let preview = notes_import_preview(&data.notes, &imported)?;
+    let known: HashSet<String> = data.notes.iter().map(|note| note.id.clone()).collect();
+    data.notes.extend(
+        imported
+            .into_iter()
+            .filter(|note| !known.contains(&note.id)),
+    );
+    Ok(preview)
+}
+
+#[tauri::command]
+fn export_notes_json(store: State<'_, Mutex<Store>>) -> Result<String, String> {
+    let locked = store
+        .lock()
+        .map_err(|_| "Storage lock poisoned".to_owned())?;
+    if locked.data.notes.len() > NOTES_TRANSFER_MAX_COUNT {
+        return Err("Export supports at most 250 notes per snapshot".into());
+    }
+    let transfer = NotesTransfer {
+        format: NOTES_TRANSFER_FORMAT.into(),
+        version: 1,
+        notes: locked.data.notes.clone(),
+    };
+    let json = serde_json::to_string_pretty(&transfer).map_err(|error| error.to_string())?;
+    validate_notes_transfer(&json)?;
+    Ok(json)
+}
+
+#[tauri::command]
+fn preview_notes_import(
+    store: State<'_, Mutex<Store>>,
+    payload: String,
+) -> Result<NotesImportPreview, String> {
+    let notes = validate_notes_transfer(&payload)?;
+    let locked = store
+        .lock()
+        .map_err(|_| "Storage lock poisoned".to_owned())?;
+    notes_import_preview(&locked.data.notes, &notes)
+}
+
+#[tauri::command]
+fn import_notes_json(store: State<'_, Mutex<Store>>, payload: String) -> Result<AppData, String> {
+    // Validate the complete payload before opening a write transaction.
+    let notes = validate_notes_transfer(&payload)?;
+    // Recheck collision and quota within the same atomic transaction. Even if
+    // another edit happened after UI preview, existing IDs are never changed.
+    with_store(store, |state| {
+        import_notes_into(state, notes)?;
+        Ok(())
+    })
+}
+
 // Calendar events are local only; no OS calendar is modified.
 fn validate_event(
     title: &str,
@@ -1526,6 +1682,9 @@ fn main() {
             create_note_from_draft,
             update_note,
             remove_note,
+            export_notes_json,
+            preview_notes_import,
+            import_notes_json,
             add_event,
             update_event,
             remove_event,
@@ -1641,6 +1800,89 @@ mod tests {
         assert_eq!(store.data, snapshot);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn notes_json_import_preview_rejects_bad_data_and_remains_idempotent() {
+        let original = Note {
+            id: "n1".into(),
+            title: "Existing".into(),
+            body: "Keep original".into(),
+            updated_ms: 11,
+            tags: vec!["work".into()],
+            revision: 3,
+        };
+        let other = Note {
+            id: "n2".into(),
+            title: "Imported".into(),
+            body: "<script>preserved as plain text</script>".into(),
+            updated_ms: 14,
+            tags: vec!["notes".into()],
+            revision: 0,
+        };
+        let transfer = NotesTransfer {
+            format: NOTES_TRANSFER_FORMAT.into(),
+            version: 1,
+            notes: vec![original.clone(), other.clone()],
+        };
+        let json = serde_json::to_string(&transfer).unwrap();
+        let parsed = validate_notes_transfer(&json).unwrap();
+        let preview = notes_import_preview(std::slice::from_ref(&original), &parsed).unwrap();
+        assert_eq!(
+            preview,
+            NotesImportPreview {
+                incoming: 2,
+                new_count: 1,
+                existing_count: 1
+            }
+        );
+        let path = temp_file("notes-import");
+        let mut store = Store::open(path.clone()).unwrap();
+        store
+            .transact(|data| {
+                data.notes.push(original.clone());
+                Ok(())
+            })
+            .unwrap();
+        store
+            .transact(|data| {
+                import_notes_into(data, parsed.clone())?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(store.data.notes, vec![original.clone(), other.clone()]);
+        store
+            .transact(|data| {
+                let result = import_notes_into(data, parsed.clone())?;
+                assert_eq!(result.new_count, 0);
+                assert_eq!(result.existing_count, 2);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            Store::open(path.clone()).unwrap().data.notes,
+            vec![original, other]
+        );
+        let mut doubled = transfer.notes.clone();
+        doubled.push(doubled[0].clone());
+        let bad = serde_json::to_string(&NotesTransfer {
+            format: NOTES_TRANSFER_FORMAT.into(),
+            version: 1,
+            notes: doubled,
+        })
+        .unwrap();
+        assert!(validate_notes_transfer(&bad).is_err());
+        assert!(validate_notes_transfer("{broken").is_err());
+        assert!(validate_notes_transfer(&"a".repeat(NOTES_TRANSFER_MAX_BYTES + 1)).is_err());
+        let mut invalid = transfer;
+        invalid.version = 2;
+        assert!(validate_notes_transfer(&serde_json::to_string(&invalid).unwrap()).is_err());
+        invalid.version = 1;
+        invalid.notes[0].tags = vec!["CAPITAL".into()];
+        assert!(validate_notes_transfer(&serde_json::to_string(&invalid).unwrap()).is_err());
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("json.bak"));
+        let _ = fs::remove_file(path.with_extension("json.bak.prev"));
     }
 
     #[test]

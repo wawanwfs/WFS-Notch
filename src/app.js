@@ -76,6 +76,42 @@ function readPendingNote() {
   } catch (_) { return null; }
 }
 
+
+const notesImportFormat = 'wfs-notch-notes';
+let notesImportPreview = null;
+let notesImportPayload = null;
+function parseNotesTransfer(payload, existing) {
+  if (new TextEncoder().encode(payload).length > 1024 * 1024)
+    throw new Error('Notes JSON exceeds the 1 MiB limit');
+  let parsed;
+  try { parsed = JSON.parse(payload); }
+  catch (_) { throw new Error('Invalid Notes JSON'); }
+  if (!parsed || parsed.format !== notesImportFormat || parsed.version !== 1 ||
+    !Array.isArray(parsed.notes)) throw new Error('Unsupported Notes JSON format/version');
+  if (parsed.notes.length > 250) throw new Error('A Notes import supports at most 250 entries');
+  const seen = new Set();
+  for (const note of parsed.notes) {
+    if (!note || typeof note.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(note.id) ||
+      seen.has(note.id)) throw new Error('Notes JSON contains duplicate or invalid IDs');
+    seen.add(note.id);
+    if (typeof note.title !== 'string' || [...note.title].length > 200 ||
+      typeof note.body !== 'string' || [...note.body].length > 50000 ||
+      !Number.isSafeInteger(note.updated_ms) || note.updated_ms < 0 ||
+      !Number.isSafeInteger(note.revision ?? 0) || (note.revision ?? 0) > 1e9)
+      throw new Error('Notes JSON contains invalid content/revision');
+    const tags = normalizeDraftTags(note.tags || []);
+    if (JSON.stringify(tags) !== JSON.stringify(note.tags || []))
+      throw new Error('Notes JSON tags must be canonical');
+    if (Object.keys(note).some(key => !['id','title','body','updated_ms','tags','revision'].includes(key)))
+      throw new Error('Notes JSON contains unsupported fields');
+  }
+  const known = new Set(existing.map(note => note.id));
+  const newCount = parsed.notes.filter(note => !known.has(note.id)).length;
+  if (existing.length + newCount > 500) throw new Error('Notes import exceeds the 500 note safety limit');
+  return {notes:parsed.notes, incoming:parsed.notes.length,
+    new_count:newCount, existing_count:parsed.notes.length - newCount};
+}
+
 function focusView(focus, current = Date.now()) {
   const remaining = focus.ends_at_ms == null
     ? focus.remaining_seconds
@@ -140,6 +176,17 @@ function previewInvoke(command, args = {}) {
     if (!remaining) { state.countdown.ends_at_ms = null; state.countdown.completed = true; }
   }
   if (command === 'load_data') return Promise.resolve(state);
+  if (command === 'export_notes_json') {
+    if (state.notes.length > 250) throw new Error('Export supports at most 250 notes');
+    const json = JSON.stringify({format:notesImportFormat, version:1, notes:state.notes},null,2);
+    parseNotesTransfer(json, []);
+    return Promise.resolve(json);
+  }
+  if (command === 'preview_notes_import') {
+    const checked = parseNotesTransfer(args.payload, state.notes);
+    return Promise.resolve({incoming:checked.incoming, new_count:checked.new_count,
+      existing_count:checked.existing_count});
+  }
   switch (command) {
     case 'add_todo': {
       const title = String(args.title).trim();
@@ -170,6 +217,12 @@ function previewInvoke(command, args = {}) {
       state.todos = state.todos.filter(item => item.id !== args.id); break;
     }
     case 'add_note': state.notes.push({ id: nextId(), title: 'Untitled', body: '', updated_ms: Date.now(), tags: [], revision: 0 }); break;
+    case 'import_notes_json': {
+      const checked = parseNotesTransfer(args.payload, state.notes);
+      const known = new Set(state.notes.map(note => note.id));
+      state.notes.push(...checked.notes.filter(note => !known.has(note.id)));
+      break;
+    }
     case 'create_note_from_draft': {
       if (String(args.title).length > 200 || String(args.body).length > 50_000) throw new Error('Note is too long');
       const tags = normalizeDraftTags(args.tags);
@@ -1075,6 +1128,62 @@ function bind() {
     })) cancelTodoEdit();
   });
   $('#todo-edit-cancel').addEventListener('click', cancelTodoEdit);
+
+  // Explicit local-only JSON transfer. Preview never writes and each import
+  // rechecks the full payload and existing IDs under Rust's storage transaction.
+  $('#notes-import-json').addEventListener('input', () => {
+    notesImportPreview = null;
+    notesImportPayload = null;
+    $('#notes-import-apply').disabled = true;
+    $('#notes-transfer-status').textContent = 'Changed input. Preview again before importing.';
+  });
+  $('#notes-export-button').addEventListener('click', async () => {
+    if (!(await flushNote())) return;
+    await writeQueue;
+    try {
+      const payload = await invoke('export_notes_json');
+      $('#notes-export-json').value = payload;
+      $('#notes-export-json').focus();
+      $('#notes-export-json').select();
+      $('#notes-transfer-status').textContent = 'JSON prepared locally. Copy the selected text to a safe private file.';
+    } catch (error) {
+      $('#notes-transfer-status').textContent = 'Cannot export Notes JSON.';
+      showError(error);
+    }
+  });
+  $('#notes-import-preview').addEventListener('click', async () => {
+    const payload = $('#notes-import-json').value;
+    notesImportPayload = null;
+    notesImportPreview = null;
+    $('#notes-import-apply').disabled = true;
+    try {
+      if (!(await flushNote())) return;
+      await writeQueue;
+      notesImportPreview = await invoke('preview_notes_import', {payload});
+      notesImportPayload = payload;
+      const result = notesImportPreview;
+      $('#notes-transfer-status').textContent = result.new_count + ' new note(s), ' +
+        result.existing_count + ' existing ID(s) will be skipped. Nothing has been imported.';
+      $('#notes-import-apply').disabled = result.new_count === 0;
+    } catch (error) {
+      $('#notes-transfer-status').textContent = 'Import preview rejected: ' + (error?.message || String(error));
+    }
+  });
+  $('#notes-import-apply').addEventListener('click', async () => {
+    if (!notesImportPreview || notesImportPayload !== $('#notes-import-json').value ||
+      notesImportPreview.new_count === 0) return;
+    if (!(await flushNote())) return;
+    if (!window.confirm('Import new Notes from the previewed JSON? Existing note IDs and content will never be replaced.')) return;
+    const before = new Set(data.notes.map(note => note.id));
+    if (await mutation('import_notes_json', {payload:notesImportPayload})) {
+      const imported = data.notes.filter(note => !before.has(note.id)).length;
+      $('#notes-transfer-status').textContent = 'Imported ' + imported +
+        ' new note(s). Existing Notes were preserved; repeat imports skip matching IDs.';
+      notesImportPayload = null;
+      notesImportPreview = null;
+      $('#notes-import-apply').disabled = true;
+    }
+  });
   $('#note-new').addEventListener('click', async () => {
     if (!(await flushNote())) return;
     const previous = new Set(data.notes.map(note => note.id));

@@ -128,3 +128,11 @@ Do not count these as two additional reference categories completed: fixed 38-ca
 ## Phase 28A1 — Notes optimistic concurrency PR candidate
 
 Baseline v0.27.0 latest green main `f51ff8ef892acde476a60273998426a73c67a90a`, [CI 42537043664](https://github.com/wawanwfs/WFS-Notch/actions/runs/42537043664) all four jobs PASS. Workstream Phase28A1 branch `feat/phase28a-note-revisions-conflict-recovery`: native Notes revision CAS, explicit conflict actions, local draft restoration, stale-delete protection, tests. PR/main checks must pass before claiming completion. Notes JSON export/import not yet included; follow in separate PR. Native Win10/11 remains NOT TESTED and reference parity fixed 28.9%.
+
+## Phase28A1 — exact verified code baseline
+
+PR [#32](https://github.com/wawanwfs/WFS-Notch/pull/32) merged into main `266f27e6e80df3f5cda96bdaaa780b5e29fcc921`, exact-main [CI 42543253059](https://github.com/wawanwfs/WFS-Notch/actions/runs/42543253059) all four PASS (plus independent PR-head green run). Notes revision CAS and local draft conflicts shipped as v0.28.0. Native Windows GUI NOT TESTED.
+
+## Phase28A2 — bounded local JSON interchange PR candidate
+
+Branch `feat/phase28a-notes-json-interchange` adds native JSON export/preview/append-only import and private user-confirmed copy/paste UI. Verify exact PR and main workflow before marking shipped. Preview does not mutate disk; duplicate IDs are skipped without replacing content. No path permissions, uploads or cloud sync.
