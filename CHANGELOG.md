@@ -1,3 +1,11 @@
+## 0.29.0 — Phase 28A2: local Notes JSON preview/export/import
+
+- Native WFS Notes JSON schema `{"format":"wfs-notch-notes","version":1,"notes":[...]}` with strict 1 MiB UTF-8 payload limit, max 250 entries/snapshot and 500 total notes. Validate IDs, title/body size, revision bounds, canonical tags and duplicate IDs **before** any write.
+- Real Rust `export_notes_json`, `preview_notes_import`, and atomic `import_notes_json` commands. Imports append *only* IDs not already stored, atomically recompute collisions/quota, and preserve existing note content/revisions/tags, calendars, notification ledgers, preferences, timers and backups. Reimport skips all existing IDs.
+- Accessible Notes UI disclosure for explicit local copy/paste, readonly JSON export and preview-before-import/confirmation; no implicit paths, filesystem permissions, remote sync, hidden files or upload.
+- Added unit tests for malformed/oversized/duplicate/unsupported-schema/canonical-tag input, native atomic idempotence and note content preservation; Playwright covers export, preview, repeated import, invalid data and XSS-safe rendering.
+- Native Windows 10/11 GUI and cross-device manual export/import remain **NOT TESTED**; fixed 38-category reference parity stays 28.9%.
+
 ## 0.28.0 — Phase 28A1: Notes conflict-safe revisions and locally recoverable drafts
 
 - New `revision` on each Note, default 0 for legacy JSON, increments only when content/tags change. Native `update_note` requires `expectedRevision` and checks under the storage mutex before disk write. `remove_note` also checks a revision, preventing stale destructive deletion.

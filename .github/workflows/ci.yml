@@ -74,6 +74,8 @@ jobs:
         run: python tests/browser_calendar_notes.py
       - name: Note optimistic revision / conflict / recovered draft regression
         run: python tests/browser_note_conflicts.py
+      - name: Notes JSON preview / idempotent import / export browser regression
+        run: python tests/browser_notes_json.py
       - name: Phase 15 date-only calendar and recurring-series preview
         run: python tests/browser_calendar_all_day.py
       - name: Phase 16 timed calendar and cancellation preview
