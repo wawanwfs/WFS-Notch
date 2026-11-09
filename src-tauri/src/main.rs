@@ -1445,6 +1445,27 @@ fn preserve_reminder_history(recovered: &mut AppData, existing: &AppData) {
     }
 }
 
+/// A restore must not make a stale editor revision appear current again.
+/// IDs that exist both before and after restore receive a fresh higher revision;
+/// unchanged or deleted IDs in other snapshots are never rewritten here.
+fn preserve_note_revisions(recovered: &mut AppData, existing: &AppData) -> Result<(), String> {
+    let revisions: HashMap<&str, u64> = existing
+        .notes
+        .iter()
+        .map(|note| (note.id.as_str(), note.revision))
+        .collect();
+    for note in &mut recovered.notes {
+        if let Some(current_revision) = revisions.get(note.id.as_str()) {
+            note.revision = note
+                .revision
+                .max(*current_revision)
+                .checked_add(1)
+                .ok_or("Cannot restore: note revision limit exceeded")?;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn restore_backup(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
     let mut locked = store
@@ -1454,6 +1475,7 @@ fn restore_backup(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData,
     let mut recovered = read_state(&path)?;
     recovered.sanitize();
     preserve_reminder_history(&mut recovered, &locked.data);
+    preserve_note_revisions(&mut recovered, &locked.data)?;
     // Restore is transactional and retains the previous state as state.json.bak.
     locked.transact(|state| {
         *state = recovered;
@@ -1800,6 +1822,54 @@ mod tests {
         assert_eq!(store.data, snapshot);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("json.bak"));
+    }
+
+    #[test]
+    fn restoring_old_notes_advances_revisions_without_overwriting_other_data() {
+        let mut current = AppData::default();
+        current.notes.push(Note {
+            id: "same".into(),
+            title: "Current text".into(),
+            body: "Later".into(),
+            updated_ms: 200,
+            tags: vec!["current".into()],
+            revision: 6,
+        });
+        let mut recovered = AppData::default();
+        recovered.notes.push(Note {
+            id: "same".into(),
+            title: "Old text".into(),
+            body: "Earlier".into(),
+            updated_ms: 100,
+            tags: vec!["backup".into()],
+            revision: 1,
+        });
+        recovered.notes.push(Note {
+            id: "only-in-backup".into(),
+            title: "Preserved".into(),
+            body: "Retain".into(),
+            updated_ms: 50,
+            tags: vec![],
+            revision: 3,
+        });
+        preserve_note_revisions(&mut recovered, &current).unwrap();
+        assert_eq!(recovered.notes[0].revision, 7);
+        assert_eq!(recovered.notes[0].title, "Old text");
+        assert_eq!(recovered.notes[0].body, "Earlier");
+        assert_eq!(recovered.notes[0].updated_ms, 100);
+        assert_eq!(recovered.notes[0].tags, vec!["backup"]);
+        assert_eq!(recovered.notes[1].revision, 3);
+        let before = recovered.notes[0].clone();
+        assert!(apply_note_update(&mut recovered.notes[0], "Stale", "Clobber", None, 6).is_err());
+        assert_eq!(recovered.notes[0], before);
+        assert!(apply_note_update(&mut recovered.notes[0], "Stale", "Clobber", None, 1).is_err());
+        assert_eq!(recovered.notes[0], before);
+
+        // Reject overflow before transaction; even badly formed old snapshots
+        // cannot silently wrap the monotonic token back to zero.
+        let mut overflow = recovered.clone();
+        overflow.notes[0].revision = u64::MAX;
+        assert!(preserve_note_revisions(&mut overflow, &current).is_err());
     }
 
     #[test]

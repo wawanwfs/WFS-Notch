@@ -136,3 +136,7 @@ PR [#32](https://github.com/wawanwfs/WFS-Notch/pull/32) merged into main `266f27
 ## Phase28A2 — bounded local JSON interchange PR candidate
 
 Branch `feat/phase28a-notes-json-interchange` adds native JSON export/preview/append-only import and private user-confirmed copy/paste UI. Verify exact PR and main workflow before marking shipped. Preview does not mutate disk; duplicate IDs are skipped without replacing content. No path permissions, uploads or cloud sync.
+
+## Phase28A3 — backup-restore revision safety PR candidate
+
+Source baseline v0.29.0 `408744a28e2886b5dbc7bade957a52a48a6e7a5d`, exact-main [CI 42544852146](https://github.com/wawanwfs/WFS-Notch/actions/runs/42544852146) ALL FOUR PASS (93 Rust tests). Branch `fix/phase28a-notes-restore-revisions` prevents backed-up Notes from resetting optimistic revisions for overlapping note IDs and introduces focused Rust+browser regressions. Validate exact head and post-merge main CI before declaring this safe to ship. No interactive Win10/11 acceptance evidence; fixed REA remains 28.9%.

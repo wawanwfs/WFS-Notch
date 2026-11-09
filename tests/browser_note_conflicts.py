@@ -133,6 +133,33 @@ with sync_playwright() as playwright:
     assert page4.locator("#note-title").input_value() == "Newer stored content"
     assert page4.evaluate("localStorage.getItem(noteDraftKey)") is None
 
+    # User-initiated restore of an old backup must not reset a note revision:
+    # stale editors that held the pre-restore number must be rejected.
+    page4.evaluate("""async () => {
+      await previewInvoke('create_backup');
+      const note = JSON.parse(localStorage.getItem(previewKey)).notes[0];
+      await previewInvoke('update_note', {id:note.id,title:'Newer version',
+        body:'Later saved body',tags:note.tags,expectedRevision:note.revision || 0});
+    }""")
+    result = page4.evaluate("""async () => {
+      const before = JSON.parse(localStorage.getItem(previewKey)).notes[0];
+      const backups = await previewInvoke('list_backups');
+      const snapshot = JSON.parse(localStorage.getItem(previewBackupsKey))[0].snapshot;
+      const backupTitle = snapshot.notes.find(item => item.id === before.id).title;
+      const restored = await previewInvoke('restore_backup', {id:backups[0].id});
+      const note = restored.notes.find(item => item.id === before.id);
+      let rejected = false;
+      try {
+        await previewInvoke('update_note', {id:note.id,title:'Stale',
+          body:'Do not overwrite',tags:note.tags,expectedRevision:before.revision});
+      } catch (error) { rejected = String(error).includes('NOTE_CONFLICT'); }
+      return {oldRevision:before.revision, restoredRevision:note.revision,
+        restoredTitle:note.title, backupTitle, rejected};
+    }""")
+    assert result["restoredRevision"] > result["oldRevision"]
+    assert result["rejected"] is True
+    assert result["restoredTitle"] == result["backupTitle"]
+
     assert not (errors + errors2 + errors3 + errors4), "JS exceptions: " + str(
         errors + errors2 + errors3 + errors4)
     browser.close()

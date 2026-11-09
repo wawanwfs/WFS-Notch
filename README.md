@@ -11,6 +11,7 @@ WFS Notch brings an expandable top-edge panel with a calendar, tasks, notes, foc
 - Lightweight notch with opt-in Win32 fullscreen-aware topmost handling, stable unique display-name selection across screen rearrangement, safe legacy coordinate fallback, DPI/topology re-positioning, tray and autostart.
 - Two retained local state recovery generations (`state.json.bak` and `state.json.bak.prev`) with startup fallback when primary/latest backup are unreadable; no destructive installer migration.
 - Local accessibility preferences: compact or comfortable density, optional minimal motion, high contrast and safe reset; stored in the same private native JSON with backwards compatibility.
+- Notes backup restore advances revisions for shared IDs so stale editor windows cannot overwrite restored content.
 - Local Notes JSON preview/import/export (strict 1 MiB / 250-note snapshots, dedup by ID and atomic append-only import), explicit user copy/paste with no network.
 - Conflict-safe Notes: versioned optimistic saves, local crash-recoverable drafts, explicit reload or save-as-new resolution without overwriting newer edits. No cloud sync.
 - Private local Notes tags (up to 8), tag-aware search and an accessible filter; older notes load without destructive migration.
