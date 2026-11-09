@@ -447,7 +447,9 @@ async function requestCollapse() {
 
 async function switchTab(tab) {
   if (tab === activeTab) return;
-  if (!(await flushNote())) return;
+  // Opening Notes must never silently commit a recovered draft; only leaving
+  // the Notes workspace flushes the active editor first.
+  if (tab !== 'notes' && !(await flushNote())) return;
   activeTab = tab;
   $$('.tab').forEach(button => {
     const selected = button.dataset.tab === tab;
