@@ -1289,6 +1289,159 @@ mod tests {
         assert!(!exported.contains("RRULE:")); // intentionally flattened
     }
 
+
+    #[test]
+    fn recurrence_id_relocates_one_occurrence_with_stable_id_and_strict_roundtrip() {
+        let input = concat!(
+            "BEGIN:VCALENDAR\nVERSION:2.0\n",
+            "BEGIN:VEVENT\nUID:scope2027@example.org\n",
+            "SUMMARY:Master\nDESCRIPTION:Original description\n",
+            "DTSTART:20270614T090000Z\nDTEND:20270614T100000Z\n",
+            "RRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\n",
+            "BEGIN:VEVENT\nUID:scope2027@example.org\n",
+            "RECURRENCE-ID:20270615T090000Z\n",
+            "SUMMARY:Moved only second\nDESCRIPTION:Exception notes\n",
+            "DTSTART:20270615T113000Z\nDTEND:20270615T123000Z\n",
+            "END:VEVENT\nEND:VCALENDAR\n"
+        );
+        let (events, sources) = parse_ics_bundle(input, None).unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].overrides.len(), 1);
+        assert_eq!(events.len(), 3);
+        let original_second = utc_to_ms("20270615T090000Z").unwrap();
+        let moved_second = events
+            .iter()
+            .find(|item| item.id == format!("ics:scope2027@example.org:{original_second}"))
+            .unwrap();
+        assert_eq!(moved_second.title, "Moved only second");
+        assert_eq!(moved_second.description, "Exception notes");
+        assert_eq!(moved_second.starts_at_ms, utc_to_ms("20270615T113000Z").unwrap());
+        assert_eq!(moved_second.ends_at_ms, Some(utc_to_ms("20270615T123000Z").unwrap()));
+        assert_eq!(events.iter().filter(|item| item.title == "Master").count(), 2);
+        let mut data = AppData::default();
+        data.events = events.clone();
+        data.calendar_series.insert(sources[0].uid.clone(), sources[0].clone());
+        let output = serialize_ics_with_sources(&data).unwrap();
+        assert_eq!(output.matches("RRULE:").count(), 1);
+        assert_eq!(output.matches("RECURRENCE-ID:").count(), 1);
+        let (reimported, reimported_sources) = parse_ics_bundle(&output, None).unwrap();
+        let canonical = |mut list: Vec<CalendarEvent>| {
+            list.sort_by(|a, b| a.id.cmp(&b.id));
+            list.into_iter()
+                .map(|item| (item.id, item.title, item.description, item.starts_at_ms,
+                    item.ends_at_ms, item.series_uid))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(canonical(events), canonical(reimported.clone()));
+        assert_eq!(reimported_sources.len(), 1);
+        merge_imported_events(&mut data, reimported).unwrap();
+        assert_eq!(data.events.len(), 3);
+        // A subsequent local title edit must flatten the entire source
+        // instead of exporting a stale RRULE plus changed instance.
+        data.events[1].title = "Local user edit".into();
+        let flattened = serialize_ics_with_sources(&data).unwrap();
+        assert!(!flattened.contains("RRULE:"));
+        assert!(!flattened.contains("RECURRENCE-ID:"));
+        assert_eq!(parse_ics(&flattened, None).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn occurrence_override_preserves_iana_dst_instant_and_date_only_span() {
+        let local = concat!(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:tz-override@example.org\n",
+            "SUMMARY:Local master\nDTSTART;TZID=America/New_York:20270313T093000\n",
+            "DURATION:PT1H\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\n",
+            "BEGIN:VEVENT\nUID:tz-override@example.org\n",
+            "RECURRENCE-ID;TZID=America/New_York:20270314T093000\n",
+            "SUMMARY:Local moved\nDTSTART;TZID=America/New_York:20270314T103000\n",
+            "DURATION:PT1H\nEND:VEVENT\nEND:VCALENDAR"
+        );
+        let (events, source) = parse_ics_bundle(local, None).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(source[0].overrides.len(), 1);
+        let second = events
+            .iter()
+            .find(|item| item.id.ends_with(&utc_to_ms("20270314T133000Z").unwrap().to_string()))
+            .unwrap();
+        assert_eq!(second.starts_at_ms, utc_to_ms("20270314T143000Z").unwrap());
+        assert_eq!(second.ends_at_ms, Some(utc_to_ms("20270314T153000Z").unwrap()));
+        let mut data = AppData::default();
+        data.events = events;
+        data.calendar_series.insert(source[0].uid.clone(), source[0].clone());
+        assert!(serialize_ics_with_sources(&data).unwrap()
+            .contains("RECURRENCE-ID;TZID=America/New_York:20270314T093000"));
+
+        let days = concat!(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:days2027@example.org\n",
+            "SUMMARY:All-day source\nDTSTART;VALUE=DATE:20270614\n",
+            "DTEND;VALUE=DATE:20270615\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\n",
+            "BEGIN:VEVENT\nUID:days2027@example.org\n",
+            "RECURRENCE-ID;VALUE=DATE:20270615\n",
+            "SUMMARY:Moved date\nDTSTART;VALUE=DATE:20270618\n",
+            "DTEND;VALUE=DATE:20270619\nEND:VEVENT\nEND:VCALENDAR"
+        );
+        let (dates, sources) = parse_ics_bundle(days, None).unwrap();
+        assert_eq!(dates.len(), 3);
+        let item = dates.iter().find(|event| event.title == "Moved date").unwrap();
+        assert_eq!(item.id, format!("ics:days2027@example.org:{}", utc_to_ms("20270615T000000Z").unwrap()));
+        assert_eq!(item.all_day.as_ref().unwrap().start_date, "2027-06-18");
+        assert_eq!(item.all_day.as_ref().unwrap().end_date_exclusive, "2027-06-19");
+        let mut data = AppData::default();
+        data.events = dates;
+        data.calendar_series.insert(sources[0].uid.clone(), sources[0].clone());
+        let export = serialize_ics_with_sources(&data).unwrap();
+        assert_eq!(export.matches("RECURRENCE-ID;VALUE=DATE:").count(), 1);
+        assert_eq!(parse_ics(&export, None).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn recurrence_id_ambiguous_unsupported_or_collision_fails_closed() {
+        let master = concat!(
+            "BEGIN:VEVENT\nUID:safe2027@example.org\n",
+            "SUMMARY:Master\nDTSTART:20270614T090000Z\n",
+            "RRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\n"
+        );
+        let prefix = "BEGIN:VCALENDAR\n";
+        let suffix = "END:VCALENDAR\n";
+        let bad = [
+            // Mismatch with all original DTSTART instants.
+            "UID:safe2027@example.org\nRECURRENCE-ID:20270618T090000Z\nSUMMARY:X\nDTSTART:20270618T090000Z\n",
+            // Prohibited RANGE=THISANDFUTURE and TZID reinterpretation.
+            "UID:safe2027@example.org\nRECURRENCE-ID;RANGE=THISANDFUTURE:20270615T090000Z\nSUMMARY:X\nDTSTART:20270615T113000Z\n",
+            "UID:safe2027@example.org\nRECURRENCE-ID;TZID=Etc/UTC:20270615T090000\nSUMMARY:X\nDTSTART:20270615T113000Z\n",
+            // Only one occurrence may resolve to a single start in this series.
+            "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSUMMARY:X\nDTSTART:20270616T090000Z\n",
+            // No unknown standalone occurrence UID may be silently grafted.
+            "UID:other@example.org\nRECURRENCE-ID:20270615T090000Z\nSUMMARY:X\nDTSTART:20270615T113000Z\n",
+            // Explicit cancellation tombstones aren't supported yet.
+            "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSTATUS:CANCELLED\n",
+            // An override cannot silently change the all-day/timed kind.
+            "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSUMMARY:X\nDTSTART;VALUE=DATE:20270615\n",
+        ];
+        for exception in bad {
+            let input = format!(
+                "{prefix}{master}BEGIN:VEVENT\n{exception}END:VEVENT\n{suffix}"
+            );
+            assert!(parse_ics_bundle(&input, None).is_err(), "{exception}");
+        }
+        let repeated = concat!(
+            "BEGIN:VEVENT\nUID:safe2027@example.org\n",
+            "RECURRENCE-ID:20270615T090000Z\nSUMMARY:X\nDTSTART:20270615T113000Z\nEND:VEVENT\n"
+        );
+        let duplicate = format!("{prefix}{master}{repeated}{repeated}{suffix}");
+        assert!(parse_ics_bundle(&duplicate, None).is_err());
+        let dst = concat!(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:gap2027@example.org\n",
+            "SUMMARY:NY master\nDTSTART;TZID=America/New_York:20270313T093000\n",
+            "RRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\n",
+            "BEGIN:VEVENT\nUID:gap2027@example.org\n",
+            "RECURRENCE-ID;TZID=America/New_York:20270314T093000\n",
+            "SUMMARY:DST gap\nDTSTART;TZID=America/New_York:20270314T023000\n",
+            "END:VEVENT\nEND:VCALENDAR"
+        );
+        assert!(parse_ics_bundle(dst, None).unwrap_err().contains("Nonexistent"));
+    }
+
     #[test]
     fn unsupported_rrule_override_and_timed_end_fail_atomically() {
         for suffix in [
