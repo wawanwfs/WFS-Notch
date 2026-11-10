@@ -102,12 +102,21 @@ impl SeriesSource {
                     && exception.dtstart.0.starts_with("DTSTART")
                     && exception.dtstart.0.len() <= 110
                     && exception.dtstart.1.len() <= 80
-                    && exception.dtend.as_ref().is_none_or(|(key, value)| key.len() <= 110 && value.len() <= 80)
-                    && exception.duration.as_ref().is_none_or(|value| value.len() <= 36)
+                    && exception
+                        .dtend
+                        .as_ref()
+                        .is_none_or(|(key, value)| key.len() <= 110 && value.len() <= 80)
+                    && exception
+                        .duration
+                        .as_ref()
+                        .is_none_or(|value| value.len() <= 36)
                     && exception.title.chars().count() <= 200
                     && !exception.title.trim().is_empty()
                     && exception.description.chars().count() <= 2000
-                    && matches!(exception.reminder_minutes, None | Some(0 | 5 | 15 | 30 | 60))
+                    && matches!(
+                        exception.reminder_minutes,
+                        None | Some(0 | 5 | 15 | 30 | 60)
+                    )
             })
             && self.modified_occurrence_ids.iter().all(|key| {
                 key.starts_with(id) && key.len() <= 240 && !key.chars().any(char::is_control)
@@ -358,7 +367,6 @@ fn parse_timed_duration(raw: &str) -> Result<u64, String> {
         .ok_or_else(|| "DURATION overflow".to_owned())
 }
 
-
 /// Apply an explicit single-occurrence override ONLY if we can establish the
 /// original occurrence key from a validated master. All caller mutations are
 /// to an in-memory vector; the importer commits the entire calendar atomically.
@@ -404,7 +412,10 @@ fn apply_ics_overrides(
         if original_key != &expected_key
             || source.dtstart.1.ends_with('Z') != original_value.ends_with('Z')
         {
-            return Err("RECURRENCE-ID timezone/kind differs from the master or has unsupported RANGE".into());
+            return Err(
+                "RECURRENCE-ID timezone/kind differs from the master or has unsupported RANGE"
+                    .into(),
+            );
         }
         let all_day = events
             .iter()
@@ -423,9 +434,13 @@ fn apply_ics_overrides(
         }
         let index = events
             .iter()
-            .position(|event| event.id == target_id && event.series_uid.as_deref() == Some(&series_key))
+            .position(|event| {
+                event.id == target_id && event.series_uid.as_deref() == Some(&series_key)
+            })
             .ok_or("RECURRENCE-ID does not match a materialized original occurrence")?;
-        let title = override_event.title.ok_or("Override requires explicit SUMMARY")?;
+        let title = override_event
+            .title
+            .ok_or("Override requires explicit SUMMARY")?;
         if override_event.start_property.as_ref().map(|item| &item.0) != Some(&source.dtstart.0)
             || override_event
                 .start_property
@@ -446,7 +461,9 @@ fn apply_ics_overrides(
             return Err("Override must explicitly include inherited DURATION".into());
         }
         if source.reminder_minutes.is_some() && override_event.reminder.is_none() {
-            return Err("Override must explicitly retain its source reminder or fail safely".into());
+            return Err(
+                "Override must explicitly retain its source reminder or fail safely".into(),
+            );
         }
         let (start_ms, end_ms, span) = if all_day {
             let day = override_event
@@ -459,7 +476,11 @@ fn apply_ics_overrides(
                 return Err("All-day override cannot contain timed fields or alarms".into());
             }
             let next = if let Some((key, value)) = override_event.end_property.as_ref() {
-                if source.dtend.as_ref().is_some_and(|existing| existing.0 != *key) {
+                if source
+                    .dtend
+                    .as_ref()
+                    .is_some_and(|existing| existing.0 != *key)
+                {
                     return Err("All-day override DTEND kind must match its source".into());
                 }
                 parse_ics_date(key, value)?
@@ -478,21 +499,30 @@ fn apply_ics_overrides(
                 .ok_or("Timed override requires DTSTART")?
                 .occurrences(None)?[0];
             let elapsed = if let Some((key, value)) = override_event.end_property.as_ref() {
-                if source.dtend.as_ref().is_some_and(|existing| existing.0 != *key) {
+                if source
+                    .dtend
+                    .as_ref()
+                    .is_some_and(|existing| existing.0 != *key)
+                {
                     return Err("Override DTEND timezone/kind must match its source".into());
                 }
-                let end = CalendarStart::parse(key, value, floating_timezone)?
-                    .occurrences(None)?[0];
-                Some(end.checked_sub(start).filter(|span| *span > 0)
-                    .ok_or("Override DTEND must be after DTSTART")?)
+                let end =
+                    CalendarStart::parse(key, value, floating_timezone)?.occurrences(None)?[0];
+                Some(
+                    end.checked_sub(start)
+                        .filter(|span| *span > 0)
+                        .ok_or("Override DTEND must be after DTSTART")?,
+                )
             } else {
-                override_event.duration_property
+                override_event
+                    .duration_property
                     .as_deref()
                     .map(parse_timed_duration)
                     .transpose()?
             };
-            let end = elapsed.map(|span| start.checked_add(span)
-                .ok_or("Override end overflow")).transpose()?;
+            let end = elapsed
+                .map(|span| start.checked_add(span).ok_or("Override end overflow"))
+                .transpose()?;
             validate_timed_end(start, end)?;
             (start, end, None)
         };
@@ -519,7 +549,9 @@ fn apply_ics_overrides(
         // override retains all explicit fields for a strict reimport round trip.
         source.overrides.push(SourceOccurrenceOverride {
             recurrence_id: (original_key.clone(), original_value.clone()),
-            dtstart: override_event.start_property.ok_or("Missing override source DTSTART")?,
+            dtstart: override_event
+                .start_property
+                .ok_or("Missing override source DTSTART")?,
             dtend: override_event.end_property,
             duration: override_event.duration_property,
             title,
@@ -858,7 +890,12 @@ fn parse_ics_bundle(
     if !calendar_open || !calendar_end || current.is_some() || events.is_empty() {
         return Err("Expected a complete VCALENDAR containing at least one VEVENT".into());
     }
-    apply_ics_overrides(&mut events, &mut sources, pending_overrides, floating_timezone)?;
+    apply_ics_overrides(
+        &mut events,
+        &mut sources,
+        pending_overrides,
+        floating_timezone,
+    )?;
     Ok((events, sources))
 }
 
@@ -950,19 +987,24 @@ fn safe_source_property(key: &str, value: &str) -> Result<String, String> {
     Ok(folded_line(&format!("{key}:{value}")))
 }
 
-
 fn source_override_vevent(
     uid: &str,
     exception: &SourceOccurrenceOverride,
 ) -> Result<String, String> {
     let mut out = String::from("BEGIN:VEVENT\r\n");
     out.push_str(&safe_source_property("UID", uid)?);
-    out.push_str(&safe_source_property("DTSTAMP", &ms_to_utc(now_ms() as u64))?);
+    out.push_str(&safe_source_property(
+        "DTSTAMP",
+        &ms_to_utc(now_ms() as u64),
+    )?);
     out.push_str(&safe_source_property(
         &exception.recurrence_id.0,
         &exception.recurrence_id.1,
     )?);
-    out.push_str(&safe_source_property(&exception.dtstart.0, &exception.dtstart.1)?);
+    out.push_str(&safe_source_property(
+        &exception.dtstart.0,
+        &exception.dtstart.1,
+    )?);
     if let Some((key, value)) = &exception.dtend {
         out.push_str(&safe_source_property(key, value)?);
     }
@@ -1289,7 +1331,6 @@ mod tests {
         assert!(!exported.contains("RRULE:")); // intentionally flattened
     }
 
-
     #[test]
     fn recurrence_id_relocates_one_occurrence_with_stable_id_and_strict_roundtrip() {
         let input = concat!(
@@ -1315,12 +1356,24 @@ mod tests {
             .unwrap();
         assert_eq!(moved_second.title, "Moved only second");
         assert_eq!(moved_second.description, "Exception notes");
-        assert_eq!(moved_second.starts_at_ms, utc_to_ms("20270615T113000Z").unwrap());
-        assert_eq!(moved_second.ends_at_ms, Some(utc_to_ms("20270615T123000Z").unwrap()));
-        assert_eq!(events.iter().filter(|item| item.title == "Master").count(), 2);
-        let mut data = AppData::default();
-        data.events = events.clone();
-        data.calendar_series.insert(sources[0].uid.clone(), sources[0].clone());
+        assert_eq!(
+            moved_second.starts_at_ms,
+            utc_to_ms("20270615T113000Z").unwrap()
+        );
+        assert_eq!(
+            moved_second.ends_at_ms,
+            Some(utc_to_ms("20270615T123000Z").unwrap())
+        );
+        assert_eq!(
+            events.iter().filter(|item| item.title == "Master").count(),
+            2
+        );
+        let mut data = AppData {
+            events: events.clone(),
+            ..Default::default()
+        };
+        data.calendar_series
+            .insert(sources[0].uid.clone(), sources[0].clone());
         let output = serialize_ics_with_sources(&data).unwrap();
         assert_eq!(output.matches("RRULE:").count(), 1);
         assert_eq!(output.matches("RECURRENCE-ID:").count(), 1);
@@ -1328,8 +1381,16 @@ mod tests {
         let canonical = |mut list: Vec<CalendarEvent>| {
             list.sort_by(|a, b| a.id.cmp(&b.id));
             list.into_iter()
-                .map(|item| (item.id, item.title, item.description, item.starts_at_ms,
-                    item.ends_at_ms, item.series_uid))
+                .map(|item| {
+                    (
+                        item.id,
+                        item.title,
+                        item.description,
+                        item.starts_at_ms,
+                        item.ends_at_ms,
+                        item.series_uid,
+                    )
+                })
                 .collect::<Vec<_>>()
         };
         assert_eq!(canonical(events), canonical(reimported.clone()));
@@ -1361,14 +1422,24 @@ mod tests {
         assert_eq!(source[0].overrides.len(), 1);
         let second = events
             .iter()
-            .find(|item| item.id.ends_with(&utc_to_ms("20270314T133000Z").unwrap().to_string()))
+            .find(|item| {
+                item.id
+                    .ends_with(&utc_to_ms("20270314T133000Z").unwrap().to_string())
+            })
             .unwrap();
         assert_eq!(second.starts_at_ms, utc_to_ms("20270314T143000Z").unwrap());
-        assert_eq!(second.ends_at_ms, Some(utc_to_ms("20270314T153000Z").unwrap()));
-        let mut data = AppData::default();
-        data.events = events;
-        data.calendar_series.insert(source[0].uid.clone(), source[0].clone());
-        assert!(serialize_ics_with_sources(&data).unwrap()
+        assert_eq!(
+            second.ends_at_ms,
+            Some(utc_to_ms("20270314T153000Z").unwrap())
+        );
+        let mut data = AppData {
+            events: events,
+            ..Default::default()
+        };
+        data.calendar_series
+            .insert(source[0].uid.clone(), source[0].clone());
+        assert!(serialize_ics_with_sources(&data)
+            .unwrap()
             .contains("RECURRENCE-ID;TZID=America/New_York:20270314T093000"));
 
         let days = concat!(
@@ -1382,13 +1453,28 @@ mod tests {
         );
         let (dates, sources) = parse_ics_bundle(days, None).unwrap();
         assert_eq!(dates.len(), 3);
-        let item = dates.iter().find(|event| event.title == "Moved date").unwrap();
-        assert_eq!(item.id, format!("ics:days2027@example.org:{}", utc_to_ms("20270615T000000Z").unwrap()));
+        let item = dates
+            .iter()
+            .find(|event| event.title == "Moved date")
+            .unwrap();
+        assert_eq!(
+            item.id,
+            format!(
+                "ics:days2027@example.org:{}",
+                utc_to_ms("20270615T000000Z").unwrap()
+            )
+        );
         assert_eq!(item.all_day.as_ref().unwrap().start_date, "2027-06-18");
-        assert_eq!(item.all_day.as_ref().unwrap().end_date_exclusive, "2027-06-19");
-        let mut data = AppData::default();
-        data.events = dates;
-        data.calendar_series.insert(sources[0].uid.clone(), sources[0].clone());
+        assert_eq!(
+            item.all_day.as_ref().unwrap().end_date_exclusive,
+            "2027-06-19"
+        );
+        let mut data = AppData {
+            events: dates,
+            ..Default::default()
+        };
+        data.calendar_series
+            .insert(sources[0].uid.clone(), sources[0].clone());
         let export = serialize_ics_with_sources(&data).unwrap();
         assert_eq!(export.matches("RECURRENCE-ID;VALUE=DATE:").count(), 1);
         assert_eq!(parse_ics(&export, None).unwrap().len(), 3);
@@ -1419,9 +1505,7 @@ mod tests {
             "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSUMMARY:X\nDTSTART;VALUE=DATE:20270615\n",
         ];
         for exception in bad {
-            let input = format!(
-                "{prefix}{master}BEGIN:VEVENT\n{exception}END:VEVENT\n{suffix}"
-            );
+            let input = format!("{prefix}{master}BEGIN:VEVENT\n{exception}END:VEVENT\n{suffix}");
             assert!(parse_ics_bundle(&input, None).is_err(), "{exception}");
         }
         let repeated = concat!(
@@ -1439,7 +1523,9 @@ mod tests {
             "SUMMARY:DST gap\nDTSTART;TZID=America/New_York:20270314T023000\n",
             "END:VEVENT\nEND:VCALENDAR"
         );
-        assert!(parse_ics_bundle(dst, None).unwrap_err().contains("Nonexistent"));
+        assert!(parse_ics_bundle(dst, None)
+            .unwrap_err()
+            .contains("Nonexistent"));
     }
 
     #[test]
