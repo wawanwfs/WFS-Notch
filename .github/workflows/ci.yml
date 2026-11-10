@@ -100,6 +100,8 @@ jobs:
         run: node --check src/features/displays.js
       - name: Desktop accessibility 760x470 regression
         run: python tests/browser_accessibility.py
+      - name: Explicit monitor disconnect / no fallback UI regression
+        run: python tests/browser_display_disconnect.py
       - name: Phase 12 screenshots - all modules / DPI matrix
         run: python tests/browser_screenshot_matrix.py
       - name: Upload browser evidence

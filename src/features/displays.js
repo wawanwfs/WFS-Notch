@@ -43,15 +43,18 @@ async function wfsRefreshDisplays() {
     if (saved !== 'primary' && !monitors.some(display => display.id === saved)) {
       const old = document.createElement('option');
       old.value = saved;
-      old.textContent = snapshot.using_fallback
-        ? 'Saved display unavailable — using fallback'
+      old.textContent = snapshot.selected_monitor_unavailable
+        ? 'Saved display disconnected — position retained, no automatic relocation'
         : 'Legacy coordinate preference — select this display again to adopt a stable ID';
       select.append(old);
     }
     select.value = saved;
     document.getElementById('display-top-gap').value =
       String(Number.isInteger(snapshot.margin_px) ? snapshot.margin_px : 12);
-    const fallback = snapshot.using_fallback ? ' Saved display unavailable; using fallback monitor until it reconnects.' : '';
+    const disconnected = Boolean(snapshot.selected_monitor_unavailable);
+    const fallback = disconnected
+      ? ' Saved display disconnected; WFS will not intentionally move the notch to another monitor. Always-on-top is disabled until it returns. Windows may independently move an existing window. Choose Primary if you want automatic placement.'
+      : snapshot.using_fallback ? ' Primary monitor unavailable; using another connected display.' : '';
     const legacy = saved.startsWith('origin:') ? ' Coordinate-based saved selection; choose this monitor again to switch to a stable device name when available.' : '';
     wfsDisplayStatus(monitors.length + ' monitor(s) detected.' + fallback + legacy + ' Settings remain local on this computer.');
   } catch (error) {

@@ -30,6 +30,8 @@ pub struct DisplaySnapshot {
     margin_px: u32,
     active_monitor_id: String,
     using_fallback: bool,
+    // An explicit saved monitor has disappeared; no unrelated display chosen.
+    selected_monitor_unavailable: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -101,6 +103,13 @@ fn monitor_matches_preference(
         && preference == format!("origin:{}:{}", position.x, position.y)
 }
 
+// A vanished explicitly selected monitor is NOT permission to move a
+// private notch onto the primary display. Primary/automatic still falls
+// back to another reported connected display when needed.
+fn explicit_monitor_missing(preference: &str, selected_found: bool) -> bool {
+    preference != DEFAULT_MONITOR && !selected_found
+}
+
 fn select_monitor(
     window: &WebviewWindow,
     preference: &str,
@@ -116,6 +125,9 @@ fn select_monitor(
     };
     if preferred.is_some() {
         return Ok((preferred, false));
+    }
+    if explicit_monitor_missing(preference, false) {
+        return Ok((None, true));
     }
     let fallback = window
         .primary_monitor()
@@ -171,6 +183,11 @@ pub fn place_notch(
 ) -> Result<(), String> {
     let (monitor, _) = select_monitor(window, &settings.monitor_id)?;
     let Some(monitor) = monitor else {
+        if settings.monitor_id != DEFAULT_MONITOR {
+            // An explicitly selected display is absent: never reposition or
+            // resize onto a different screen. Restore when topology returns.
+            return Ok(());
+        }
         // No connected display could be reported (e.g. remote/virtual headless session).
         // Preserve the last working position instead of guessing a screen origin.
         let size = if expanded {
@@ -280,7 +297,9 @@ fn covers_monitor(window: (i32, i32, i32, i32), monitor: (i32, i32, i32, i32)) -
 
 /// Reorder without activating/focusing the app; never call set_focus here.
 pub fn sync_topmost(window: &WebviewWindow, settings: &Settings) -> Result<(), String> {
+    let selected_is_connected = select_monitor(window, &settings.monitor_id)?.0.is_some();
     let allow = settings.always_on_top
+        && selected_is_connected
         && !(settings.auto_lower_fullscreen && active_fullscreen_on_monitor(window, settings));
     window.set_always_on_top(allow).map_err(|e| e.to_string())
 }
@@ -327,7 +346,12 @@ pub fn start_guard(app: AppHandle) -> std::io::Result<()> {
                             }
                             previous_geometry = Some(fingerprint);
                         }
+                        let selected_is_connected = select_monitor(&window, &settings.monitor_id)
+                            .ok()
+                            .and_then(|(monitor, _)| monitor)
+                            .is_some();
                         let desired = settings.always_on_top
+                            && selected_is_connected
                             && !(settings.auto_lower_fullscreen
                                 && active_fullscreen_on_monitor(&window, &settings));
                         if previous_topmost != Some(desired) {
@@ -378,6 +402,8 @@ pub fn get_display_options(
         })
         .collect::<Vec<_>>();
     displays.sort_by(|a, b| a.id.cmp(&b.id));
+    let selected_monitor_unavailable =
+        explicit_monitor_missing(&settings.monitor_id, active.is_some());
     Ok(DisplaySnapshot {
         displays,
         monitor_id: settings.monitor_id,
@@ -386,7 +412,8 @@ pub fn get_display_options(
             .as_ref()
             .map(|monitor| monitor_id(monitor, &available))
             .unwrap_or_default(),
-        using_fallback,
+        using_fallback: using_fallback && !selected_monitor_unavailable,
+        selected_monitor_unavailable,
     })
 }
 
@@ -424,6 +451,28 @@ pub fn set_display_preference(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disconnected_explicit_monitor_never_implies_primary_fallback() {
+        // Two-monitor setup, primary swap, second monitor unplug, RDP-only
+        // display and reconnect. Pure selection policy: physical behavior
+        // requires the native Windows acceptance checklist.
+        assert!(!explicit_monitor_missing("primary", false));
+        assert!(!explicit_monitor_missing("primary", true));
+        assert!(!explicit_monitor_missing("name:DISPLAY2", true));
+        assert!(explicit_monitor_missing("name:DISPLAY2", false));
+        assert!(explicit_monitor_missing("origin:-1920:0", false));
+        for preference in ["name:DISPLAY1", "name:DISPLAY2", "origin:-1920:0"] {
+            assert!(explicit_monitor_missing(preference, false));
+            assert!(!explicit_monitor_missing(preference, true));
+        }
+        // A returned display reuses its stable name even when another screen
+        // becomes primary or its origin and scale change.
+        assert_eq!(
+            persisted_monitor_id(Some("DISPLAY2"), -1920, 0, true),
+            persisted_monitor_id(Some("DISPLAY2"), 1920, -200, true)
+        );
+    }
 
     #[test]
     fn monitor_name_identity_survives_origin_and_dpi_rearrangement() {
