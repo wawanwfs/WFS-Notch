@@ -2374,6 +2374,7 @@ mod tests {
                 floating_timezone: None,
                 reminder_minutes: Some(15),
                 modified_occurrence_ids: HashSet::new(),
+                overrides: Vec::new(),
             },
         );
         for day in 0..3_u64 {
@@ -2485,6 +2486,7 @@ mod tests {
                 floating_timezone: None,
                 reminder_minutes: None,
                 modified_occurrence_ids: HashSet::new(),
+                overrides: Vec::new(),
             },
         );
         let id = data.events[0].id.clone();
