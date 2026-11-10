@@ -1433,7 +1433,7 @@ mod tests {
             Some(utc_to_ms("20270314T153000Z").unwrap())
         );
         let mut data = AppData {
-            events: events,
+            events,
             ..Default::default()
         };
         data.calendar_series
