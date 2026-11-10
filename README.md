@@ -8,7 +8,7 @@ WFS Notch brings an expandable top-edge panel with a calendar, tasks, notes, foc
 
 ## Features
 
-- Lightweight notch with opt-in Win32 fullscreen-aware topmost handling, stable unique display-name selection across screen rearrangement, safe legacy coordinate fallback, DPI/topology re-positioning, tray and autostart.
+- Lightweight notch with opt-in Win32 fullscreen-aware topmost handling, stable unique display-name selection across screen rearrangement with fail-closed pinned-monitor disconnection (no intentional relocation to a different monitor), safe legacy coordinate fallback, DPI/topology re-positioning, tray and autostart.
 - Two retained local state recovery generations (`state.json.bak` and `state.json.bak.prev`) with startup fallback when primary/latest backup are unreadable; no destructive installer migration.
 - Local accessibility preferences: compact or comfortable density, optional minimal motion, high contrast and safe reset; stored in the same private native JSON with backwards compatibility.
 - Notes backup restore advances revisions for shared IDs so stale editor windows cannot overwrite restored content.

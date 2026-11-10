@@ -1,3 +1,11 @@
+## 0.32.0 — Phase 30A: fail-closed disconnection of explicitly selected monitor
+
+- If the user selected a specific named or legacy origin monitor and Windows reports it disconnected, the notch no longer intentionally moves or resizes to an unrelated primary/current monitor. The last known position and persisted preference remain unchanged until reconnect or an explicit user selection.
+- Topmost is conservatively disabled while the pinned monitor is unavailable and re-evaluated by the existing bounded topology guard on reconnection. Primary/automatic monitor selection retains its independent safe fallback behavior.
+- The display snapshot reports `selected_monitor_unavailable` separately from a real primary fallback, and the Settings UI clearly explains behavior and the alternative Primary selection. Windows may relocate a window independently of WFS.
+- Rust regression covers missing/reconnected primary/secondary/legacy monitor policy; Playwright regression covers the disconnected UI status and explicit user selection. No new hooks, permissions, foreground focus requests or display mutations.
+- Mixed DPI, 1–3 monitor hotplug, RDP and physical Windows 10/11 acceptance remain NOT TESTED pending authorized interactive hardware. Fixed REA reference parity remains 28.9%.
+
 ## 0.31.0 — Phase 28B1: verified scoped RFC5545 RECURRENCE-ID overrides
 
 - Parse explicit original-occurrence `RECURRENCE-ID` VEVENT overrides only when the matching recurrence master UID, original expanded occurrence timestamp, exact DTSTART/TZID/DATE kind, required durations and reminder semantics are proven. Overrides retain the original occurrence ID while applying a new timestamp/title/body/duration. Refuse RANGE=THISANDFUTURE, unknown/mismatched recurrence IDs, DST gap/overlap, collisions, duplicate overrides, unsupported cancellation tombstones, and mixed timed/all-day payloads.

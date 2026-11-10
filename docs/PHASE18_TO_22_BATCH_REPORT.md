@@ -144,3 +144,7 @@ Source baseline v0.29.0 `408744a28e2886b5dbc7bade957a52a48a6e7a5d`, exact-main [
 ## Phase 28B1 — scoped RECURRENCE-ID source support (candidate)
 
 Baseline v0.30.0 `e9647bd2fd647999a1931268c11552df073031a5`, [CI 42546126393](https://github.com/wawanwfs/WFS-Notch/actions/runs/42546126393) all four PASS, 94 Rust tests, unsigned Windows NSIS and portable. Candidate `feat/phase28b-rfc5545-occurrence-overrides` implements explicit same-UID original-occurrence overrides with fail-closed DST/RANGE/cancellation and verified source-export roundtrip; PR checks and post-merge exact-main CI must be verified before marked shipped. Native Win10/11 remains NOT TESTED; reference parity 28.9%.
+
+## Phase30A — explicit monitor disconnect placement (candidate)
+
+Verified v0.31.0 latest main `c61aea253c702de838a6c63ec6a16b89fce26e2f`, [exact-main CI 42726846909](https://github.com/wawanwfs/WFS-Notch/actions/runs/42726846909) ALL FOUR PASS, 97 Rust tests, unsigned NSIS+portable+SHA256. Branch `fix/phase30-monitor-disconnect-no-fallback` avoids moving a specifically pinned but unavailable monitor to primary; disabled topmost while missing; restored on topology change; explicit native status and regression. PR-head and post-merge CI must be verified. Physical monitor, DPI, RDP acceptance still NOT TESTED. Reference parity remains 28.9%.
