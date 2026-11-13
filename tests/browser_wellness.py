@@ -115,7 +115,7 @@ with sync_playwright() as pw:
     assert page.evaluate("window.weatherRequests[1].includes('latitude=3&longitude=4')")
     assert page.evaluate("window.weatherRequests[1].includes('forecast_days=7&timezone=auto')")
     page.screenshot(path=str(EVIDENCE / "browser-weather-forecast.png"))
-    page.evaluate("window.fetch = async () => { throw new Error('Offline fixture'); }")
+    page.evaluate("() => { window.fetch = async () => { throw new Error('Offline fixture'); }; }")
     page.get_by_role("button", name="Get weather").click()
     page.wait_for_function("document.querySelector('#weather-current').textContent.includes('Offline fixture')")
     assert page.locator("#weather-forecast").is_hidden()
