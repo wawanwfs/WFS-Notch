@@ -1,3 +1,10 @@
+## 0.34.0 — Phase 32B: seven-day Weather and location disambiguation
+
+- On explicit request, Weather shows current conditions, feels-like temperature, humidity, wind, pressure, sunrise and sunset, up to 12 upcoming hourly entries and up to 7 local calendar days. Times stay in the forecast city's time zone instead of the PC's.
+- Choose among up to five valid geocoding matches when a name is ambiguous. No forecast request is sent until a city has been resolved. There is no background polling or automatic geolocation.
+- Missing fields stay visibly unavailable and failed requests do not retain a previous city's data. Tests cover ambiguous cities, next-day times, absent values and offline recovery with deterministic API fixtures.
+- Reference weather coverage remains Partial. Automatic refresh, weather appearance, native Windows verification and remaining comparison gates are not established.
+
 ## 0.33.0 — Phase 32A: accessible all-module finder
 
 - Discover all 16 modules from the notch header or Ctrl/Command+K. Search module names or concepts such as Pomodoro, bookmarks and contrast.
