@@ -65,6 +65,8 @@ with sync_playwright() as pw:
         expect(page.locator("#panel-timer")).to_be_visible()
         expect(page.locator("#nav-timer")).to_be_focused()
 
+        # Keep the physical cursor away from the hover-open compact surface.
+        page.mouse.move(width - 2, height - 2)
         page.keyboard.press("Escape")
         collapsed = page.locator("#collapsed")
         expect(collapsed).to_be_focused()
