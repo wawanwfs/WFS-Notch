@@ -196,6 +196,18 @@
           </form>
           <div class="tool-actions"><button class="primary" id="countdown-toggle" type="button">Start</button><button class="secondary" data-add-minutes="1" type="button">+1 minute</button><button class="secondary" data-add-minutes="5" type="button">+5 minutes</button><button class="secondary" id="countdown-reset" type="button">Reset to 5m</button></div>
           <p class="event-hint" id="countdown-status">Timer is ready. It continues to count down while the panel is hidden.</p>
+          <div class="tool-actions countdown-presets" role="group" aria-label="Countdown presets">
+            <button class="secondary" type="button" data-countdown-slot="0">5 min</button><button class="secondary" type="button" data-countdown-slot="1">15 min</button><button class="secondary" type="button" data-countdown-slot="2">30 min</button>
+          </div>
+          <details class="countdown-editor"><summary>Edit countdown presets</summary>
+            <form class="countdown-form" id="countdown-presets-form">
+              <label>Preset 1 (min) <input type="number" min="1" max="1440" value="5" data-edit-countdown-slot required></label>
+              <label>Preset 2 (min) <input type="number" min="1" max="1440" value="15" data-edit-countdown-slot required></label>
+              <label>Preset 3 (min) <input type="number" min="1" max="1440" value="30" data-edit-countdown-slot required></label>
+              <button class="secondary" type="submit">Save timer presets</button>
+            </form>
+            <p class="event-hint" id="countdown-preset-status" role="status"></p>
+          </details>
         </section>
         <section class="panel" id="panel-weather">
           <div class="section-heading"><div><h2>Weather</h2><p>Opt-in weather from Open-Meteo, without API key or automatic location tracking.</p></div><span class="section-pill">ONLINE</span></div>
@@ -337,7 +349,7 @@
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.35.0 · DEVELOPMENT</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.36.0 · DEVELOPMENT</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>

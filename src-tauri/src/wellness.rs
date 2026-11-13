@@ -17,6 +17,7 @@ pub struct CountdownState {
     pub remaining_seconds: u64,
     pub ends_at_ms: Option<u128>,
     pub completed: bool,
+    pub preset_minutes: [u64; 3],
 }
 
 impl Default for CountdownState {
@@ -26,11 +27,29 @@ impl Default for CountdownState {
             remaining_seconds: 5 * 60,
             ends_at_ms: None,
             completed: false,
+            preset_minutes: [5, 15, 30],
         }
     }
 }
 
 impl CountdownState {
+    fn set_duration(&mut self, seconds: u64) {
+        self.duration_seconds = seconds;
+        self.remaining_seconds = seconds;
+        self.ends_at_ms = None;
+        self.completed = false;
+    }
+
+    pub fn sanitize(&mut self) {
+        if !(1..=86_400).contains(&self.duration_seconds) {
+            self.set_duration(300);
+        }
+        self.remaining_seconds = self.remaining_seconds.min(86_400);
+        if !valid_countdown_presets(&self.preset_minutes) {
+            self.preset_minutes = Self::default().preset_minutes;
+        }
+    }
+
     pub fn normalize(&mut self, current: u128) {
         if let Some(end) = self.ends_at_ms {
             if end <= current {
@@ -64,6 +83,10 @@ impl CountdownState {
         }
         self.completed = false;
     }
+}
+
+fn valid_countdown_presets(presets: &[u64; 3]) -> bool {
+    presets.iter().all(|minutes| (1..=1440).contains(minutes))
 }
 
 fn valid_day(day: &str) -> bool {
@@ -126,11 +149,7 @@ pub fn countdown_set(store: State<'_, Mutex<Store>>, seconds: u64) -> Result<App
         return Err("Countdown duration must be 1–86400 seconds".into());
     }
     with_store(store, |data| {
-        data.countdown = CountdownState {
-            duration_seconds: seconds,
-            remaining_seconds: seconds,
-            ..CountdownState::default()
-        };
+        data.countdown.set_duration(seconds);
         Ok(())
     })
 }
@@ -157,7 +176,21 @@ pub fn countdown_adjust(store: State<'_, Mutex<Store>>, minutes: u64) -> Result<
 #[tauri::command]
 pub fn countdown_reset(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
     with_store(store, |data| {
-        data.countdown = CountdownState::default();
+        data.countdown.set_duration(300);
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub fn set_countdown_presets(
+    store: State<'_, Mutex<Store>>,
+    presets: [u64; 3],
+) -> Result<AppData, String> {
+    if !valid_countdown_presets(&presets) {
+        return Err("Timer presets must be 1–1440 minutes".into());
+    }
+    with_store(store, |data| {
+        data.countdown.preset_minutes = presets;
         Ok(())
     })
 }
@@ -165,6 +198,23 @@ pub fn countdown_reset(store: State<'_, Mutex<Store>>) -> Result<AppData, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn countdown_presets_migrate_and_survive_reset() {
+        let mut state: CountdownState =
+            serde_json::from_str(r#"{"duration_seconds":600,"remaining_seconds":300}"#).unwrap();
+        assert_eq!(state.preset_minutes, [5, 15, 30]);
+        assert!(!valid_countdown_presets(&[1, 0, 30]));
+        assert!(!valid_countdown_presets(&[1, 15, 1441]));
+        assert!(valid_countdown_presets(&[1, 15, 1440]));
+        state.preset_minutes = [3, 7, 19];
+        state.set_duration(420);
+        state.set_duration(300);
+        assert_eq!(state.preset_minutes, [3, 7, 19]);
+        let restored: CountdownState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(restored, state);
+    }
 
     #[test]
     fn health_date_validation() {

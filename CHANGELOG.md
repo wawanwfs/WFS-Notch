@@ -1,3 +1,8 @@
+## 0.36.0 — Phase 29B: editable countdown presets
+
+- Save three local countdown presets from 1–1440 minutes. Editing presets does not change an active countdown, and applying one asks before replacing a running timer.
+- Presets survive reset, restart and backup restore, with legacy defaults of 5, 15 and 30 minutes. This does not establish native Windows or full reference parity.
+
 ## 0.35.0 — Phase 29A: local Pomodoro work and break cycles
 
 - Add an opt-in Pomodoro cycle with a five-minute short break and a fifteen-minute long break after four completed focus sessions. The next focus starts on user action. Existing one-shot timers and presets are preserved.

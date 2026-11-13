@@ -305,10 +305,7 @@ impl AppData {
         self.health.water_glasses = self.health.water_glasses.min(40);
         self.health.break_count = self.health.break_count.min(100);
         self.health.calm_minutes = self.health.calm_minutes.min(600);
-        if !(1..=86_400).contains(&self.countdown.duration_seconds) {
-            self.countdown = wellness::CountdownState::default();
-        }
-        self.countdown.remaining_seconds = self.countdown.remaining_seconds.min(86_400);
+        self.countdown.sanitize();
         self.habits
             .retain(|habit| !habit.title.trim().is_empty() && habit.title.chars().count() <= 120);
         self.habits.truncate(200);
@@ -1860,7 +1857,8 @@ fn main() {
             wellness::countdown_set,
             wellness::countdown_toggle,
             wellness::countdown_adjust,
-            wellness::countdown_reset
+            wellness::countdown_reset,
+            wellness::set_countdown_presets
         ])
         .run(tauri::generate_context!())
         .expect("WFS Notch encountered a fatal error");

@@ -9,7 +9,7 @@ const noteDraftKey = 'wfs-notch-local-note-draft-v1';
 const defaults = () => ({
   todos: [], notes: [], events: [], calendar_tombstones: [], calendar_series: {}, reminder_retries: {}, habits: [], quick_links: [],
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
-  countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
+  countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false, preset_minutes: [5, 15, 30] },
   settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, task_due_reminders_enabled: false, always_on_top: true, auto_lower_fullscreen: false, ui_density: 'comfortable', reduce_motion: false, high_contrast: false },
   focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false, cycle_enabled: false, phase: 'focus', completed_in_cycle: 0 },
 });
@@ -119,6 +119,11 @@ function focusPhaseSeconds(focus) {
   return focus.phase === 'short_break' ? 300 : focus.phase === 'long_break' ? 900 : focus.duration_seconds;
 }
 
+function validCountdownPresets(values) {
+  return Array.isArray(values) && values.length === 3 &&
+    values.every(value => Number.isInteger(value) && value >= 1 && value <= 1440);
+}
+
 function focusView(focus, current = Date.now()) {
   const remaining = focus.ends_at_ms == null
     ? focus.remaining_seconds
@@ -166,6 +171,7 @@ function previewInvoke(command, args = {}) {
   state.quick_links = Array.isArray(state.quick_links) ? state.quick_links : [];
   state.health = { ...defaults().health, ...state.health };
   state.countdown = { ...defaults().countdown, ...state.countdown };
+  if (!validCountdownPresets(state.countdown.preset_minutes)) state.countdown.preset_minutes = defaults().countdown.preset_minutes;
   if (command === 'list_backups') return Promise.resolve(JSON.parse(localStorage.getItem(previewBackupsKey) || '[]').map(item => item.info));
   if (command === 'create_backup') {
     const backups = JSON.parse(localStorage.getItem(previewBackupsKey) || '[]');
@@ -411,7 +417,7 @@ function previewInvoke(command, args = {}) {
     case 'countdown_set': {
       const seconds = Number(args.seconds);
       if (!Number.isInteger(seconds) || seconds < 1 || seconds > 86400) throw new Error('Invalid countdown duration');
-      state.countdown = {duration_seconds: seconds, remaining_seconds: seconds, ends_at_ms: null, completed: false};
+      Object.assign(state.countdown, {duration_seconds: seconds, remaining_seconds: seconds, ends_at_ms: null, completed: false});
       break;
     }
     case 'countdown_toggle': {
@@ -433,7 +439,11 @@ function previewInvoke(command, args = {}) {
       timer.completed = false;
       break;
     }
-    case 'countdown_reset': state.countdown = { ...defaults().countdown }; break;
+    case 'countdown_reset': state.countdown = { ...defaults().countdown, preset_minutes: state.countdown.preset_minutes }; break;
+    case 'set_countdown_presets':
+      if (!validCountdownPresets(args.presets)) throw new Error('Timer presets must be 1–1440 minutes');
+      state.countdown.preset_minutes = [...args.presets];
+      break;
     case 'set_accent': state.settings.accent = args.accent; break;
     case 'set_appearance':
       if (!['comfortable', 'compact'].includes(args.density)) throw new Error('Invalid appearance density');
