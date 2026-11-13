@@ -11,7 +11,7 @@ const defaults = () => ({
   health: { day: '', water_glasses: 0, break_count: 0, calm_minutes: 0 },
   countdown: { duration_seconds: 300, remaining_seconds: 300, ends_at_ms: null, completed: false },
   settings: { accent: '#d6b77a', hover_to_open: true, pin_open: false, monitor_id: 'primary', top_margin_px: 12, notifications_enabled: false, notifications_show_details: false, notifications_paused: false, task_due_reminders_enabled: false, always_on_top: true, auto_lower_fullscreen: false, ui_density: 'comfortable', reduce_motion: false, high_contrast: false },
-  focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false },
+  focus: { duration_seconds: 1500, remaining_seconds: 1500, ends_at_ms: null, completed: false, paused: false, cycle_enabled: false, phase: 'focus', completed_in_cycle: 0 },
 });
 let data = defaults();
 let selectedNoteId = null;
@@ -29,6 +29,8 @@ let tabRequest = 0;
 let backupList = [];
 let reminderSeen = new Set();
 let focusCompletionNotified = false;
+let focusAdvancePending = false;
+let focusAdvanceRetryAt = 0;
 let telemetryPending = false;
 let telemetryLastAt = 0;
 let isExpanded = false;
@@ -113,15 +115,37 @@ function parseNotesTransfer(payload, existing) {
     new_count:newCount, existing_count:parsed.notes.length - newCount};
 }
 
+function focusPhaseSeconds(focus) {
+  return focus.phase === 'short_break' ? 300 : focus.phase === 'long_break' ? 900 : focus.duration_seconds;
+}
+
 function focusView(focus, current = Date.now()) {
   const remaining = focus.ends_at_ms == null
     ? focus.remaining_seconds
-    : Math.max(0, Math.ceil((focus.ends_at_ms - current) / 1000));
+    : Math.min(focusPhaseSeconds(focus), Math.max(0, Math.ceil((focus.ends_at_ms - current) / 1000)));
   return {
     remaining,
     running: focus.ends_at_ms != null && remaining > 0,
     completed: (focus.ends_at_ms != null && remaining === 0) || (focus.completed && remaining === 0),
   };
+}
+
+function normalizePreviewFocus(focus, now) {
+  if (focus.ends_at_ms == null) return;
+  if (focus.cycle_enabled && focus.phase === 'focus' && focus.ends_at_ms <= now) {
+    focus.completed_in_cycle = Math.min(4, focus.completed_in_cycle + 1);
+    focus.phase = focus.completed_in_cycle === 4 ? 'long_break' : 'short_break';
+    focus.ends_at_ms += focusPhaseSeconds(focus) * 1000;
+  }
+  if (focus.cycle_enabled && focus.ends_at_ms <= now) {
+    if (focus.phase === 'long_break') focus.completed_in_cycle = 0;
+    focus.phase = 'focus';
+    Object.assign(focus, {remaining_seconds: focusPhaseSeconds(focus), ends_at_ms: null, completed: false, paused: false});
+    return;
+  }
+  const live = focusView(focus, now);
+  focus.remaining_seconds = live.remaining;
+  if (live.completed) Object.assign(focus, {ends_at_ms: null, completed: true, paused: false});
 }
 
 function previewInvoke(command, args = {}) {
@@ -175,17 +199,18 @@ function previewInvoke(command, args = {}) {
   if (command === 'get_system_snapshot') return Promise.resolve(null); // Never manufacture telemetry in browser preview.
   const nextId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const focus = state.focus;
-  const live = focusView(focus);
-  if (focus.ends_at_ms != null) {
-    focus.remaining_seconds = live.remaining;
-    if (live.completed) { focus.ends_at_ms = null; focus.completed = true; focus.paused = false; }
-  }
+  const focusNow = Date.now();
+  const focusWasDue = focus.cycle_enabled && focus.ends_at_ms != null && focus.ends_at_ms <= focusNow;
+  normalizePreviewFocus(focus, focusNow);
   if (state.countdown.ends_at_ms != null) {
     const remaining = Math.max(0, Math.ceil((state.countdown.ends_at_ms - Date.now()) / 1000));
     state.countdown.remaining_seconds = remaining;
     if (!remaining) { state.countdown.ends_at_ms = null; state.countdown.completed = true; }
   }
-  if (command === 'load_data') return Promise.resolve(state);
+  if (command === 'load_data' || (command === 'advance_focus_cycle' && !focusWasDue)) {
+    if (focusWasDue) localStorage.setItem(previewKey, JSON.stringify(state));
+    return Promise.resolve(state);
+  }
   if (command === 'export_notes_json') {
     if (state.notes.length > 250) throw new Error('Export supports at most 250 notes');
     const json = JSON.stringify({format:notesImportFormat, version:1, notes:state.notes},null,2);
@@ -432,6 +457,7 @@ function previewInvoke(command, args = {}) {
       break;
     case 'set_focus_duration': {
       if (![15, 25, 45, 60].includes(args.minutes)) throw new Error('Invalid focus preset');
+      if (focus.phase !== 'focus') throw new Error('Set the focus duration after your break');
       focus.duration_seconds = args.minutes * 60;
       focus.remaining_seconds = focus.duration_seconds;
       focus.ends_at_ms = null;
@@ -440,17 +466,26 @@ function previewInvoke(command, args = {}) {
     case 'focus_toggle': {
       if (focus.ends_at_ms != null) { focus.ends_at_ms = null; focus.paused = true; }
       else {
-        if (focus.remaining_seconds === 0) focus.remaining_seconds = focus.duration_seconds;
+        if (focus.remaining_seconds === 0) focus.remaining_seconds = focusPhaseSeconds(focus);
         focus.ends_at_ms = Date.now() + focus.remaining_seconds * 1000;
         focus.completed = false; focus.paused = false;
       }
       break;
     }
     case 'focus_reset': {
-      focus.remaining_seconds = focus.duration_seconds;
+      focus.remaining_seconds = focusPhaseSeconds(focus);
       focus.ends_at_ms = null;
       focus.completed = false; focus.paused = false; break;
     }
+    case 'set_focus_cycle': {
+      if (focus.ends_at_ms != null || focus.paused) throw new Error('Reset the active timer before changing its mode');
+      if (focus.cycle_enabled !== Boolean(args.enabled)) {
+        Object.assign(focus, {cycle_enabled: Boolean(args.enabled), phase: 'focus', completed_in_cycle: 0,
+          remaining_seconds: focus.duration_seconds, ends_at_ms: null, completed: false, paused: false});
+      }
+      break;
+    }
+    case 'advance_focus_cycle': break;
     case 'set_expanded': return Promise.resolve(null);
     case 'close_app': throw new Error('Exit is available in the installed desktop app');
     default: throw new Error(`Unsupported command: ${command}`);
@@ -928,13 +963,24 @@ function renderTimer() {
   const display = formatted(view.remaining);
   $('#timer-display').textContent = display;
   $('#focus-status').textContent = display;
-  $('.timer-ring').style.setProperty('--timer-progress', `${100 * view.remaining / focus.duration_seconds}%`);
-  $('#timer-start').textContent = view.running ? 'Pause focus' : view.completed ? 'Start again' : focus.paused ? 'Resume focus' : 'Start focus';
-  $('#timer-label').textContent = view.completed ? 'SESSION COMPLETE' : view.running ? 'STAY IN THE ZONE' : focus.paused ? 'PAUSED' : 'READY WHEN YOU ARE';
+  const phase = focus.phase === 'short_break' ? 'Short break' : focus.phase === 'long_break' ? 'Long break' : 'Focus';
+  const action = phase === 'Focus' ? 'focus' : 'break';
+  $('.timer-ring').style.setProperty('--timer-progress', `${100 * view.remaining / focusPhaseSeconds(focus)}%`);
+  $('.timer-ring').dataset.phase = focus.phase;
+  const transition = focus.cycle_enabled && view.completed;
+  $('#timer-start').disabled = transition;
+  $('#timer-reset').disabled = transition;
+  $('#timer-start').textContent = transition ? 'Changing phase…' : view.running ? `Pause ${action}` : view.completed ? 'Start again' : focus.paused ? `Resume ${action}` : `Start ${action}`;
+  $('#timer-label').textContent = transition ? 'CHANGING PHASE' : view.completed ? 'SESSION COMPLETE' : focus.paused ? 'PAUSED' : view.running ? phase.toUpperCase() : 'READY WHEN YOU ARE';
+  $('#focus-cycle').checked = focus.cycle_enabled;
+  $('#focus-cycle').disabled = focus.ends_at_ms != null || focus.paused;
+  const status = focus.cycle_enabled ? `${phase} · ${focus.completed_in_cycle} / 4 focus sessions this cycle` : 'Single focus session';
+  if ($('#focus-cycle-status').textContent !== status) $('#focus-cycle-status').textContent = status;
   $$('[data-minutes]').forEach(button => {
     const chosen = Number(button.dataset.minutes) * 60 === focus.duration_seconds;
     button.classList.toggle('selected', chosen);
     button.setAttribute('aria-pressed', String(chosen));
+    button.disabled = focus.phase !== 'focus' || transition;
   });
 }
 
@@ -1037,11 +1083,20 @@ function clockTick() {
   $('#hero-time').textContent = text;
   $('#current-date').textContent = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   renderTimer();
-  if (data.focus.completed && !focusCompletionNotified && !document.hidden) {
+  const view = focusView(data.focus, now.getTime());
+  if (data.focus.cycle_enabled && data.focus.ends_at_ms != null && view.completed &&
+      !focusAdvancePending && now.getTime() >= focusAdvanceRetryAt) {
+    focusAdvancePending = true;
+    void mutation('advance_focus_cycle').then(ok => {
+      focusAdvanceRetryAt = Date.now() + (ok ? 500 : 5000);
+      focusAdvancePending = false;
+    });
+  }
+  if (!data.focus.cycle_enabled && view.completed && !focusCompletionNotified && !document.hidden) {
     focusCompletionNotified = true;
     showInfo('Focus session complete. Great work!');
   }
-  if (!data.focus.completed) focusCompletionNotified = false;
+  if (!view.completed) focusCompletionNotified = false;
   checkReminders(now.getTime());
   if (typeof tickParity === 'function') tickParity();
   if (activeTab === 'system' && Date.now() - telemetryLastAt > 4000) void refreshTelemetry();
@@ -1364,6 +1419,11 @@ function bind() {
   $$('[data-minutes]').forEach(button => button.addEventListener('click', () => void mutation('set_focus_duration', { minutes: Number(button.dataset.minutes) })));
   $('#timer-start').addEventListener('click', () => void mutation('focus_toggle'));
   $('#timer-reset').addEventListener('click', () => void mutation('focus_reset'));
+  $('#focus-cycle').addEventListener('change', async event => {
+    const control = event.currentTarget;
+    control.disabled = true;
+    if (!(await mutation('set_focus_cycle', {enabled: control.checked}))) renderTimer();
+  });
   $('#app-exit').addEventListener('click', async () => {
     if (!(await flushNote())) return;
     try { await invoke('close_app'); } catch (error) { showError(error); }

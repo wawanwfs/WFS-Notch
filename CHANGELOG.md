@@ -1,3 +1,9 @@
+## 0.35.0 — Phase 29A: local Pomodoro work and break cycles
+
+- Add an opt-in Pomodoro cycle with a five-minute short break and a fifteen-minute long break after four completed focus sessions. The next focus starts on user action. Existing one-shot timers and presets are preserved.
+- Persist pause, progress and phase in local state. Breaks anchor to the completed focus deadline and catch-up after sleep or restart never fabricates more focus sessions. No operating system alerts, sound or network permissions are added.
+- Remaining reference differences include configurable break durations, automatic next-focus option, manual skip, history and interactive Windows acceptance.
+
 ## 0.34.0 — Phase 32B: seven-day Weather and location disambiguation
 
 - On explicit request, Weather shows current conditions, feels-like temperature, humidity, wind, pressure, sunrise and sunset, up to 12 upcoming hourly entries and up to 7 local calendar days. Times stay in the forecast city's time zone instead of the PC's.

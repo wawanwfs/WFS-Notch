@@ -164,6 +164,11 @@
         <section class="panel" id="panel-timer">
           <div class="section-heading"><div><h2>Focus timer</h2><p>Own your next session.</p></div><span class="section-pill">POMODORO</span></div>
           <div class="timer-layout"><div class="timer-ring"><div class="timer-ring-inner"><strong id="timer-display">25:00</strong><span id="timer-label">READY WHEN YOU ARE</span></div></div><div class="timer-controls"><p>SESSION LENGTH</p><div class="preset-row"><button data-minutes="15">15m</button><button data-minutes="25" class="selected">25m</button><button data-minutes="45">45m</button><button data-minutes="60">60m</button></div><button id="timer-start" class="primary large">Start focus</button><button id="timer-reset" class="secondary large">Reset</button></div></div>
+          <div class="focus-cycle-card">
+            <label class="toggle-label"><input id="focus-cycle" type="checkbox" aria-describedby="focus-cycle-help"><span>Pomodoro cycle</span></label>
+            <small id="focus-cycle-help">After focus, take a 5-minute break, or 15 minutes after four sessions. Start the next focus when ready. Reset a running or paused timer before changing modes.</small>
+            <p id="focus-cycle-status" role="status">Single focus session</p>
+          </div>
         </section>
 
         <section class="panel" id="panel-health">
@@ -332,7 +337,7 @@
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.34.0 · DEVELOPMENT</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.35.0 · DEVELOPMENT</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>

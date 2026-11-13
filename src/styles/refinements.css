@@ -105,6 +105,12 @@ body.preview #toast {top:auto;bottom:10px;right:max(10px,calc((100vw - 760px) / 
 .tabs {overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
 main {min-width:0;}
 .panel.active {overflow-x:hidden;overflow-y:auto;padding-right:4px;}
+.focus-cycle-card{margin:12px 0 4px;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:rgba(255,255,255,.035)}
+.focus-cycle-card .toggle-label{font-weight:650;color:var(--text);width:fit-content}
+.focus-cycle-card small,.focus-cycle-card p{font-size:11px;color:var(--muted);margin:4px 0 0;line-height:1.4}
+.focus-cycle-card p{color:var(--text)}
+.timer-ring[data-phase="short_break"]{background:conic-gradient(#85c9a7 var(--timer-progress,100%),#35353d 0)}
+.timer-ring[data-phase="long_break"]{background:conic-gradient(#91bfe9 var(--timer-progress,100%),#35353d 0)}
 .expanded:not([hidden]) {animation:wfs-open 190ms cubic-bezier(.22,1,.36,1) both;}
 .collapsed:not([hidden]) {animation:wfs-close 150ms ease-out both;}
 @keyframes wfs-open {from{opacity:.86;transform:translateY(-5px) scale(.993)}to{opacity:1;transform:none}}
