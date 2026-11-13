@@ -60,7 +60,8 @@ function wfsInitNavigation() {
     nav.scrollLeft += event.deltaY;
   }, {passive:false});
   document.addEventListener('keydown', event => {
-    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat) return;
+    if (!isExpanded || (typeof paletteIsOpen === 'function' && paletteIsOpen()) ||
+        !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat) return;
     const target = event.target;
     if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const shortcuts = ['home','todos','notes','calendar','timer','media','settings'];
@@ -71,10 +72,6 @@ function wfsInitNavigation() {
     event.preventDefault();
     select(button);
   });
-  const observer = new MutationObserver(mutations => {
-    if (mutations.some(change => change.attributeName === 'class')) wfsSyncNavigation();
-  });
-  for (const button of buttons) observer.observe(button,{attributes:true,attributeFilter:['class']});
   wfsSyncNavigation();
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',wfsInitNavigation,{once:true});

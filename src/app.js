@@ -25,6 +25,7 @@ let noteSaveInFlight = null;
 let noteConflictDraft = null;
 let toastTimeout = null;
 let activeTab = 'home';
+let tabRequest = 0;
 let backupList = [];
 let reminderSeen = new Set();
 let focusCompletionNotified = false;
@@ -495,6 +496,7 @@ function setExpanded(expanded) {
       isExpanded = expanded;
       $('#collapsed').hidden = expanded;
       $('#expanded').hidden = !expanded;
+      $('#collapsed').setAttribute('aria-expanded', String(expanded));
       if (expanded) render();
     } catch (error) { showError(error); }
   });
@@ -502,25 +504,37 @@ function setExpanded(expanded) {
   return task;
 }
 
-async function requestCollapse() {
-  if (isExpanded && !(await flushNote())) return;
+async function requestCollapse(restoreFocus = false) {
+  if (typeof paletteIsOpen === 'function' && paletteIsOpen()) return;
+  if (isExpanded && activeTab === 'notes' && !(await flushNote())) return;
   await setExpanded(false);
+  if (restoreFocus && !isExpanded) $('#collapsed').focus({preventScroll: true});
 }
 
 async function switchTab(tab) {
-  if (tab === activeTab) return;
+  if (!$$('.tab').some(button => button.dataset.tab === tab)) return false;
+  const request = ++tabRequest;
+  if (tab === activeTab) return true;
   // Opening Notes must never silently commit a recovered draft; only leaving
   // the Notes workspace flushes the active editor first.
-  if (tab !== 'notes' && !(await flushNote())) return;
+  if (activeTab === 'notes' && !(await flushNote())) return false;
+  if (request !== tabRequest) return false;
   activeTab = tab;
   $$('.tab').forEach(button => {
     const selected = button.dataset.tab === tab;
     button.classList.toggle('active', selected);
-    button.setAttribute('aria-selected', String(selected));
   });
   $$('.panel').forEach(panel => panel.classList.toggle('active', panel.id === 'panel-' + tab));
+  if (typeof wfsSyncNavigation === 'function') wfsSyncNavigation();
   if (tab === 'settings') void refreshBackups();
   if (tab === 'system') void refreshTelemetry();
+  return true;
+}
+
+async function openModuleFromContent(tab) {
+  if (await switchTab(tab)) {
+    $$('.tab').find(button => button.dataset.tab === tab)?.focus();
+  }
 }
 
 function node(tag, className, value) {
@@ -1040,19 +1054,30 @@ function bind() {
   $('#collapsed').addEventListener('click', () => void setExpanded(true));
   $('#collapsed').addEventListener('keydown', event => {
     if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault(); void setExpanded(true);
+      event.preventDefault();
+      void setExpanded(true).then(() => {
+        if (isExpanded && !$('#command-palette').hidden) return;
+        if (isExpanded) $('.tab.active')?.focus();
+      });
     }
   });
   $('#notch').addEventListener('mouseleave', () => {
     if (nativeInvoke && data.settings.hover_to_open && !data.settings.pin_open) void requestCollapse();
   });
-  $('#collapse').addEventListener('click', () => void requestCollapse());
+  $('#collapse').addEventListener('click', () => void requestCollapse(true));
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && isExpanded) void requestCollapse();
+    if (event.key === 'Escape' && isExpanded && !event.defaultPrevented && $('#command-palette').hidden) {
+      event.preventDefault();
+      void requestCollapse(true);
+    }
   });
-  $$('.tab').forEach(button => button.addEventListener('click', () => void switchTab(button.dataset.tab)));
-  $('#go-timer').addEventListener('click', () => void switchTab('timer'));
-  $('#go-calendar').addEventListener('click', () => void switchTab('calendar'));
+  $$('.tab').forEach(button => button.addEventListener('click', async () => {
+    if (!(await switchTab(button.dataset.tab)) && document.activeElement === button) {
+      $('.tab.active')?.focus();
+    }
+  }));
+  $('#go-timer').addEventListener('click', () => void openModuleFromContent('timer'));
+  $('#go-calendar').addEventListener('click', () => void openModuleFromContent('calendar'));
   $('#event-all-day').addEventListener('change', () => setAllDayEditor($('#event-all-day').checked));
   $('#event-form').addEventListener('submit', async event => {
     event.preventDefault();
