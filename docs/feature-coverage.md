@@ -21,7 +21,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Notes | Partial | Local CRUD/autosave, full-text search including persisted private tags, accessible tag filter and question::answer flashcards; folders, rich editing, structured export/import, undo and conflict handling missing |
 | Focus/Pomodoro | Partial | Preset focus plus opt-in persisted 5/15-minute breaks and four-focus cycles; configurable break durations, automatic next focus, skip, history, sound and native Windows comparison remain outstanding |
 | Stopwatch | Implemented | Browser UI + localStorage; native runtime still unverified |
-| Independent timer | Implemented | 1–1440 min, pause, +1/+5, persistent Rust state; native runtime to verify |
+| Independent timer | Implemented | 1–1440 min, pause, +1/+5, three editable local presets, persistent Rust state; native runtime and reference dashboard widget to verify |
 | Health | Partial | Water/break/calm tracker, daily reset; background reminders and activity telemetry missing |
 | Day Progress | Partial | Time and today events/tasks; wake/sleep schedule and richer timeline missing |
 | Weather | Partial | Explicit Open-Meteo lookup, disambiguated city selection, current details, up to 12 upcoming hours and 7 days in the city’s local time; automatic default city, refresh policy, weather appearance and side-by-side native Windows evidence are outstanding |

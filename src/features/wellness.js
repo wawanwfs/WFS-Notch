@@ -2,6 +2,7 @@
 // Additional independent original modules, based on observed reference behavior.
 let wellnessInitialized = false;
 let countdownSeenComplete = false;
+let countdownPresetSignature = '';
 let flashcardNoteId = '';
 let flashcardIndex = 0;
 let flashcardShowingAnswer = false;
@@ -56,6 +57,15 @@ function renderCountdown() {
     showInfo('Countdown complete.');
   }
   if (!timer.completed) countdownSeenComplete = false;
+}
+function renderCountdownPresets() {
+  const presets = validCountdownPresets(data.countdown?.preset_minutes)
+    ? data.countdown.preset_minutes : defaults().countdown.preset_minutes;
+  const signature = presets.join(',');
+  if (signature === countdownPresetSignature) return;
+  countdownPresetSignature = signature;
+  $$('[data-countdown-slot]').forEach((button, i) => { button.textContent = `${presets[i]} min`; });
+  $$('[data-edit-countdown-slot]').forEach((input, i) => { input.value = String(presets[i]); });
 }
 function renderDay() {
   const now = new Date();
@@ -119,7 +129,7 @@ function renderFlashcards() {
 }
 function renderParity() {
   if (!$('#health-water')) return;
-  renderHealth(); renderDay(); renderCountdown(); renderFlashcards();
+  renderHealth(); renderDay(); renderCountdown(); renderCountdownPresets(); renderFlashcards();
 }
 function tickParity() {
   if (!$('#countdown-display')) return;
@@ -281,6 +291,23 @@ function initParity() {
   });
   $('#countdown-toggle').addEventListener('click', () => void mutation('countdown_toggle'));
   $('#countdown-reset').addEventListener('click', () => void mutation('countdown_reset'));
+  $$('[data-countdown-slot]').forEach((button, i) => button.addEventListener('click', async () => {
+    const presets = validCountdownPresets(data.countdown?.preset_minutes)
+      ? data.countdown.preset_minutes : defaults().countdown.preset_minutes;
+    if (countdownView().running && !window.confirm('Replace the running countdown with this preset?')) return;
+    if (await mutation('countdown_set', {seconds: presets[i] * 60})) {
+      $('#countdown-minutes').value = String(presets[i]);
+    }
+  }));
+  $('#countdown-presets-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const presets = $$('[data-edit-countdown-slot]').map(input => input.valueAsNumber);
+    if (!validCountdownPresets(presets)) return;
+    $('#countdown-preset-status').textContent = '';
+    if (await mutation('set_countdown_presets', {presets})) {
+      $('#countdown-preset-status').textContent = 'Timer presets saved locally.';
+    }
+  });
   $$('[data-add-minutes]').forEach(button => button.addEventListener('click', () => {
     void mutation('countdown_adjust', {minutes: Number(button.dataset.addMinutes)});
   }));

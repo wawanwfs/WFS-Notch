@@ -72,6 +72,8 @@ jobs:
         run: python tests/browser_wellness.py
       - name: Pomodoro work and break cycle browser regression
         run: python tests/browser_focus_cycle.py
+      - name: Countdown preset edits and restart persistence
+        run: python tests/browser_countdown_presets.py
       - name: Calendar month and Notes search regression
         run: python tests/browser_calendar_notes.py
       - name: Note optimistic revision / conflict / recovered draft regression
