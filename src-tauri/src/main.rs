@@ -174,7 +174,20 @@ struct FocusState {
     ends_at_ms: Option<u128>,
     completed: bool,
     paused: bool,
+    cycle_enabled: bool,
+    phase: FocusPhase,
+    completed_in_cycle: u8,
 }
+
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum FocusPhase {
+    #[default]
+    Focus,
+    ShortBreak,
+    LongBreak,
+}
+
 impl Default for FocusState {
     fn default() -> Self {
         Self {
@@ -183,20 +196,51 @@ impl Default for FocusState {
             ends_at_ms: None,
             completed: false,
             paused: false,
+            cycle_enabled: false,
+            phase: FocusPhase::Focus,
+            completed_in_cycle: 0,
         }
     }
 }
 impl FocusState {
+    fn phase_seconds(&self) -> u64 {
+        match self.phase {
+            FocusPhase::Focus => self.duration_seconds,
+            FocusPhase::ShortBreak => 5 * 60,
+            FocusPhase::LongBreak => 15 * 60,
+        }
+    }
+
     fn normalize(&mut self, current_ms: u128) {
-        if let Some(end) = self.ends_at_ms {
+        if let Some(mut end) = self.ends_at_ms {
+            if self.cycle_enabled && self.phase == FocusPhase::Focus && end <= current_ms {
+                self.completed_in_cycle = self.completed_in_cycle.saturating_add(1).min(4);
+                self.phase = if self.completed_in_cycle == 4 {
+                    FocusPhase::LongBreak
+                } else {
+                    FocusPhase::ShortBreak
+                };
+                // Anchor the break to the original focus deadline. A long
+                // sleep must not fabricate additional focus sessions.
+                end = end.saturating_add(self.phase_seconds() as u128 * 1000);
+                self.ends_at_ms = Some(end);
+            }
             if end <= current_ms {
+                if self.cycle_enabled {
+                    if self.phase == FocusPhase::LongBreak {
+                        self.completed_in_cycle = 0;
+                    }
+                    self.phase = FocusPhase::Focus;
+                    self.reset();
+                    return;
+                }
                 self.remaining_seconds = 0;
                 self.ends_at_ms = None;
                 self.completed = true;
                 self.paused = false;
             } else {
                 // Ceil remaining milliseconds, including after suspend/resume.
-                let remaining_ms = (end - current_ms).min(self.duration_seconds as u128 * 1000);
+                let remaining_ms = (end - current_ms).min(self.phase_seconds() as u128 * 1000);
                 self.remaining_seconds = remaining_ms.div_ceil(1000) as u64;
             }
         }
@@ -208,7 +252,7 @@ impl FocusState {
             self.paused = true;
         } else {
             if self.remaining_seconds == 0 {
-                self.remaining_seconds = self.duration_seconds;
+                self.remaining_seconds = self.phase_seconds();
             }
             self.ends_at_ms = Some(current_ms + self.remaining_seconds as u128 * 1000);
             self.completed = false;
@@ -216,10 +260,19 @@ impl FocusState {
         }
     }
     fn reset(&mut self) {
-        self.remaining_seconds = self.duration_seconds;
+        self.remaining_seconds = self.phase_seconds();
         self.ends_at_ms = None;
         self.completed = false;
         self.paused = false;
+    }
+
+    fn set_cycle(&mut self, enabled: bool) {
+        if self.cycle_enabled != enabled {
+            self.cycle_enabled = enabled;
+            self.phase = FocusPhase::Focus;
+            self.completed_in_cycle = 0;
+            self.reset();
+        }
     }
 }
 
@@ -320,10 +373,16 @@ impl AppData {
         if ![900, 1500, 2700, 3600].contains(&self.focus.duration_seconds) {
             self.focus = FocusState::default();
         }
-        self.focus.remaining_seconds = self
-            .focus
-            .remaining_seconds
-            .min(self.focus.duration_seconds);
+        if !self.focus.cycle_enabled && self.focus.phase != FocusPhase::Focus {
+            self.focus.phase = FocusPhase::Focus;
+            self.focus.reset();
+        }
+        self.focus.completed_in_cycle = if self.focus.cycle_enabled {
+            self.focus.completed_in_cycle.min(4)
+        } else {
+            0
+        };
+        self.focus.remaining_seconds = self.focus.remaining_seconds.min(self.focus.phase_seconds());
         self.settings.top_margin_px = self.settings.top_margin_px.min(display::MAX_MARGIN);
         if !self.settings.notifications_enabled {
             self.settings.notifications_show_details = false;
@@ -500,13 +559,21 @@ where
 
 #[tauri::command]
 fn load_data(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
-    let mut snapshot = store
+    let mut locked = store
         .lock()
-        .map_err(|_| "Storage lock poisoned".to_owned())?
-        .data
-        .clone();
-    snapshot.focus.normalize(now_ms());
-    snapshot.countdown.normalize(now_ms());
+        .map_err(|_| "Storage lock poisoned".to_owned())?;
+    let now = now_ms();
+    if locked.data.focus.cycle_enabled && locked.data.focus.ends_at_ms.is_some_and(|end| end <= now)
+    {
+        // Still show stored data if a transient filesystem error prevents
+        // persisting the transition. The UI can retry the due phase later.
+        return Ok(locked
+            .transact(|_| Ok(()))
+            .unwrap_or_else(|_| locked.data.clone()));
+    }
+    let mut snapshot = locked.data.clone();
+    snapshot.focus.normalize(now);
+    snapshot.countdown.normalize(now);
     Ok(snapshot)
 }
 
@@ -1585,6 +1652,9 @@ fn set_focus_duration(store: State<'_, Mutex<Store>>, minutes: u64) -> Result<Ap
         return Err("Invalid focus preset".into());
     }
     with_store(store, |state| {
+        if state.focus.phase != FocusPhase::Focus {
+            return Err("Set the focus duration after your break".into());
+        }
         state.focus.duration_seconds = minutes * 60;
         state.focus.reset();
         Ok(())
@@ -1605,6 +1675,32 @@ fn focus_reset(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
         state.focus.reset();
         Ok(())
     })
+}
+
+#[tauri::command]
+fn set_focus_cycle(store: State<'_, Mutex<Store>>, enabled: bool) -> Result<AppData, String> {
+    with_store(store, |state| {
+        if state.focus.ends_at_ms.is_some() || state.focus.paused {
+            return Err("Reset the active timer before changing its mode".into());
+        }
+        state.focus.set_cycle(enabled);
+        Ok(())
+    })
+}
+
+#[tauri::command]
+fn advance_focus_cycle(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
+    let mut locked = store
+        .lock()
+        .map_err(|_| "Storage lock poisoned".to_owned())?;
+    let now = now_ms();
+    if locked.data.focus.cycle_enabled && locked.data.focus.ends_at_ms.is_some_and(|end| end <= now)
+    {
+        // Store::transact normalizes both deadlines before persisting atomically.
+        locked.transact(|_| Ok(()))
+    } else {
+        Ok(locked.data.clone())
+    }
 }
 
 #[tauri::command]
@@ -1744,6 +1840,8 @@ fn main() {
             set_focus_duration,
             focus_toggle,
             focus_reset,
+            set_focus_cycle,
+            advance_focus_cycle,
             set_expanded,
             display::get_display_options,
             display::set_display_preference,
@@ -2624,5 +2722,44 @@ mod tests {
         focus.normalize(1_502_000);
         assert!(focus.completed);
         assert_eq!(focus.remaining_seconds, 0);
+    }
+
+    #[test]
+    fn pomodoro_cycle_resumes_breaks_without_inventing_focus_sessions() {
+        let mut focus = FocusState::default();
+        focus.set_cycle(true);
+        for completed in 1..=4 {
+            focus.toggle(1_000);
+            let deadline = focus.ends_at_ms.unwrap();
+            focus.normalize(deadline + 60_000);
+            assert_eq!(focus.completed_in_cycle, completed);
+            let break_seconds = if completed == 4 { 900 } else { 300 };
+            assert_eq!(focus.remaining_seconds, break_seconds - 60);
+            let encoded = serde_json::to_string(&focus).unwrap();
+            let mut restored: FocusState = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(restored, focus);
+            restored.normalize(deadline.saturating_sub(60_000));
+            assert_eq!(restored.remaining_seconds, break_seconds);
+            restored.normalize(deadline + 86_400_000);
+            assert_eq!(restored.phase, FocusPhase::Focus);
+            assert_eq!(restored.ends_at_ms, None);
+            assert_eq!(
+                restored.completed_in_cycle,
+                if completed == 4 { 0 } else { completed }
+            );
+            focus = restored;
+        }
+    }
+
+    #[test]
+    fn legacy_focus_state_remains_a_single_timer() {
+        let legacy = r#"{"duration_seconds":900,"remaining_seconds":60,"paused":true}"#;
+        let mut focus: FocusState = serde_json::from_str(legacy).unwrap();
+        assert!(!focus.cycle_enabled);
+        assert_eq!(focus.phase, FocusPhase::Focus);
+        focus.toggle(1_000);
+        focus.normalize(62_000);
+        assert!(focus.completed);
+        assert_eq!(focus.completed_in_cycle, 0);
     }
 }

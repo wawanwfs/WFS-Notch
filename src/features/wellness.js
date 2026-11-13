@@ -134,7 +134,7 @@ function tickParity() {
     label.title = 'Countdown active';
   } else if (focus?.running) {
     label.textContent = Math.floor(focus.remaining / 60) + ':' + String(focus.remaining % 60).padStart(2,'0');
-    label.title = 'Focus session active';
+    label.title = data.focus.phase === 'focus' ? 'Focus session active' : 'Pomodoro break active';
   } else {
     label.title = 'Current time';
   }
