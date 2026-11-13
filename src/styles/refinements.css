@@ -98,6 +98,9 @@ footer {background:rgba(8,9,11,.37)}
 }
 
 /* Phase 12: small viewports, keyboard and motion-safe panel transitions. */
+body.preview {padding-top:clamp(0px,(100vh - 470px) / 2,32px)}
+body.preview .notch {width:min(760px,100vw);height:min(470px,100vh)}
+body.preview #toast {top:auto;bottom:10px;right:max(10px,calc((100vw - 760px) / 2 + 10px));max-width:min(320px,calc(100vw - 20px))}
 .tabs {overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
 main {min-width:0;}
 .panel.active {overflow-x:hidden;overflow-y:auto;padding-right:4px;}

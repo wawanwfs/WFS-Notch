@@ -126,25 +126,111 @@ function calculateSimple(expression) {
   if (!Number.isFinite(result)) throw new Error('Invalid calculation (division by zero?)');
   return Number(result.toPrecision(12)).toString();
 }
+const moduleKeywords = {
+  home: 'dashboard overview', todos: 'todo task reminders', notes: 'draft writing',
+  calendar: 'events appointments ics', timer: 'pomodoro focus session',
+  system: 'cpu ram disk network telemetry', health: 'water wellness break',
+  day: 'schedule today', countdown: 'timer alarm', weather: 'temperature forecast',
+  flashcards: 'study cards', habits: 'streak checklist', dock: 'bookmarks launcher links',
+  media: 'music audio player volume', tools: 'stopwatch calculator password',
+  settings: 'preferences appearance contrast density display backups',
+};
+let paletteOpener = null;
+let paletteSession = 0;
+let paletteSelecting = false;
+
+function paletteIsOpen() { return !$('#command-palette').hidden; }
+
+function setPaletteModality(open) {
+  const overlay = $('#command-palette');
+  for (const sibling of overlay.parentElement.children) {
+    if (sibling !== overlay) sibling.inert = open;
+  }
+}
+
 function openPalette() {
+  if (!isExpanded || paletteIsOpen()) return;
+  paletteSession += 1;
+  paletteOpener = document.activeElement;
   $('#command-palette').hidden = false;
+  setPaletteModality(true);
   $('#palette-search').value = '';
   renderPalette();
   $('#palette-search').focus();
 }
-function closePalette() { $('#command-palette').hidden = true; }
+function closePalette(focusTarget = paletteOpener) {
+  if (!paletteIsOpen()) return;
+  paletteSession += 1;
+  if (paletteSelecting) tabRequest += 1;
+  paletteSelecting = false;
+  $('#command-palette').hidden = true;
+  setPaletteModality(false);
+  const target = focusTarget?.closest('#expanded') && focusTarget.getClientRects().length
+    ? focusTarget : $('#module-finder');
+  target.focus();
+  paletteOpener = null;
+}
+
+async function selectPaletteModule(tab) {
+  if (paletteSelecting) return;
+  const session = paletteSession;
+  paletteSelecting = true;
+  const opened = await switchTab(tab.dataset.tab);
+  if (session !== paletteSession) return;
+  paletteSelecting = false;
+  if (opened) closePalette(tab);
+  else $('#palette-status').textContent = 'Module not opened. Close the finder to resolve the unsaved note.';
+}
+
 function renderPalette() {
-  const query = $('#palette-search').value.toLocaleLowerCase().trim();
+  const terms = $('#palette-search').value.toLowerCase().trim().split(/\s+/).filter(Boolean);
   const container = $('#palette-results');
   container.replaceChildren();
-  const tabs = $$('.tab').filter(button => button.textContent.toLocaleLowerCase().includes(query));
+  const tabs = $$('.tab').filter(tab => {
+    const searchable = `${tab.textContent.toLowerCase()} ${moduleKeywords[tab.dataset.tab] || ''}`;
+    return terms.every(term => searchable.includes(term));
+  });
+  $('#palette-status').textContent = tabs.length
+    ? `${tabs.length} ${tabs.length === 1 ? 'module' : 'modules'} available`
+    : 'No matching module. Try another search.';
   for (const tab of tabs) {
     const button = node('button', 'palette-option', tab.textContent);
     button.type = 'button';
-    button.addEventListener('click', () => { closePalette(); void switchTab(tab.dataset.tab); });
+    if (tab.dataset.tab === activeTab) {
+      button.setAttribute('aria-current', 'page');
+      button.append(node('span', 'palette-current', 'Current'));
+    }
+    button.addEventListener('click', () => void selectPaletteModule(tab));
     container.append(button);
   }
-  if (!tabs.length) container.append(node('div', 'empty', 'No matching module.'));
+  container.scrollTop = 0;
+}
+
+function handlePaletteKey(event) {
+  if (event.isComposing) return;
+  const input = $('#palette-search');
+  const options = $$('#palette-results .palette-option');
+  const index = options.indexOf(document.activeElement);
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    closePalette();
+  } else if (event.key === 'Tab') {
+    const stops = [$('#palette-close'), input, ...options];
+    const current = stops.indexOf(document.activeElement);
+    if ((event.shiftKey && current === 0) || (!event.shiftKey && current === stops.length - 1)) {
+      event.preventDefault();
+      stops[event.shiftKey ? stops.length - 1 : 0].focus();
+    }
+  } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+      (document.activeElement === input || index !== -1) && options.length) {
+    event.preventDefault();
+    const next = event.key === 'ArrowDown' ? index + 1 : index === -1 ? options.length - 1 : index - 1;
+    (options[next] || input).focus();
+  } else if (event.key === 'Enter' && document.activeElement === input) {
+    event.preventDefault();
+    options[0]?.click();
+  }
 }
 function initExtras() {
   if (extrasInitialized) return;
@@ -224,20 +310,19 @@ function initExtras() {
     catch (error) { showError(error); }
   });
   $('#palette-open').addEventListener('click', openPalette);
-  $('#palette-close').addEventListener('click', closePalette);
+  $('#module-finder').addEventListener('click', openPalette);
+  $('#palette-close').addEventListener('click', () => closePalette());
   $('#palette-search').addEventListener('input', renderPalette);
-  $('#palette-search').addEventListener('keydown', event => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      $('#palette-results .palette-option')?.click();
-    }
+  $('#command-palette').addEventListener('keydown', handlePaletteKey);
+  $('#command-palette').addEventListener('click', event => {
+    if (event.target === event.currentTarget) closePalette();
   });
-  document.addEventListener('keydown', event => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-      event.preventDefault(); openPalette();
-    } else if (event.key === 'Escape' && !$('#command-palette').hidden) {
-      event.preventDefault(); closePalette();
-    }
+  document.addEventListener('keydown', async event => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.repeat ||
+        event.isComposing || event.key.toLowerCase() !== 'k') return;
+    event.preventDefault();
+    if (!isExpanded) await setExpanded(true);
+    openPalette();
   });
   setInterval(renderStopwatch, 100);
   renderStopwatch();

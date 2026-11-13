@@ -100,6 +100,8 @@ jobs:
         run: node --check src/features/displays.js
       - name: Desktop accessibility 760x470 regression
         run: python tests/browser_accessibility.py
+      - name: All-module finder, modal focus and Notes navigation guards
+        run: python tests/browser_module_finder.py
       - name: Explicit monitor disconnect / no fallback UI regression
         run: python tests/browser_display_disconnect.py
       - name: Phase 12 screenshots - all modules / DPI matrix

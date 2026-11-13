@@ -1,3 +1,10 @@
+## 0.33.0 — Phase 32A: accessible all-module finder
+
+- Discover all 16 modules from the notch header or Ctrl/Command+K. Search module names or concepts such as Pomodoro, bookmarks and contrast.
+- The finder fits narrow windows, announces results, supports keyboard navigation, keeps background controls inert while open and restores focus to the opener or selected module. Escape dismisses the finder without also collapsing the notch.
+- A pending Notes save still gates navigation. Dismissing the finder cancels the requested module switch, without canceling or losing the note save.
+- Browser viewport, focus and all-module route checks are separate from native WebView2, screen-reader and Poni 1.5.0 side-by-side acceptance. Fixed feature parity remains 28.9%.
+
 ## 0.32.0 — Phase 30A: fail-closed disconnection of explicitly selected monitor
 
 - If the user selected a specific named or legacy origin monitor and Windows reports it disconnected, the notch no longer intentionally moves or resizes to an unrelated primary/current monitor. The last known position and persisted preference remain unchanged until reconnect or an explicit user selection.
