@@ -75,19 +75,51 @@ with sync_playwright() as pw:
 
     # Deterministic mocked API responses, not claims about live weather availability.
     page.evaluate("""() => {
-        window.fetch = async url => ({
+        window.weatherRequests = [];
+        window.fetch = async url => {
+          window.weatherRequests.push(url);
+          return {
             ok: true,
             json: async () => url.includes('geocoding-api')
-              ? {results:[{name:'Testville',country:'Testland',latitude:1,longitude:2}]}
-              : {current:{temperature_2m:27.5,relative_humidity_2m:60,wind_speed_10m:3},
-                 daily:{time:['2026-11-07'],temperature_2m_min:[24],temperature_2m_max:[30]}}
-        });
+              ? {results:[{name:'Testville',admin1:'North',country:'Testland',latitude:1,longitude:2},
+                          {name:'Testville',admin1:'South',country:'Testland',latitude:3,longitude:4},
+                          {name:'Invalid',latitude:91,longitude:4}]}
+              : {timezone:'Asia/Jakarta',
+                 current:{time:'2026-11-07T13:15',temperature_2m:27.5,relative_humidity_2m:60,wind_speed_10m:3,weather_code:61},
+                 hourly:{time:['2026-11-07T13:00','2026-11-07T14:00','2026-11-08T00:00'],temperature_2m:[25,26,null],precipitation_probability:[0,35,null]},
+                 daily:{time:Array.from({length:8},(_,i)=>'2026-11-'+String(i+7).padStart(2,'0')),
+                   sunrise:['2026-11-07T05:00'],temperature_2m_min:[24],temperature_2m_max:[30]}}
+          };
+        };
     }""")
     page.get_by_role("button", name="Weather", exact=True).click()
+    assert page.evaluate("window.weatherRequests.length") == 0, "Opening Weather must not send location data"
     page.locator("#weather-city").fill("Testville")
     page.get_by_role("button", name="Get weather").click()
+    page.get_by_role("group", name="Matching cities").wait_for()
+    assert page.locator(".weather-location").count() == 2
+    assert page.evaluate("window.weatherRequests.length") == 1, "Never guess an ambiguous city"
+    page.get_by_role("button", name="Testville, South, Testland").click()
     page.wait_for_function("document.querySelector('#weather-current').textContent.includes('Testville')")
     assert "27.5°C" in page.locator("#weather-current").inner_text()
+    assert "Rain" in page.locator("#weather-current").inner_text()
+    assert page.locator("#weather-hours .weather-day").count() == 2
+    assert "14:00" in page.locator("#weather-hours .weather-day").first.inner_text()
+    assert "Rain 35%" in page.locator("#weather-hours").inner_text()
+    assert "11-08 00:00" in page.locator("#weather-hours").inner_text()
+    assert page.locator("#weather-days .weather-day").count() == 7
+    assert "Low 24°C · High 30°C" in page.locator("#weather-days").inner_text()
+    assert "05:00" in page.locator("#weather-details").inner_text()
+    assert "Asia/Jakarta" in page.locator("#weather-timezone").inner_text()
+    assert page.evaluate("window.weatherRequests.length") == 2
+    assert page.evaluate("window.weatherRequests[1].includes('latitude=3&longitude=4')")
+    assert page.evaluate("window.weatherRequests[1].includes('forecast_days=7&timezone=auto')")
+    page.screenshot(path=str(EVIDENCE / "browser-weather-forecast.png"))
+    page.evaluate("() => { window.fetch = async () => { throw new Error('Offline fixture'); }; }")
+    page.get_by_role("button", name="Get weather").click()
+    page.wait_for_function("document.querySelector('#weather-current').textContent.includes('Offline fixture')")
+    assert page.locator("#weather-forecast").is_hidden()
+    assert page.locator("#weather-search").is_enabled()
 
     page.get_by_role("button", name="Health", exact=True).click()
     assert page.locator("#health-water").inner_text() == "1 / 8"

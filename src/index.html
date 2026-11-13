@@ -195,8 +195,16 @@
         <section class="panel" id="panel-weather">
           <div class="section-heading"><div><h2>Weather</h2><p>Opt-in weather from Open-Meteo, without API key or automatic location tracking.</p></div><span class="section-pill">ONLINE</span></div>
           <form class="input-row" id="weather-form"><input id="weather-city" maxlength="100" required placeholder="Enter city (e.g. Surabaya)" aria-label="Weather city"><button class="primary" type="submit" id="weather-search">Get weather</button></form>
-          <div class="weather-current" id="weather-current" aria-live="polite">Enter a city to request current conditions.</div>
-          <div class="weather-days" id="weather-days"></div>
+          <div class="weather-current" id="weather-current" role="status" tabindex="-1">Enter a city to request current conditions.</div>
+          <div class="weather-days" id="weather-locations" role="group" aria-label="Matching cities" hidden></div>
+          <div id="weather-forecast" hidden>
+            <dl id="weather-details" class="weather-details" aria-label="Current weather details"></dl>
+            <h3>Upcoming hours</h3>
+            <div class="weather-days" id="weather-hours" aria-label="Hourly weather forecast"></div>
+            <h3>7-day outlook</h3>
+            <div class="weather-days" id="weather-days" aria-label="Daily weather forecast"></div>
+            <p class="event-hint" id="weather-timezone"></p>
+          </div>
           <p class="event-hint">City search is sent only on request to Open-Meteo. Results show the matched location; internet is required. No temperature is invented when unavailable.</p>
         </section>
         <section class="panel" id="panel-flashcards">
@@ -324,7 +332,7 @@
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.33.0 · DEVELOPMENT</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.34.0 · DEVELOPMENT</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>

@@ -9,7 +9,7 @@
 
 Legend: **Implemented** means source exists; CI/native status is separate. **Partial** lacks reference capabilities. **Gap** is not yet implemented.
 
-| Reference feature | WFS Notch 0.29.0 source | Remaining difference / evidence required |
+| Reference feature | WFS Notch source | Remaining difference / evidence required |
 | --- | --- | --- |
 | Compact/expanded interactive notch | Partial | DPI-aware placement with unique bounded monitor-name persistence (legacy coordinate fallback), opt-in Win32 foreground fullscreen guard (excluding spanning windows) and display hotplug polling; real Win10/11 device/hover/pass-through and RDP QA still pending |
 | Closed notch information | Partial | Running timer/focus countdown now shown; configurable sides, events, task, battery, weather missing |
@@ -24,7 +24,7 @@ Legend: **Implemented** means source exists; CI/native status is separate. **Par
 | Independent timer | Implemented | 1–1440 min, pause, +1/+5, persistent Rust state; native runtime to verify |
 | Health | Partial | Water/break/calm tracker, daily reset; background reminders and activity telemetry missing |
 | Day Progress | Partial | Time and today events/tasks; wake/sleep schedule and richer timeline missing |
-| Weather | Partial | Manual city current/daily via Open-Meteo; 7-day/hourly, geolocation missing |
+| Weather | Partial | Explicit Open-Meteo lookup, disambiguated city selection, current details, up to 12 upcoming hours and 7 days in the city’s local time; automatic default city, refresh policy, weather appearance and side-by-side native Windows evidence are outstanding |
 | Prayer Times | Gap | Kemenag/Aladhan integration and reminders |
 | System Monitor | Partial | CPU/RAM, per-volume disk capacity and per-interface network byte totals; GPU/temperature and network controls missing |
 | Screen Time | Gap | Per-app foreground activity not tracked |
