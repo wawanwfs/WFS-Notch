@@ -264,6 +264,7 @@ function previewInvoke(command, args = {}) {
   }
   switch (command) {
     case 'add_todo': {
+      if (args.calendarSchedule != null) throw new Error('Calendar-time repeat requires the installed desktop app');
       const title = String(args.title).trim();
       const priority = args.priority || 'normal';
       if (!title || title.length > 200) throw new Error('Task title must contain 1–200 characters');
@@ -274,6 +275,7 @@ function previewInvoke(command, args = {}) {
       break;
     }
     case 'update_todo': {
+      if (args.calendarSchedule != null) throw new Error('Calendar-time repeat requires the installed desktop app');
       const todo = state.todos.find(item => item.id === args.id);
       if (!todo) throw new Error('Task not found');
       const title = String(args.title || '').trim();
@@ -651,6 +653,31 @@ function parseTaskDue(raw) {
   return ms;
 }
 
+function taskWallInput(epoch, timezone) {
+  const format = new Intl.DateTimeFormat('en-GB', {timeZone: timezone, year:'numeric', month:'2-digit',
+    day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23'});
+  const parts = Object.fromEntries(format.formatToParts(epoch).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+function taskEditorPayload(prefix) {
+  const recurrence = $(`#${prefix}-recurrence`).value || null;
+  const timezone = recurrence ? $(`#${prefix}-recurrence-zone`).value.trim() : '';
+  const raw = $(`#${prefix}-due`).value;
+  if (timezone && !nativeInvoke) throw new Error('Calendar-time repeat requires the installed desktop app');
+  return {recurrence, dueAtMs: timezone ? null : parseTaskDue(raw),
+    calendarSchedule: timezone ? {timezone, wall_time: raw} : null};
+}
+
+function syncTaskZoneField(prefix) {
+  const repeat = $(`#${prefix}-recurrence`);
+  const zone = $(`#${prefix}-recurrence-zone`);
+  zone.parentElement.hidden = !repeat.value || repeat.disabled;
+  const due = $(`#${prefix}-due`);
+  due.parentElement.firstChild.textContent = !zone.parentElement.hidden && zone.value.trim()
+    ? 'Due in the chosen timezone ' : 'Due (optional, device time) ';
+}
+
 function cancelTodoEdit() {
   selectedTodoId = null;
   $('#todo-edit-form').hidden = true;
@@ -683,7 +710,8 @@ function renderTodos() {
     const due = item.due_at_ms;
     const meta = node('small', 'todo-metadata',
       priority.toUpperCase() + (due == null ? '' : ' · Due ' + new Date(due).toLocaleString()) +
-      (item.recurrence ? (item.recurrence === 'daily' ? ' · Every 24h' : ' · Every 7 days') : ''));
+      (item.recurrence_timezone ? ` · ${item.recurrence === 'daily' ? 'Daily' : 'Weekly'} (${item.recurrence_timezone})`
+        : item.recurrence ? (item.recurrence === 'daily' ? ' · Every 24h' : ' · Every 7 days') : ''));
     if (due != null && due < Date.now() && !item.done) meta.classList.add('overdue');
     const edit = node('button', 'text-button todo-edit-button', 'Edit');
     edit.type = 'button';
@@ -695,6 +723,12 @@ function renderTodos() {
       $('#todo-edit-due').value = due == null ? '' : asLocalInput(due);
       $('#todo-edit-recurrence').value = item.recurrence || '';
       $('#todo-edit-recurrence').disabled = item.done;
+      $('#todo-edit-recurrence-zone').value = item.recurrence_timezone || '';
+      if (item.recurrence_timezone && due != null) {
+        try { $('#todo-edit-due').value = taskWallInput(due, item.recurrence_timezone); }
+        catch { showError('Cannot display this task’s timezone. Choose a supported zone before saving.'); $('#todo-edit-due').value = ''; }
+      }
+      syncTaskZoneField('todo-edit');
       $('#todo-edit-form').hidden = false;
       $('#todo-edit-title').focus();
     });
@@ -1263,31 +1297,37 @@ function bind() {
     } catch (error) { showError(error); }
     finally { button.disabled = false; }
   });
+  for (const prefix of ['todo', 'todo-edit']) {
+    $(`#${prefix}-recurrence`).addEventListener('change', () => syncTaskZoneField(prefix));
+    $(`#${prefix}-recurrence-zone`).addEventListener('input', () => syncTaskZoneField(prefix));
+  }
   $('#todo-form').addEventListener('submit', async event => {
     event.preventDefault();
     const input = $('#todo-input');
     const title = input.value.trim();
-    let dueAtMs;
-    try { dueAtMs = parseTaskDue($('#todo-due').value); }
+    let schedule;
+    try { schedule = taskEditorPayload('todo'); }
     catch (error) { showError(error); return; }
     if (title && await mutation('add_todo', {
-      title, priority: $('#todo-priority').value, dueAtMs, recurrence: $('#todo-recurrence').value || null,
+      title, priority: $('#todo-priority').value, ...schedule,
     })) {
       input.value = '';
       $('#todo-priority').value = 'normal';
       $('#todo-due').value = '';
       $('#todo-recurrence').value = '';
+      $('#todo-recurrence-zone').value = '';
+      syncTaskZoneField('todo');
     }
   });
   $('#todo-edit-form').addEventListener('submit', async event => {
     event.preventDefault();
     if (!selectedTodoId) return;
-    let dueAtMs;
-    try { dueAtMs = parseTaskDue($('#todo-edit-due').value); }
+    let schedule;
+    try { schedule = taskEditorPayload('todo-edit'); }
     catch (error) { showError(error); return; }
     if (await mutation('update_todo', {
       id: selectedTodoId, title: $('#todo-edit-title').value,
-      priority: $('#todo-edit-priority').value, dueAtMs, recurrence: $('#todo-edit-recurrence').value || null,
+      priority: $('#todo-edit-priority').value, ...schedule,
     })) cancelTodoEdit();
   });
   $('#todo-edit-cancel').addEventListener('click', cancelTodoEdit);

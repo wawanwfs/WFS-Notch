@@ -76,6 +76,8 @@ struct Todo {
     due_at_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recurrence: Option<TaskRecurrence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recurrence_timezone: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -86,6 +88,49 @@ enum TaskRecurrence {
 }
 
 impl TaskRecurrence {
+    fn calendar_days(self) -> i64 {
+        match self {
+            Self::Daily => 1,
+            Self::Weekly => 7,
+        }
+    }
+
+    fn next_calendar_due(self, due: u64, now: u128, zone: chrono_tz::Tz) -> Result<u64, String> {
+        use chrono::{DateTime, Days, TimeZone, Utc};
+        let instant = |value: u128| {
+            i64::try_from(value)
+                .ok()
+                .and_then(DateTime::<Utc>::from_timestamp_millis)
+                .ok_or("Calendar task instant outside supported range")
+        };
+        let anchor = instant(due.into())?.with_timezone(&zone).naive_local();
+        let today = instant(now)?.with_timezone(&zone).date_naive();
+        let stride = self.calendar_days();
+        let skipped = (today.signed_duration_since(anchor.date()).num_days() / stride).max(1);
+        // Jump directly to the current period; scan only a bounded number of
+        // civil dates in case the zone skipped a date or an hour (DST gap).
+        for period in skipped..skipped + 8 {
+            let day = anchor
+                .date()
+                .checked_add_days(Days::new((period * stride) as u64))
+                .ok_or("Next calendar task date is outside the supported range")?;
+            let Some(next) = zone
+                .from_local_datetime(&day.and_time(anchor.time()))
+                .earliest()
+            else {
+                continue;
+            };
+            let next = next.timestamp_millis();
+            if next > 4_102_444_800_000 {
+                break;
+            }
+            if next > 0 && next as u128 > now && next as u64 > due {
+                return Ok(next as u64);
+            }
+        }
+        Err("No next task date in the supported calendar range".into())
+    }
+
     fn next_due(self, due: u64, now: u128) -> Result<u64, String> {
         let step = match self {
             Self::Daily => 86_400_000_u128,
@@ -99,6 +144,53 @@ impl TaskRecurrence {
         }
         Ok(next as u64)
     }
+}
+
+fn task_timezone(value: &str) -> Result<chrono_tz::Tz, String> {
+    if value.is_empty() || value.len() > 80 {
+        return Err("Enter a valid IANA timezone, such as Asia/Jakarta".into());
+    }
+    value
+        .parse()
+        .map_err(|_| "Enter a valid IANA timezone, such as Asia/Jakarta".into())
+}
+
+#[derive(Deserialize)]
+struct TaskCalendarSchedule {
+    timezone: String,
+    wall_time: String,
+}
+
+fn resolve_task_due(
+    elapsed_due: Option<u64>,
+    recurrence: Option<TaskRecurrence>,
+    timezone: Option<&str>,
+    wall_time: Option<&str>,
+) -> Result<Option<u64>, String> {
+    use chrono::{NaiveDateTime, TimeZone};
+    let Some(zone) = timezone else {
+        if wall_time.is_some() {
+            return Err("Calendar-time tasks need an explicit timezone".into());
+        }
+        return Ok(elapsed_due);
+    };
+    if recurrence.is_none() || elapsed_due.is_some() {
+        return Err(
+            "Calendar-time mode requires a repeat interval and one wall-clock deadline".into(),
+        );
+    }
+    let raw = wall_time
+        .filter(|value| value.len() == 16)
+        .ok_or("Enter a local date and time")?;
+    let wall = NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M")
+        .map_err(|_| "Enter a valid calendar date and time")?;
+    let due = task_timezone(zone)?
+        .from_local_datetime(&wall)
+        .earliest()
+        .ok_or("This local time does not exist in the selected timezone. Choose another time.")?;
+    u64::try_from(due.timestamp_millis())
+        .map(Some)
+        .map_err(|_| "Task date outside supported range".into())
 }
 
 fn validate_task_recurrence(
@@ -119,7 +211,11 @@ fn toggle_task(todo: &mut Todo, expected_due_at_ms: Option<u64>, now: u128) -> R
                 "This task schedule changed. Review the new due date before completing it.".into(),
             );
         }
-        todo.due_at_ms = Some(recurrence.next_due(due, now)?);
+        let next = match todo.recurrence_timezone.as_deref() {
+            Some(zone) => recurrence.next_calendar_due(due, now, task_timezone(zone)?)?,
+            None => recurrence.next_due(due, now)?,
+        };
+        todo.due_at_ms = Some(next);
         todo.done = false;
     } else {
         if expected_due_at_ms.is_some() && expected_due_at_ms != todo.due_at_ms {
@@ -400,6 +496,16 @@ impl AppData {
             if todo.due_at_ms.is_none() || todo.done {
                 todo.recurrence = None;
             }
+            if todo
+                .recurrence_timezone
+                .as_deref()
+                .is_some_and(|zone| task_timezone(zone).is_err())
+            {
+                todo.recurrence = None;
+            }
+            if todo.recurrence.is_none() {
+                todo.recurrence_timezone = None;
+            }
         }
         self.events.retain(|event| {
             !event.title.trim().is_empty()
@@ -657,8 +763,16 @@ fn add_todo(
     priority: Option<String>,
     due_at_ms: Option<u64>,
     recurrence: Option<TaskRecurrence>,
+    calendar_schedule: Option<TaskCalendarSchedule>,
 ) -> Result<AppData, String> {
     let priority = priority.unwrap_or_else(default_todo_priority);
+    let due_at_ms = resolve_task_due(
+        due_at_ms,
+        recurrence,
+        calendar_schedule.as_ref().map(|s| s.timezone.as_str()),
+        calendar_schedule.as_ref().map(|s| s.wall_time.as_str()),
+    )?;
+    let recurrence_timezone = calendar_schedule.map(|s| s.timezone);
     validate_todo_fields(&title, &priority, due_at_ms)?;
     validate_task_recurrence(due_at_ms, recurrence)?;
     with_store(store, |state| {
@@ -670,6 +784,7 @@ fn add_todo(
             priority,
             due_at_ms,
             recurrence,
+            recurrence_timezone,
         });
         Ok(())
     })
@@ -683,7 +798,15 @@ fn update_todo(
     priority: String,
     due_at_ms: Option<u64>,
     recurrence: Option<TaskRecurrence>,
+    calendar_schedule: Option<TaskCalendarSchedule>,
 ) -> Result<AppData, String> {
+    let due_at_ms = resolve_task_due(
+        due_at_ms,
+        recurrence,
+        calendar_schedule.as_ref().map(|s| s.timezone.as_str()),
+        calendar_schedule.as_ref().map(|s| s.wall_time.as_str()),
+    )?;
+    let recurrence_timezone = calendar_schedule.map(|s| s.timezone);
     validate_todo_fields(&title, &priority, due_at_ms)?;
     validate_task_recurrence(due_at_ms, recurrence)?;
     with_store(store, |state| {
@@ -699,6 +822,7 @@ fn update_todo(
         todo.priority = priority;
         todo.due_at_ms = due_at_ms;
         todo.recurrence = recurrence;
+        todo.recurrence_timezone = recurrence_timezone;
         Ok(())
     })
 }
@@ -2262,6 +2386,7 @@ mod tests {
             done: false,
             due_at_ms: Some(due),
             recurrence: Some(TaskRecurrence::Daily),
+            recurrence_timezone: None,
         };
         let now = u128::from(due + 3 * 86_400_000);
         toggle_task(&mut todo, Some(due), now).unwrap();
@@ -2286,6 +2411,62 @@ mod tests {
     }
 
     #[test]
+    fn calendar_recurrence_keeps_local_hour_and_resolves_dst_explicitly() {
+        use chrono::DateTime;
+        let utc = |value: &str| {
+            DateTime::parse_from_rfc3339(value)
+                .unwrap()
+                .timestamp_millis() as u64
+        };
+        let zone = task_timezone("America/New_York").unwrap();
+        let due = utc("2027-03-13T14:00:00Z");
+        assert_eq!(
+            TaskRecurrence::Daily
+                .next_calendar_due(due, due.into(), zone)
+                .unwrap(),
+            utc("2027-03-14T13:00:00Z")
+        );
+        let gap = utc("2027-03-13T07:30:00Z");
+        assert_eq!(
+            TaskRecurrence::Daily
+                .next_calendar_due(gap, gap.into(), zone)
+                .unwrap(),
+            utc("2027-03-15T06:30:00Z")
+        );
+        let overlap = utc("2027-11-06T05:30:00Z");
+        assert_eq!(
+            TaskRecurrence::Daily
+                .next_calendar_due(overlap, overlap.into(), zone)
+                .unwrap(),
+            utc("2027-11-07T05:30:00Z")
+        );
+        assert_eq!(
+            TaskRecurrence::Weekly
+                .next_calendar_due(due, utc("2027-03-27T13:00:00Z").into(), zone)
+                .unwrap(),
+            utc("2027-04-03T13:00:00Z")
+        );
+        let resolve = |timezone, wall| {
+            resolve_task_due(
+                None,
+                Some(TaskRecurrence::Daily),
+                Some(timezone),
+                Some(wall),
+            )
+        };
+        assert!(resolve("America/New_York", "2027-03-14T02:30").is_err());
+        assert_eq!(
+            resolve("America/New_York", "2027-11-07T01:30").unwrap(),
+            Some(utc("2027-11-07T05:30:00Z"))
+        );
+        assert!(resolve("Not/AZone", "2027-11-07T01:30").is_err());
+        assert_eq!(
+            resolve("Asia/Jakarta", "2027-11-07T09:00").unwrap(),
+            Some(utc("2027-11-07T02:00:00Z"))
+        );
+    }
+
+    #[test]
     fn task_edit_transaction_preserves_id_completion_and_rollback() {
         let path = temp_file("task-edit");
         let mut store = Store::open(path.clone()).unwrap();
@@ -2299,6 +2480,7 @@ mod tests {
                     priority: "normal".into(),
                     due_at_ms: None,
                     recurrence: None,
+                    recurrence_timezone: None,
                 });
                 Ok(())
             })
@@ -2354,6 +2536,7 @@ mod tests {
                     priority: "normal".into(),
                     due_at_ms: None,
                     recurrence: None,
+                    recurrence_timezone: None,
                 });
                 Ok(())
             })
@@ -2377,6 +2560,7 @@ mod tests {
                 priority: "normal".into(),
                 due_at_ms: None,
                 recurrence: None,
+                recurrence_timezone: None,
             });
             Err("simulated failure".into())
         });
