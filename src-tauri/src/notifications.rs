@@ -579,6 +579,7 @@ mod tests {
             created_ms: 1,
             priority: "high".into(),
             due_at_ms: Some(due_at_ms),
+            recurrence: None,
         }
     }
 

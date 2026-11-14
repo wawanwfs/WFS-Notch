@@ -1,3 +1,9 @@
+## 0.38.0 — Phase 29C: local repeating tasks
+
+- Add optional 24-hour and seven-day task recurrence anchored to the saved due date. Completing a recurring task advances its existing row and skips missed deadlines without creating duplicates.
+- Preserve task identity, title and priority. Reject repeated completion from a stale deadline and require a due date before enabling repeat. One-shot tasks retain their existing behavior and notification consent remains unchanged.
+- Fixed elapsed time can shift local wall-clock time across DST. Calendar-time recurrence, occurrence history and interactive Windows verification remain open.
+
 ## 0.37.0 — Phase 28B2: reviewed ICS single-occurrence cancellations
 
 - Preview iCalendar imports before writing. The review shows exact source date/time and timezone, additions, saved occurrences to remove, and cancellation markers. Applying stale input or a stale calendar preview fails without partial changes.
