@@ -63,6 +63,7 @@
               <label for="todo-priority">Priority <select id="todo-priority" aria-label="New task priority"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></label>
               <label for="todo-due">Due (optional, local time) <input id="todo-due" type="datetime-local" aria-label="New task due date and time"></label>
               <label for="todo-recurrence">Repeat <select id="todo-recurrence" aria-label="New task repeat"><option value="">Never</option><option value="daily">Every 24 hours</option><option value="weekly">Every 7 days</option></select></label>
+              <label for="todo-recurrence-zone" hidden>Repeat at the same local time (IANA zone)<input id="todo-recurrence-zone" maxlength="80" placeholder="e.g. Asia/Jakarta" autocomplete="off"></label>
             </div>
           </form>
           <form class="todo-edit-form" id="todo-edit-form" hidden aria-label="Edit selected task">
@@ -71,11 +72,12 @@
               <label for="todo-edit-priority">Priority <select id="todo-edit-priority"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></label>
               <label for="todo-edit-due">Due (optional, local time) <input id="todo-edit-due" type="datetime-local" aria-label="Edit task due date and time"></label>
               <label for="todo-edit-recurrence">Repeat <select id="todo-edit-recurrence" aria-label="Edit task repeat"><option value="">Never</option><option value="daily">Every 24 hours</option><option value="weekly">Every 7 days</option></select></label>
+              <label for="todo-edit-recurrence-zone" hidden>Repeat at the same local time (IANA zone)<input id="todo-edit-recurrence-zone" maxlength="80" placeholder="e.g. Asia/Jakarta" autocomplete="off"></label>
             </div>
             <div class="todo-edit-actions"><button class="primary" type="submit">Save task</button><button class="text-button" id="todo-edit-cancel" type="button">Cancel edit</button></div>
           </form>
           <small class="todo-help">Task due dates remain private and local. Optional desktop reminders can be enabled separately in Settings; they require the installed Windows app and WFS notification consent.</small>
-          <small class="todo-help">Repeating tasks need a due date. Completing one advances its deadline, skipping missed dates. Intervals are elapsed time and may shift by an hour across daylight saving changes.</small>
+          <small class="todo-help" id="task-repeat-help">Repeating tasks need a due date. Leave the timezone blank for elapsed intervals. With a timezone, enter the due time in that zone. Missing DST times are skipped and repeated times use the first occurrence.</small>
           <div id="todo-list" class="list-scroll" aria-label="Saved tasks"></div>
         </section>
         <section class="panel" id="panel-notes">
@@ -353,7 +355,7 @@
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.39.0 · DEVELOPMENT</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.40.0 · DEVELOPMENT</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>
