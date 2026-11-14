@@ -24,6 +24,7 @@ with sync_playwright() as pw:
     zone = page.locator("#todo-recurrence-zone")
     expect(zone).to_be_visible()
     zone.fill("Asia/Jakarta")
+    expect(page.locator("#todo-recurrence option[value=daily]")).to_have_text("Daily at the same local time")
     page.get_by_role("button", name="Add task").click()
     expect(page.locator("#toast")).to_contain_text("requires the installed desktop app")
     zone.fill("")

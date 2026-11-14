@@ -674,8 +674,11 @@ function syncTaskZoneField(prefix) {
   const zone = $(`#${prefix}-recurrence-zone`);
   zone.parentElement.hidden = !repeat.value || repeat.disabled;
   const due = $(`#${prefix}-due`);
-  due.parentElement.firstChild.textContent = !zone.parentElement.hidden && zone.value.trim()
+  const usesWallTime = !zone.parentElement.hidden && Boolean(zone.value.trim());
+  due.parentElement.firstChild.textContent = usesWallTime
     ? 'Due in the chosen timezone ' : 'Due (optional, device time) ';
+  repeat.querySelector('[value="daily"]').textContent = usesWallTime ? 'Daily at the same local time' : 'Every 24 hours';
+  repeat.querySelector('[value="weekly"]').textContent = usesWallTime ? 'Weekly at the same local time' : 'Every 7 days';
 }
 
 function cancelTodoEdit() {
@@ -964,7 +967,7 @@ function renderBackups() {
           cancelEventEdit();
           render();
         });
-        writeQueue = task;
+        writeQueue = task.catch(() => {});
         await task;
         showInfo('Backup restored successfully.');
       } catch (error) { showError(error); }
