@@ -4,15 +4,20 @@
 //! Source recurrence metadata is retained with an explicit version; RFC5545
 //! Scoped RECURRENCE-ID overrides are accepted only when the original master
 //! occurrence, identical source timezone and resulting collision-free event
-//! can be proven; unsupported cancellation/range semantics still fail closed.
+//! can be proven. Scoped cancellations require the same proof and preview.
 use crate::{
     all_day::{parse_ics_date, AllDaySpan},
     ics_time::CalendarStart,
-    new_id, now_ms, validate_event, validate_timed_end, with_store, AppData, CalendarEvent, Store,
+    new_id, now_ms, remember_calendar_cancellation, validate_event, validate_timed_end, with_store,
+    AppData, CalendarEvent, Store,
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, sync::Mutex};
+use std::{
+    collections::HashSet,
+    hash::{Hash, Hasher},
+    sync::Mutex,
+};
 use tauri::State;
 
 const MAX_ICS_BYTES: usize = 256 * 1024;
@@ -30,6 +35,7 @@ struct PartialEvent {
     duration_property: Option<String>,
     uid: Option<String>,
     reminder: Option<u32>,
+    has_alarm: bool,
     recurrence: Option<String>,
     exdates: Vec<(String, String)>,
     rdates: Vec<(String, String)>,
@@ -48,6 +54,12 @@ pub(super) struct SourceOccurrenceOverride {
     title: String,
     description: String,
     reminder_minutes: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct SourceOccurrenceCancellation {
+    recurrence_id: (String, String),
+    occurrence_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -75,6 +87,8 @@ pub(super) struct SeriesSource {
     // Legacy version-1 metadata has no exceptions. Never infer them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub overrides: Vec<SourceOccurrenceOverride>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) cancellations: Vec<SourceOccurrenceCancellation>,
 }
 impl SeriesSource {
     pub(super) fn valid(&self, id: &str) -> bool {
@@ -94,7 +108,21 @@ impl SeriesSource {
             && self.rdates.len() <= 250
             && matches!(self.reminder_minutes, None | Some(0 | 5 | 15 | 30 | 60))
             && self.modified_occurrence_ids.len() <= 250
-            && self.overrides.len() <= 250
+            && self
+                .overrides
+                .len()
+                .saturating_add(self.cancellations.len())
+                <= 250
+            && self.cancellations.iter().all(|exception| {
+                exception.recurrence_id.0.starts_with("RECURRENCE-ID")
+                    && exception.recurrence_id.0.len() <= 110
+                    && exception.recurrence_id.1.len() <= 80
+                    && exception
+                        .occurrence_id
+                        .strip_prefix(id)
+                        .and_then(|suffix| suffix.strip_prefix(':'))
+                        .is_some_and(|timestamp| timestamp.parse::<u64>().is_ok())
+            })
             && self.overrides.iter().all(|exception| {
                 exception.recurrence_id.0.starts_with("RECURRENCE-ID")
                     && exception.recurrence_id.0.len() <= 110
@@ -371,7 +399,7 @@ fn parse_timed_duration(raw: &str) -> Result<u64, String> {
 /// original occurrence key from a validated master. All caller mutations are
 /// to an in-memory vector; the importer commits the entire calendar atomically.
 fn apply_ics_overrides(
-    events: &mut [CalendarEvent],
+    events: &mut Vec<CalendarEvent>,
     sources: &mut [SeriesSource],
     pending: Vec<PartialEvent>,
     floating_timezone: Option<&str>,
@@ -380,7 +408,12 @@ fn apply_ics_overrides(
         return Err("More than 250 recurrence overrides".into());
     }
     let mut modified = HashSet::new();
-    for override_event in pending {
+    // Remove canceled occurrences before applying moves so a moved instance
+    // may occupy a canceled slot, independent of VEVENT order in the file.
+    let (canceled, edited): (Vec<_>, Vec<_>) = pending
+        .into_iter()
+        .partition(|event| event.status.as_deref() == Some("CANCELLED"));
+    for override_event in canceled.into_iter().chain(edited) {
         if override_event.recurrence.is_some()
             || !override_event.exdates.is_empty()
             || !override_event.rdates.is_empty()
@@ -390,7 +423,7 @@ fn apply_ics_overrides(
         let uid = override_event
             .uid
             .as_deref()
-            .filter(|uid| valid_uid(uid) && uid.len() <= 128)
+            .filter(|uid| valid_uid(uid) && uid.len() <= 128 && !uid.ends_with(LOCAL_UID_SUFFIX))
             .ok_or("RECURRENCE-ID requires the exact stable master UID")?;
         let series_key = event_id(Some(uid));
         let source = sources
@@ -417,17 +450,15 @@ fn apply_ics_overrides(
                     .into(),
             );
         }
-        let all_day = events
-            .iter()
-            .find(|event| event.series_uid.as_deref() == Some(&series_key))
-            .ok_or("Missing materialized series")?
-            .all_day
-            .is_some();
-        let original_ms = occurrence_date_values(
+        let all_day = source.dtstart.1.len() == 8;
+        let original_values = occurrence_date_values(
             &[(original_key.clone(), original_value.clone())],
             all_day,
             floating_timezone,
-        )?[0];
+        )?;
+        let [original_ms] = original_values.as_slice() else {
+            return Err("RECURRENCE-ID must identify exactly one original occurrence".into());
+        };
         let target_id = format!("{series_key}:{original_ms}");
         if !modified.insert(target_id.clone()) {
             return Err("Duplicate RECURRENCE-ID for one original occurrence".into());
@@ -438,6 +469,27 @@ fn apply_ics_overrides(
                 event.id == target_id && event.series_uid.as_deref() == Some(&series_key)
             })
             .ok_or("RECURRENCE-ID does not match a materialized original occurrence")?;
+        if override_event.status.as_deref() == Some("CANCELLED") {
+            if override_event.has_alarm
+                || override_event.end_property.is_some()
+                || override_event.duration_property.is_some()
+                || override_event
+                    .start_property
+                    .as_ref()
+                    .is_some_and(|(key, value)| key != &source.dtstart.0 || value != original_value)
+            {
+                return Err("Cancellation must not change dates, duration, or reminders".into());
+            }
+            source.cancellations.push(SourceOccurrenceCancellation {
+                recurrence_id: (original_key.clone(), original_value.clone()),
+                occurrence_id: target_id,
+            });
+            events.remove(index);
+            if !source.valid(&series_key) {
+                return Err("Cancellation exceeds safe persisted source metadata limits".into());
+            }
+            continue;
+        }
         let title = override_event
             .title
             .ok_or("Override requires explicit SUMMARY")?;
@@ -589,6 +641,7 @@ fn parse_ics_bundle(
     let mut events = Vec::new();
     let mut sources = Vec::new();
     let mut pending_overrides = Vec::new();
+    let mut method = None;
     for line in unfolded {
         let Some((full_key, raw_value)) = line.split_once(':') else {
             continue;
@@ -618,10 +671,17 @@ fn parse_ics_bundle(
                 }
                 current = Some(PartialEvent::default());
             }
+            ("METHOD", _) if calendar_open && !calendar_end && current.is_none() => {
+                if method.replace(value.to_ascii_uppercase()).is_some() {
+                    return Err("Duplicate VCALENDAR METHOD".into());
+                }
+            }
             ("END", "VEVENT") => {
                 let event = current.take().ok_or("VEVENT end without start")?;
-                if event.status.as_deref() == Some("CANCELLED") {
-                    return Err("Cancelled RECURRENCE-ID/VEVENT requires tombstone semantics; import rejected".into());
+                if event.status.as_deref() == Some("CANCELLED") && event.recurrence_id.is_none() {
+                    return Err(
+                        "Whole-event or whole-series ICS cancellation is unsupported".into(),
+                    );
                 }
                 if event.recurrence_id.is_some() {
                     pending_overrides.push(event);
@@ -754,6 +814,7 @@ fn parse_ics_bundle(
                         reminder_minutes: event.reminder,
                         modified_occurrence_ids: HashSet::new(),
                         overrides: Vec::new(),
+                        cancellations: Vec::new(),
                     };
                     if !source.valid(&source_id) {
                         return Err("ICS series metadata is outside safe persistence bounds".into());
@@ -813,7 +874,12 @@ fn parse_ics_bundle(
                     });
                 }
             }
-            ("BEGIN", "VALARM") if current.is_some() => in_alarm = true,
+            ("BEGIN", "VALARM") if current.is_some() => {
+                in_alarm = true;
+                if let Some(event) = current.as_mut() {
+                    event.has_alarm = true;
+                }
+            }
             ("END", "VALARM") => in_alarm = false,
             _ if in_alarm => {
                 if key == "TRIGGER" {
@@ -834,7 +900,13 @@ fn parse_ics_bundle(
                     match key.as_str() {
                         "SUMMARY" => event.title = Some(unescape_text(value)),
                         "DESCRIPTION" => event.description = unescape_text(value),
-                        "UID" => event.uid = Some(value.to_owned()),
+                        "UID" => {
+                            if !full_key.eq_ignore_ascii_case("UID")
+                                || event.uid.replace(value.to_owned()).is_some()
+                            {
+                                return Err("Duplicate or parameterized VEVENT UID".into());
+                            }
+                        }
                         "DTSTART" => {
                             if event.start.is_some() || event.all_day_start.is_some() {
                                 return Err("Duplicate DTSTART".into());
@@ -870,8 +942,8 @@ fn parse_ics_bundle(
                         "EXDATE" => event.exdates.push((full_key.to_owned(), value.to_owned())),
                         "RDATE" => event.rdates.push((full_key.to_owned(), value.to_owned())),
                         "STATUS" => {
-                            if event.status.is_some() {
-                                return Err("Duplicate VEVENT STATUS".into());
+                            if !full_key.eq_ignore_ascii_case("STATUS") || event.status.is_some() {
+                                return Err("Duplicate or parameterized VEVENT STATUS".into());
                             }
                             event.status = Some(value.to_ascii_uppercase());
                         }
@@ -889,6 +961,15 @@ fn parse_ics_bundle(
     }
     if !calendar_open || !calendar_end || current.is_some() || events.is_empty() {
         return Err("Expected a complete VCALENDAR containing at least one VEVENT".into());
+    }
+    if method.as_deref().is_some_and(|value| value != "PUBLISH")
+        && pending_overrides
+            .iter()
+            .any(|event| event.status.as_deref() == Some("CANCELLED"))
+    {
+        return Err(
+            "Scheduling-message cancellations are unsupported; import a calendar snapshot".into(),
+        );
     }
     apply_ics_overrides(
         &mut events,
@@ -1078,6 +1159,19 @@ fn source_master_vevent(source: &SeriesSource) -> Result<String, String> {
     for exception in &source.overrides {
         out.push_str(&source_override_vevent(uid, exception)?);
     }
+    for exception in &source.cancellations {
+        out.push_str("BEGIN:VEVENT\r\nSTATUS:CANCELLED\r\n");
+        out.push_str(&safe_source_property("UID", uid)?);
+        out.push_str(&safe_source_property(
+            "DTSTAMP",
+            &ms_to_utc(now_ms() as u64),
+        )?);
+        out.push_str(&safe_source_property(
+            &exception.recurrence_id.0,
+            &exception.recurrence_id.1,
+        )?);
+        out.push_str("END:VEVENT\r\n");
+    }
     Ok(out)
 }
 
@@ -1093,13 +1187,22 @@ fn source_is_faithful(data: &AppData, source: &SeriesSource) -> Option<String> {
         .iter()
         .filter(|event| event.series_uid.as_deref() == Some(&source.uid))
         .collect();
-    if members.is_empty() {
+    if members.is_empty() && source.cancellations.is_empty() {
         return None;
     }
     let master = source_master_vevent(source).ok()?;
     let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{master}END:VCALENDAR\r\n");
     // Re-run the very same strict importer to catch unsupported/new metadata.
-    let (expected, _) = parse_ics_bundle(&text, source.floating_timezone.as_deref()).ok()?;
+    let (expected, parsed_sources) =
+        parse_ics_bundle(&text, source.floating_timezone.as_deref()).ok()?;
+    if parsed_sources.first()?.cancellations != source.cancellations
+        || source
+            .cancellations
+            .iter()
+            .any(|exception| !data.calendar_tombstones.contains(&exception.occurrence_id))
+    {
+        return None;
+    }
     if members.len() != expected.len() {
         return None;
     }
@@ -1212,31 +1315,181 @@ fn merge_imported_events(data: &mut AppData, incoming: Vec<CalendarEvent>) -> Re
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+struct IcsCancellationPreview {
+    title: String,
+    original: String,
+    original_kind: String,
+    floating_timezone: Option<String>,
+    removes_local_event: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct IcsImportPreview {
+    new_events: usize,
+    removed_events: usize,
+    cancellations: Vec<IcsCancellationPreview>,
+    fingerprint: String,
+}
+
+fn same_recurrence(a: &SeriesSource, b: &SeriesSource) -> bool {
+    a.dtstart == b.dtstart
+        && a.rrule == b.rrule
+        && a.exdates == b.exdates
+        && a.rdates == b.rdates
+        && a.floating_timezone == b.floating_timezone
+}
+
+fn prepare_import(
+    data: &AppData,
+    text: &str,
+    timezone: Option<&str>,
+) -> Result<(IcsImportPreview, AppData), String> {
+    let (incoming, sources) = parse_ics_bundle(text, timezone)?;
+    let mut candidate = data.clone();
+    let mut cancellations = Vec::new();
+    let mut removed_events = 0;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    timezone.hash(&mut hasher);
+    serde_json::to_vec(&data.events)
+        .map_err(|e| e.to_string())?
+        .hash(&mut hasher);
+    let mut tombstones = data.calendar_tombstones.iter().collect::<Vec<_>>();
+    tombstones.sort_unstable();
+    tombstones.hash(&mut hasher);
+    for source in sources {
+        if candidate.calendar_tombstones.contains(&source.uid) {
+            continue;
+        }
+        if let Some(existing) = candidate.calendar_series.get(&source.uid) {
+            if !source.cancellations.is_empty() && !same_recurrence(existing, &source) {
+                return Err("Cancellation source differs from the saved series schedule".into());
+            }
+            if !source.cancellations.is_empty() {
+                let mut modified = existing.modified_occurrence_ids.iter().collect::<Vec<_>>();
+                modified.sort_unstable();
+                modified.hash(&mut hasher);
+                serde_json::to_vec(&existing.cancellations)
+                    .map_err(|e| e.to_string())?
+                    .hash(&mut hasher);
+            }
+        } else if candidate.calendar_series.len() >= 250 {
+            return Err("Stored ICS series limit (250) exceeded".into());
+        }
+        for exception in &source.cancellations {
+            let id = &exception.occurrence_id;
+            let mut matching = candidate.events.iter().filter(|event| event.id == *id);
+            let local = matching.next();
+            if incoming
+                .iter()
+                .any(|event| event.id == *id || event.id == source.uid)
+                || matching.next().is_some()
+                || local.is_some_and(|event| event.series_uid.as_deref() != Some(&source.uid))
+                || candidate.events.iter().any(|event| event.id == source.uid)
+                || (local.is_some()
+                    && candidate
+                        .calendar_series
+                        .get(&source.uid)
+                        .is_none_or(|saved| saved.modified_occurrence_ids.contains(id)))
+            {
+                return Err(
+                    "Cancellation conflicts with a locally edited, legacy, or unrelated event"
+                        .into(),
+                );
+            }
+            let removes_local_event = local.is_some();
+            let title = local.map_or_else(|| source.title.clone(), |event| event.title.clone());
+            removed_events += usize::from(removes_local_event);
+            cancellations.push(IcsCancellationPreview {
+                title,
+                original: exception.recurrence_id.1.clone(),
+                original_kind: exception.recurrence_id.0.clone(),
+                floating_timezone: source.floating_timezone.clone(),
+                removes_local_event,
+            });
+            remember_calendar_cancellation(&mut candidate, id)?;
+            candidate.events.retain(|event| event.id != *id);
+        }
+        if let Some(existing) = candidate.calendar_series.get_mut(&source.uid) {
+            // Never adopt unrelated incoming edits to an existing series.
+            for cancellation in source.cancellations {
+                existing
+                    .overrides
+                    .retain(|entry| entry.recurrence_id != cancellation.recurrence_id);
+                if !existing.cancellations.contains(&cancellation) {
+                    existing.cancellations.push(cancellation);
+                }
+            }
+            if !existing.valid(&existing.uid) {
+                return Err("Cancellation exceeds safe saved series bounds".into());
+            }
+        } else {
+            candidate.calendar_series.insert(source.uid.clone(), source);
+        }
+    }
+    let before = candidate.events.len();
+    merge_imported_events(&mut candidate, incoming)?;
+    let new_events = candidate.events.len() - before;
+    new_events.hash(&mut hasher);
+    removed_events.hash(&mut hasher);
+    Ok((
+        IcsImportPreview {
+            new_events,
+            removed_events,
+            cancellations,
+            fingerprint: format!("{:016x}", hasher.finish()),
+        },
+        candidate,
+    ))
+}
+
+#[tauri::command]
+pub fn preview_ics_import(
+    store: State<'_, Mutex<Store>>,
+    ics_text: String,
+    floating_timezone: Option<String>,
+) -> Result<IcsImportPreview, String> {
+    let snapshot = store
+        .lock()
+        .map_err(|_| "Storage lock poisoned")?
+        .data
+        .clone();
+    Ok(prepare_import(&snapshot, &ics_text, floating_timezone.as_deref())?.0)
+}
+
+fn import_after_preview(
+    data: &mut AppData,
+    text: &str,
+    timezone: Option<&str>,
+    fingerprint: Option<&str>,
+) -> Result<(), String> {
+    let (preview, candidate) = prepare_import(data, text, timezone)?;
+    if (fingerprint.is_some() || !preview.cancellations.is_empty())
+        && fingerprint != Some(preview.fingerprint.as_str())
+    {
+        return Err(
+            "ICS import preview is missing or stale. Preview the current changes again.".into(),
+        );
+    }
+    *data = candidate;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn import_ics(
     store: State<'_, Mutex<Store>>,
     ics_text: String,
     floating_timezone: Option<String>,
+    expected_fingerprint: Option<String>,
 ) -> Result<AppData, String> {
-    let (incoming, sources) = parse_ics_bundle(&ics_text, floating_timezone.as_deref())?;
     with_store(store, move |data| {
-        merge_imported_events(data, incoming)?;
-        for source in sources {
-            if data.calendar_tombstones.contains(&source.uid) {
-                continue;
-            }
-            if !data.calendar_series.contains_key(&source.uid) && data.calendar_series.len() >= 250
-            {
-                return Err("Stored ICS series limit (250) exceeded".into());
-            }
-            // Preserve existing source and local per-occurrence edit markers on
-            // reimport. Updating the source schedule requires a separate safe
-            // explicit operation, not an accidental import side effect.
-            data.calendar_series
-                .entry(source.uid.clone())
-                .or_insert(source);
-        }
-        Ok(())
+        import_after_preview(
+            data,
+            &ics_text,
+            floating_timezone.as_deref(),
+            expected_fingerprint.as_deref(),
+        )
     })
 }
 
@@ -1499,8 +1752,10 @@ mod tests {
             "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSUMMARY:X\nDTSTART:20270616T090000Z\n",
             // No unknown standalone occurrence UID may be silently grafted.
             "UID:other@example.org\nRECURRENCE-ID:20270615T090000Z\nSUMMARY:X\nDTSTART:20270615T113000Z\n",
-            // Explicit cancellation tombstones aren't supported yet.
-            "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSTATUS:CANCELLED\n",
+            // A cancellation cannot also move its occurrence or define an alarm.
+            "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSTATUS:CANCELLED\nDTSTART:20270615T113000Z\n",
+            "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSTATUS:CANCELLED\nBEGIN:VALARM\nTRIGGER:-PT7M\nEND:VALARM\n",
+            "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z,20270616T090000Z\nSTATUS:CANCELLED\n",
             // An override cannot silently change the all-day/timed kind.
             "UID:safe2027@example.org\nRECURRENCE-ID:20270615T090000Z\nSUMMARY:X\nDTSTART;VALUE=DATE:20270615\n",
         ];
@@ -1526,6 +1781,96 @@ mod tests {
         assert!(parse_ics_bundle(dst, None)
             .unwrap_err()
             .contains("Nonexistent"));
+    }
+
+    const CANCELLATION_MASTER: &str = concat!(
+        "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:scoped@example.org\n",
+        "SUMMARY:Weekly planning\nDTSTART:20270614T090000Z\n",
+        "RRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\n"
+    );
+    const CANCELLATION: &str = concat!(
+        "BEGIN:VEVENT\nUID:scoped@example.org\nRECURRENCE-ID:20270615T090000Z\n",
+        "STATUS:CANCELLED\nEND:VEVENT\n"
+    );
+
+    #[test]
+    fn scoped_cancellation_previews_commits_and_round_trips_without_resurrection() {
+        let plain = format!("{CANCELLATION_MASTER}END:VCALENDAR");
+        let canceled = format!("{CANCELLATION_MASTER}{CANCELLATION}END:VCALENDAR");
+        let mut data = AppData::default();
+        import_after_preview(&mut data, &plain, None, None).unwrap();
+        let before = data.clone();
+        let id = data.events[1].id.clone();
+        let (plan, _) = prepare_import(&data, &canceled, None).unwrap();
+        assert_eq!(plan.removed_events, 1);
+        assert_eq!(plan.new_events, 0);
+        assert_eq!(plan.cancellations[0].original, "20270615T090000Z");
+        assert_eq!(data, before);
+        assert!(import_after_preview(&mut data, &canceled, None, None).is_err());
+        data.events[0].title = "Different local event".into();
+        assert!(import_after_preview(&mut data, &canceled, None, Some(&plan.fingerprint)).is_err());
+        data = before;
+        import_after_preview(&mut data, &canceled, None, Some(&plan.fingerprint)).unwrap();
+        assert_eq!(data.events.len(), 2);
+        assert!(data.calendar_tombstones.contains(&id));
+        let export = serialize_ics_with_sources(&data).unwrap();
+        assert_eq!(export.matches("STATUS:CANCELLED").count(), 1);
+        assert!(export.contains("RRULE:FREQ=DAILY;COUNT=3"));
+        let mut copy = AppData::default();
+        let (plan, _) = prepare_import(&copy, &export, None).unwrap();
+        import_after_preview(&mut copy, &export, None, Some(&plan.fingerprint)).unwrap();
+        assert_eq!(copy.events.len(), 2);
+        let restored = serde_json::to_string(&copy).unwrap();
+        let mut restored: AppData = serde_json::from_str(&restored).unwrap();
+        import_after_preview(&mut restored, &plain, None, None).unwrap();
+        assert_eq!(restored.events.len(), 2);
+        assert!(restored.calendar_tombstones.contains(&id));
+    }
+
+    #[test]
+    fn scoped_cancellation_rejects_scheduling_messages_and_local_edits_atomically() {
+        let plain = format!("{CANCELLATION_MASTER}END:VCALENDAR");
+        let canceled = format!("{CANCELLATION_MASTER}{CANCELLATION}END:VCALENDAR");
+        let mut data = AppData::default();
+        import_after_preview(&mut data, &plain, None, None).unwrap();
+        let target = data.events[1].id.clone();
+        data.calendar_series
+            .get_mut("ics:scoped@example.org")
+            .unwrap()
+            .modified_occurrence_ids
+            .insert(target);
+        let before = data.clone();
+        assert!(prepare_import(&data, &canceled, None).is_err());
+        assert_eq!(data, before);
+        assert!(parse_ics_bundle(&canceled.replace("VERSION:2.0", "METHOD:CANCEL"), None).is_err());
+        assert!(parse_ics_bundle(
+            &format!("BEGIN:VCALENDAR\n{CANCELLATION}END:VCALENDAR"),
+            None
+        )
+        .is_err());
+        assert!(parse_ics_bundle(&canceled.replace("COUNT=3", "COUNT=1"), None).is_err());
+        let different = canceled.replace("COUNT=3", "COUNT=4");
+        assert!(prepare_import(&data, &different, None)
+            .unwrap_err()
+            .contains("saved series"));
+    }
+
+    #[test]
+    fn scoped_cancellation_handles_all_day_and_last_occurrence() {
+        let ics = concat!(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:all-day@example.org\n",
+            "SUMMARY:One day\nDTSTART;VALUE=DATE:20270614\n",
+            "RRULE:FREQ=DAILY;COUNT=1\nEND:VEVENT\n",
+            "BEGIN:VEVENT\nUID:all-day@example.org\nRECURRENCE-ID;VALUE=DATE:20270614\n",
+            "STATUS:CANCELLED\nEND:VEVENT\nEND:VCALENDAR"
+        );
+        let data = AppData::default();
+        let (plan, candidate) = prepare_import(&data, ics, None).unwrap();
+        assert_eq!(plan.cancellations.len(), 1);
+        assert!(candidate.events.is_empty());
+        let export = serialize_ics_with_sources(&candidate).unwrap();
+        assert!(export.contains("RECURRENCE-ID;VALUE=DATE:20270614"));
+        assert!(parse_ics(&export, None).unwrap().is_empty());
     }
 
     #[test]

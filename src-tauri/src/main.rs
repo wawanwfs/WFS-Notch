@@ -1383,6 +1383,9 @@ fn shift_event_series(
 fn clear_calendar_cancellations(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
     with_store(store, |data| {
         data.calendar_tombstones.clear();
+        for source in data.calendar_series.values_mut() {
+            source.cancellations.clear();
+        }
         Ok(())
     })
 }
@@ -1810,6 +1813,7 @@ fn main() {
             preview_event_series_shift,
             shift_event_series,
             clear_calendar_cancellations,
+            calendar_ics::preview_ics_import,
             calendar_ics::import_ics,
             calendar_ics::export_ics,
             create_backup,
@@ -2471,6 +2475,7 @@ mod tests {
                 reminder_minutes: Some(15),
                 modified_occurrence_ids: HashSet::new(),
                 overrides: Vec::new(),
+                cancellations: Vec::new(),
             },
         );
         for day in 0..3_u64 {
@@ -2583,6 +2588,7 @@ mod tests {
                 reminder_minutes: None,
                 modified_occurrence_ids: HashSet::new(),
                 overrides: Vec::new(),
+                cancellations: Vec::new(),
             },
         );
         let id = data.events[0].id.clone();

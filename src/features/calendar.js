@@ -232,27 +232,89 @@ function initCalendarPlus() {
   if (!nativeInvoke) {
     status.textContent = 'ICS import/export requires the native Windows Rust app. Monthly calendar and note search work in browser preview.';
   }
-  document.querySelector('#ics-import-button').addEventListener('click', async () => {
-    const text = document.querySelector('#ics-import-data').value.trim();
+  const input = $('#ics-import-data');
+  const timezoneInput = $('#ics-floating-timezone');
+  const previewButton = $('#ics-import-preview');
+  const applyButton = $('#ics-import-button');
+  const cancellationList = $('#ics-cancellation-preview');
+  let importPlan = null;
+  let inputRevision = 0;
+  let importing = false;
+  const readImport = () => ({icsText: input.value.trim(), floatingTimezone: timezoneInput.value.trim() || null});
+  function invalidateImport() {
+    inputRevision += 1;
+    importPlan = null;
+    applyButton.disabled = true;
+    cancellationList.replaceChildren();
+    cancellationList.hidden = true;
+  }
+  for (const control of [input, timezoneInput]) {
+    control.addEventListener('input', () => {
+      invalidateImport();
+      if (nativeInvoke) status.textContent = 'Input changed. Preview the import before applying.';
+    });
+  }
+  previewButton.addEventListener('click', async () => {
     if (!nativeInvoke) { showError('ICS import requires the installed WFS Notch desktop app.'); return; }
-    if (!text || text.length > 262144) { showError('Paste a valid ICS calendar (up to 256 KiB).'); return; }
-    const button = document.querySelector('#ics-import-button');
-    button.disabled = true;
+    if (importing) return;
+    invalidateImport();
+    const revision = inputRevision;
+    const payload = readImport();
+    if (!payload.icsText || new TextEncoder().encode(payload.icsText).length > 262144) {
+      status.textContent = 'Paste a valid ICS calendar up to 256 KiB.';
+      return;
+    }
+    previewButton.disabled = true;
+    status.textContent = 'Checking calendar changes…';
     try {
-      if (!(await flushNote())) return;
       await writeQueue;
-      const before = data.events.length;
-      const floatingTimezone = document.querySelector('#ics-floating-timezone').value.trim();
-      data = await invoke('import_ics', {icsText: text, floatingTimezone: floatingTimezone || null});
-      render();
-      const imported = data.events.length - before;
-      status.textContent = imported + ' new event(s) imported (recurrence flattened to independent occurrences). Duplicate or canceled UIDs skipped.';
-      showInfo(status.textContent);
+      const plan = await invoke('preview_ics_import', payload);
+      if (revision !== inputRevision) return;
+      importPlan = {payload, plan};
+      for (const entry of plan.cancellations) {
+        const timezone = entry.original_kind.includes('VALUE=DATE') || /^\d{8}$/.test(entry.original)
+          ? 'all day' : entry.original.endsWith('Z') ? 'UTC'
+            : entry.original_kind.split('TZID=')[1] || entry.floating_timezone || 'floating';
+        const value = entry.original;
+        const date = `${value.slice(0,4)}-${value.slice(4,6)}-${value.slice(6,8)}`;
+        const time = value.includes('T') ? ` ${value.slice(9,11)}:${value.slice(11,13)}:${value.slice(13,15)}` : '';
+        cancellationList.append(node('li', '', `${entry.title} · ${date}${time} (${timezone}) · ${entry.removes_local_event ? 'Remove saved occurrence' : 'Keep occurrence excluded'}`));
+      }
+      cancellationList.hidden = plan.cancellations.length === 0;
+      status.textContent = `Preview only. ${plan.new_events} new event(s), ${plan.removed_events} saved occurrence(s) removed, ${plan.cancellations.length} cancellation marker(s).`;
+      applyButton.disabled = false;
     } catch (error) {
-      status.textContent = 'Import not applied. Check the IANA timezone, DST ambiguity, rule support and event size.';
-      showError(error);
+      if (revision === inputRevision) {
+        status.textContent = 'Could not preview the import. No calendar changes were applied.';
+        showError(error);
+      }
+    } finally { previewButton.disabled = false; }
+  });
+  applyButton.addEventListener('click', async () => {
+    if (!importPlan || importing) return;
+    const {payload, plan} = importPlan;
+    const current = readImport();
+    if (current.icsText !== payload.icsText || current.floatingTimezone !== payload.floatingTimezone) {
+      invalidateImport();
+      return;
+    }
+    importing = true;
+    input.disabled = true;
+    timezoneInput.disabled = true;
+    previewButton.disabled = true;
+    invalidateImport();
+    status.textContent = 'Applying the reviewed import…';
+    try {
+      const applied = await mutation('import_ics', {...payload, expectedFingerprint: plan.fingerprint});
+      status.textContent = applied
+        ? `Imported ${plan.new_events} new event(s), removed ${plan.removed_events} saved occurrence(s), recorded ${plan.cancellations.length} cancellation marker(s).`
+        : 'Import not applied. Preview the current changes again.';
+      if (applied) showInfo(status.textContent);
     } finally {
-      button.disabled = false;
+      importing = false;
+      input.disabled = false;
+      timezoneInput.disabled = false;
+      previewButton.disabled = false;
     }
   });
   document.querySelector('#ics-export-button').addEventListener('click', async () => {
@@ -261,7 +323,7 @@ function initCalendarPlus() {
       await writeQueue;
       const text = await invoke('export_ics');
       document.querySelector('#ics-export-data').value = text;
-      status.textContent = 'Export prepared (' + data.events.length + ' local events). Unchanged ICS series retain one RRULE master; edited/deleted or legacy series export as individual events. Copy and save as .ics.';
+      status.textContent = 'Export prepared (' + data.events.length + ' local events). Unchanged ICS series retain their master and supported source exceptions; locally edited/deleted or legacy series may export as individual events. Copy and save as .ics.';
       showInfo('ICS export ready.');
     } catch (error) { showError(error); }
   });

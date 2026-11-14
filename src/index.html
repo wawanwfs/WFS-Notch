@@ -133,14 +133,15 @@
           <div class="calendar-weekdays" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
           <div id="calendar-month-grid" class="calendar-month-grid" role="group" aria-label="Monthly calendar"></div>
           <details class="ics-box"><summary>Import / export iCalendar (.ics)</summary>
-            <p class="event-hint">Paste .ics text. UTC and IANA TZID event times are resolved to UTC. For floating (timezone-free) timestamps, enter the intended IANA timezone below; WFS will not guess. Timed DTEND or positive DURATION (up to 366 days) and bounded daily/weekly/monthly/yearly RRULE occurrences are imported as individual events. Single-occurrence RECURRENCE-ID overrides are accepted only with a matching original master occurrence and an unchanged explicit timezone/kind; ambiguous DST, range updates, cancellations and complex unsupported rules are rejected atomically. DATE/DTEND all-day events and simple EXDATE/RDATE lists are supported; end dates are exclusive.</p>
+            <p class="event-hint">Paste .ics text to preview additions and single-occurrence cancellations. A cancellation needs its matching series master in the same file and the exact original occurrence date/time. Whole-series cancellations, range updates, ambiguous DST and unsupported rules are rejected. Enter the intended IANA timezone for floating times; WFS will not guess.</p>
             <textarea id="ics-import-data" maxlength="262144" aria-label="Paste iCalendar ICS content" placeholder="BEGIN:VCALENDAR&#10;VERSION:2.0&#10;..."></textarea>
             <label for="ics-floating-timezone" class="event-hint">Floating-time IANA timezone (only needed for DTSTART without Z or TZID)</label>
             <input id="ics-floating-timezone" type="text" autocomplete="off" maxlength="80" placeholder="e.g. Asia/Jakarta or America/Chicago" aria-describedby="ics-floating-hint">
             <small id="ics-floating-hint" class="event-hint">Leave empty for UTC or explicit TZID ICS. No automatic device timezone assumption.</small>
             <div class="calendar-toolbar"><button id="ics-clear-cancellations" class="text-button" type="button">Allow re-import of deleted ICS events</button></div>
             <small>Deleted imported events and series stay deleted across subsequent imports unless you explicitly clear their local cancellation history here. Backups retain that history.</small>
-            <div class="calendar-toolbar"><button id="ics-import-button" class="secondary" type="button">Import events</button><button id="ics-export-button" class="secondary" type="button">Export events</button><button id="ics-export-copy" class="text-button" type="button">Copy export</button></div>
+            <div class="calendar-toolbar"><button id="ics-import-preview" class="secondary" type="button">Preview import</button><button id="ics-import-button" class="primary" type="button" disabled>Apply import</button><button id="ics-export-button" class="secondary" type="button">Export events</button><button id="ics-export-copy" class="text-button" type="button">Copy export</button></div>
+            <ul id="ics-cancellation-preview" aria-label="Occurrences marked canceled" hidden></ul>
             <textarea id="ics-export-data" readonly aria-label="Exported iCalendar ICS content" placeholder="Exported ICS will appear here"></textarea>
             <small id="ics-status" role="status">Local-only. Unchanged series preserve the source recurrence rule on export; edited or canceled instances export safely as independent events. No cloud sync.</small>
           </details>
@@ -349,7 +350,7 @@
           <div class="settings-row"><div><b>Data storage</b><small>All tasks and notes are saved locally by the Rust backend</small></div><span class="section-pill">PRIVATE</span></div>
           <div class="settings-row backup-heading"><div><b>Data backups</b><small>Store a snapshot in your private app data folder, or restore an earlier snapshot.</small></div><button class="secondary" id="backup-create" type="button">Create backup</button></div>
           <div id="backup-list" class="backup-list"><span class="empty">No backups created yet.</span></div>
-          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.36.0 · DEVELOPMENT</span></div>
+          <div class="settings-row"><div><b>Development status</b><small>Verified browser prototype; native Windows integration still requires testing</small></div><span class="section-pill">0.37.0 · DEVELOPMENT</span></div>
           <div class="settings-row"><div><b>Exit WFS Notch</b><small>Close the app after saving pending notes</small></div><button class="secondary" id="app-exit" type="button">Exit app</button></div>
         </section>
       </main>
