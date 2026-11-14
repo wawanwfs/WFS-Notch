@@ -1,3 +1,9 @@
+## 0.39.0 — Phase 39: preserve calendar decisions across backup restore
+
+- Restoring an older backup keeps active local ICS cancellation markers and suppresses matching occurrences and series. Source exceptions are preserved only for matching recurrence schedules.
+- Explicitly clearing cancellations starts a new history generation. Earlier snapshots cannot reinstate cleared markers, and an import preview from before a reset is stale.
+- Queue backup restore with other frontend writes. No changes to Windows notification consent or native parity status.
+
 ## 0.38.0 — Phase 29C: local repeating tasks
 
 - Add optional 24-hour and seven-day task recurrence anchored to the saved due date. Completing a recurring task advances its existing row and skips missed deadlines without creating duplicates.

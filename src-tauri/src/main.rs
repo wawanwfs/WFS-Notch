@@ -345,6 +345,10 @@ struct AppData {
     reminder_retries: HashMap<String, notifications::ReminderRetry>,
     // Local-only ICS cancellation markers; reimport never silently restores deleted events.
     calendar_tombstones: HashSet<String>,
+    // A deliberate reset starts a new history generation. An older snapshot
+    // must not silently bring back markers that the user explicitly cleared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    calendar_cancellation_epoch: Option<String>,
     // Versioned normalized ICS source metadata. Legacy flatten-only JSON
     // deserializes to an empty map; no rules are guessed from old event data.
     calendar_series: HashMap<String, calendar_ics::SeriesSource>,
@@ -417,6 +421,19 @@ impl AppData {
         self.calendar_tombstones.retain(|uid| {
             uid.starts_with("ics:") && uid.len() <= 240 && !uid.chars().any(char::is_control)
         });
+        if self
+            .calendar_cancellation_epoch
+            .as_ref()
+            .is_some_and(|epoch| {
+                epoch.is_empty()
+                    || epoch.len() > 80
+                    || !epoch
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            })
+        {
+            self.calendar_cancellation_epoch = None;
+        }
         self.reminder_retries.retain(|key, retry| {
             !key.is_empty()
                 && key.len() <= 240
@@ -1453,10 +1470,7 @@ fn shift_event_series(
 #[tauri::command]
 fn clear_calendar_cancellations(store: State<'_, Mutex<Store>>) -> Result<AppData, String> {
     with_store(store, |data| {
-        data.calendar_tombstones.clear();
-        for source in data.calendar_series.values_mut() {
-            source.cancellations.clear();
-        }
+        calendar_ics::reset_cancellation_history(data);
         Ok(())
     })
 }
@@ -1613,6 +1627,7 @@ fn restore_backup(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData,
     let mut recovered = read_state(&path)?;
     recovered.sanitize();
     preserve_reminder_history(&mut recovered, &locked.data);
+    calendar_ics::preserve_cancellation_history(&mut recovered, &locked.data)?;
     preserve_note_revisions(&mut recovered, &locked.data)?;
     // Restore is transactional and retains the previous state as state.json.bak.
     locked.transact(|state| {

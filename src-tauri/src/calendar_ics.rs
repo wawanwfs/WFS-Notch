@@ -1340,6 +1340,79 @@ fn same_recurrence(a: &SeriesSource, b: &SeriesSource) -> bool {
         && a.floating_timezone == b.floating_timezone
 }
 
+pub(super) fn reset_cancellation_history(data: &mut AppData) {
+    data.calendar_cancellation_epoch = Some(new_id());
+    data.calendar_tombstones.clear();
+    for source in data.calendar_series.values_mut() {
+        source.cancellations.clear();
+    }
+}
+
+/// Keep local cancellation decisions across ordinary snapshot restores. If
+/// source schedules differ, preserve the marker, not an unprovable exception.
+pub(super) fn preserve_cancellation_history(
+    restored: &mut AppData,
+    current: &AppData,
+) -> Result<(), String> {
+    let stale_history = current.calendar_cancellation_epoch.is_some()
+        && current.calendar_cancellation_epoch != restored.calendar_cancellation_epoch;
+    if stale_history {
+        restored.calendar_tombstones.clear();
+        for source in restored.calendar_series.values_mut() {
+            source.cancellations.clear();
+        }
+    }
+    if let Some(epoch) = &current.calendar_cancellation_epoch {
+        restored.calendar_cancellation_epoch = Some(epoch.clone());
+    }
+    for key in &current.calendar_tombstones {
+        remember_calendar_cancellation(restored, key)?;
+    }
+    let markers = &restored.calendar_tombstones;
+    let series = &restored.calendar_series;
+    restored.events.retain(|event| {
+        // Legacy first occurrences used the master UID instead of UID:ms.
+        let legacy_series = event.series_uid.as_deref() == Some(event.id.as_str())
+            || series.contains_key(&event.id)
+            || current.calendar_series.contains_key(&event.id);
+        !markers.contains(&event.id)
+            && !event
+                .series_uid
+                .as_ref()
+                .is_some_and(|uid| markers.contains(uid))
+            && !(legacy_series && markers.contains(&format!("{}:{}", event.id, event.starts_at_ms)))
+    });
+    restored.calendar_series.retain(|uid, source| {
+        if markers.contains(uid) {
+            return false;
+        }
+        source
+            .cancellations
+            .retain(|entry| markers.contains(&entry.occurrence_id));
+        if let Some(live) = current
+            .calendar_series
+            .get(uid)
+            .filter(|live| same_recurrence(source, live))
+        {
+            for entry in &live.cancellations {
+                if !markers.contains(&entry.occurrence_id) || source.cancellations.contains(entry) {
+                    continue;
+                }
+                let mut candidate = source.clone();
+                candidate
+                    .overrides
+                    .retain(|item| item.recurrence_id != entry.recurrence_id);
+                candidate.cancellations.push(entry.clone());
+                if candidate.valid(uid) {
+                    *source = candidate;
+                }
+            }
+        }
+        true
+    });
+    Ok(())
+}
+
 fn prepare_import(
     data: &AppData,
     text: &str,
@@ -1352,6 +1425,7 @@ fn prepare_import(
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     text.hash(&mut hasher);
     timezone.hash(&mut hasher);
+    data.calendar_cancellation_epoch.hash(&mut hasher);
     serde_json::to_vec(&data.events)
         .map_err(|e| e.to_string())?
         .hash(&mut hasher);
@@ -1792,6 +1866,56 @@ mod tests {
         "BEGIN:VEVENT\nUID:scoped@example.org\nRECURRENCE-ID:20270615T090000Z\n",
         "STATUS:CANCELLED\nEND:VEVENT\n"
     );
+
+    #[test]
+    fn old_backup_keeps_cancellations_and_faithful_export() {
+        let plain = format!("{CANCELLATION_MASTER}END:VCALENDAR");
+        let canceled = format!("{CANCELLATION_MASTER}{CANCELLATION}END:VCALENDAR");
+        let mut old = AppData::default();
+        import_after_preview(&mut old, &plain, None, None).unwrap();
+        let mut current = old.clone();
+        let plan = prepare_import(&current, &canceled, None).unwrap().0;
+        import_after_preview(&mut current, &canceled, None, Some(&plan.fingerprint)).unwrap();
+        let stale = prepare_import(&old, &plain, None).unwrap().0;
+        preserve_cancellation_history(&mut old, &current).unwrap();
+        assert_eq!(old.events, current.events);
+        assert_eq!(old.calendar_tombstones, current.calendar_tombstones);
+        assert!(serialize_ics_with_sources(&old)
+            .unwrap()
+            .contains("STATUS:CANCELLED"));
+        assert!(import_after_preview(&mut old, &plain, None, Some(&stale.fingerprint)).is_err());
+        let canceled_backup = old.clone();
+        reset_cancellation_history(&mut old);
+        let mut restored = canceled_backup;
+        preserve_cancellation_history(&mut restored, &old).unwrap();
+        assert!(restored.calendar_tombstones.is_empty());
+        assert!(!serialize_ics_with_sources(&restored)
+            .unwrap()
+            .contains("STATUS:CANCELLED"));
+        import_after_preview(&mut restored, &plain, None, None).unwrap();
+        assert_eq!(restored.events.len(), 3);
+    }
+
+    #[test]
+    fn restore_filters_legacy_occurrence_and_whole_series_without_copying_mismatched_source() {
+        let plain = format!("{CANCELLATION_MASTER}END:VCALENDAR");
+        let canceled = format!("{CANCELLATION_MASTER}{CANCELLATION}END:VCALENDAR");
+        let mut restored = AppData::default();
+        import_after_preview(&mut restored, &plain, None, None).unwrap();
+        let mut current = AppData::default();
+        let plan = prepare_import(&current, &canceled, None).unwrap().0;
+        import_after_preview(&mut current, &canceled, None, Some(&plan.fingerprint)).unwrap();
+        let uid = "ics:scoped@example.org";
+        restored.calendar_series.get_mut(uid).unwrap().rrule = Some("FREQ=DAILY;COUNT=4".into());
+        restored.events[1].id = uid.into();
+        preserve_cancellation_history(&mut restored, &current).unwrap();
+        assert_eq!(restored.events.len(), 2);
+        assert!(restored.calendar_series[uid].cancellations.is_empty());
+        remember_calendar_cancellation(&mut current, uid).unwrap();
+        preserve_cancellation_history(&mut restored, &current).unwrap();
+        assert!(restored.events.is_empty());
+        assert!(!restored.calendar_series.contains_key(uid));
+    }
 
     #[test]
     fn scoped_cancellation_previews_commits_and_round_trips_without_resurrection() {
