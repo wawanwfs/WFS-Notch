@@ -134,6 +134,7 @@ body.preview .notch{position:relative;width:720px;height:430px;border-radius:22p
 .todo-entry .input-row { min-width: 0; }
 .todo-option-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 9px 14px; }
 .todo-option-fields label, .todo-edit-form > label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); min-width: 130px; }
+.todo-option-fields label[hidden] { display: none; }
 .todo-option-fields input, .todo-option-fields select, .todo-edit-form > label input {
   width: 100%; min-height: 35px; padding: 7px 10px; color: var(--text);
   background: #15171d; border: 1px solid rgba(214,183,122,.25); border-radius: 9px; color-scheme: dark;

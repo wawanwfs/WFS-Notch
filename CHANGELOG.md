@@ -1,3 +1,8 @@
+## 0.40.0 — Phase 40: timezone-based task repeats
+
+- Optionally set an IANA timezone on daily and weekly tasks to keep the selected wall-clock time across DST. An invalid initial local time is rejected, future missing times are skipped, and overlaps use the earlier occurrence.
+- Existing schedules without a zone keep their elapsed intervals. The same task ID and existing due-reminder consent are preserved.
+
 ## 0.39.0 — Phase 39: preserve calendar decisions across backup restore
 
 - Restoring an older backup keeps active local ICS cancellation markers and suppresses matching occurrences and series. Source exceptions are preserved only for matching recurrence schedules.

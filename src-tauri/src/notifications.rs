@@ -580,6 +580,7 @@ mod tests {
             priority: "high".into(),
             due_at_ms: Some(due_at_ms),
             recurrence: None,
+            recurrence_timezone: None,
         }
     }
 
