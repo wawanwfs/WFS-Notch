@@ -78,6 +78,73 @@ struct Todo {
     recurrence: Option<TaskRecurrence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recurrence_timezone: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    snoozed_until_ms: Option<u64>,
+}
+
+const MAX_TASK_COMPLETIONS: usize = 200;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TaskCompletion {
+    task_id: String,
+    title: String,
+    due_at_ms: Option<u64>,
+    completed_at_ms: u64,
+}
+
+impl TaskCompletion {
+    fn valid(&self) -> bool {
+        !self.task_id.is_empty()
+            && self.task_id.len() <= 140
+            && !self.task_id.chars().any(char::is_control)
+            && !self.title.trim().is_empty()
+            && self.title.chars().count() <= 200
+            && (946_684_800_000..=4_102_444_800_000).contains(&self.completed_at_ms)
+            && self
+                .due_at_ms
+                .is_none_or(|due| (946_684_800_000..=4_102_444_800_000).contains(&due))
+    }
+}
+
+fn normalize_task_history(history: &mut Vec<TaskCompletion>) {
+    history.retain(TaskCompletion::valid);
+    history.sort_by(|a, b| {
+        (b.completed_at_ms, &b.task_id, b.due_at_ms).cmp(&(
+            a.completed_at_ms,
+            &a.task_id,
+            a.due_at_ms,
+        ))
+    });
+    history.dedup_by(|a, b| {
+        (a.completed_at_ms, &a.task_id, a.due_at_ms) == (b.completed_at_ms, &b.task_id, b.due_at_ms)
+    });
+    history.truncate(MAX_TASK_COMPLETIONS);
+}
+
+fn apply_task_snooze(
+    todo: &mut Todo,
+    expected_due: u64,
+    expected_snooze: Option<u64>,
+    minutes: u16,
+    now: u128,
+) -> Result<(), String> {
+    if todo.done || todo.due_at_ms != Some(expected_due) || todo.snoozed_until_ms != expected_snooze
+    {
+        return Err("Task schedule changed. Refresh it before snoozing".into());
+    }
+    if !matches!(minutes, 5 | 15 | 60) || now < u128::from(expected_due) {
+        return Err("Only due tasks can be snoozed for 5, 15, or 60 minutes".into());
+    }
+    let next = now.saturating_add(u128::from(minutes) * 60_000);
+    if next > 4_102_444_800_000
+        || expected_snooze.is_some_and(|previous| next <= u128::from(previous))
+    {
+        return Err(
+            "Snooze must extend the current reminder and stay within the supported range".into(),
+        );
+    }
+    todo.snoozed_until_ms = Some(next as u64);
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -432,6 +499,8 @@ impl FocusState {
 #[serde(default)]
 struct AppData {
     todos: Vec<Todo>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    task_completions: Vec<TaskCompletion>,
     notes: Vec<Note>,
     events: Vec<CalendarEvent>,
     // Local, title-free, persistent reservation ledger. Kept in state.json atomically.
@@ -462,6 +531,7 @@ impl AppData {
         self.health.break_count = self.health.break_count.min(100);
         self.health.calm_minutes = self.health.calm_minutes.min(600);
         self.countdown.sanitize();
+        normalize_task_history(&mut self.task_completions);
         self.habits
             .retain(|habit| !habit.title.trim().is_empty() && habit.title.chars().count() <= 120);
         self.habits.truncate(200);
@@ -484,6 +554,13 @@ impl AppData {
             }
         }
         for todo in &mut self.todos {
+            if todo.done
+                || todo.snoozed_until_ms.is_some_and(|until| {
+                    until > 4_102_444_800_000 || todo.due_at_ms.is_none_or(|due| until <= due)
+                })
+            {
+                todo.snoozed_until_ms = None;
+            }
             if !matches!(todo.priority.as_str(), "low" | "normal" | "high") {
                 todo.priority = default_todo_priority();
             }
@@ -785,6 +862,7 @@ fn add_todo(
             due_at_ms,
             recurrence,
             recurrence_timezone,
+            snoozed_until_ms: None,
         });
         Ok(())
     })
@@ -820,6 +898,12 @@ fn update_todo(
         }
         todo.title = title.trim().to_owned();
         todo.priority = priority;
+        if todo.due_at_ms != due_at_ms
+            || todo.recurrence != recurrence
+            || todo.recurrence_timezone != recurrence_timezone
+        {
+            todo.snoozed_until_ms = None;
+        }
         todo.due_at_ms = due_at_ms;
         todo.recurrence = recurrence;
         todo.recurrence_timezone = recurrence_timezone;
@@ -839,7 +923,44 @@ fn toggle_todo(
             .iter_mut()
             .find(|todo| todo.id == id)
             .ok_or("Task not found")?;
-        toggle_task(todo, expected_due_at_ms, now_ms())
+        let now = now_ms();
+        let entry = (!todo.done).then(|| TaskCompletion {
+            task_id: todo.id.clone(),
+            title: todo.title.clone(),
+            due_at_ms: todo.due_at_ms,
+            completed_at_ms: u64::try_from(now).unwrap_or(u64::MAX),
+        });
+        toggle_task(todo, expected_due_at_ms, now)?;
+        todo.snoozed_until_ms = None;
+        if let Some(entry) = entry {
+            state.task_completions.insert(0, entry);
+            normalize_task_history(&mut state.task_completions);
+        }
+        Ok(())
+    })
+}
+
+#[tauri::command]
+fn snooze_todo(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    expected_due_at_ms: u64,
+    expected_snoozed_until_ms: Option<u64>,
+    minutes: u16,
+) -> Result<AppData, String> {
+    with_store(store, |state| {
+        let todo = state
+            .todos
+            .iter_mut()
+            .find(|todo| todo.id == id)
+            .ok_or("Task not found")?;
+        apply_task_snooze(
+            todo,
+            expected_due_at_ms,
+            expected_snoozed_until_ms,
+            minutes,
+            now_ms(),
+        )
     })
 }
 
@@ -1698,6 +1819,29 @@ fn list_backups(store: State<'_, Mutex<Store>>) -> Result<Vec<BackupInfo>, Strin
 /// The current local journal is authoritative for at-most-once attempts, while
 /// older backup entries may add history but never erase it.
 fn preserve_reminder_history(recovered: &mut AppData, existing: &AppData) {
+    let current: HashMap<_, _> = existing
+        .todos
+        .iter()
+        .map(|todo| (todo.id.as_str(), todo))
+        .collect();
+    for todo in &mut recovered.todos {
+        if let Some(live) = current.get(todo.id.as_str()) {
+            todo.snoozed_until_ms = if !todo.done
+                && !live.done
+                && todo.due_at_ms == live.due_at_ms
+                && todo.recurrence == live.recurrence
+                && todo.recurrence_timezone == live.recurrence_timezone
+            {
+                live.snoozed_until_ms
+            } else {
+                None
+            };
+        }
+    }
+    recovered
+        .task_completions
+        .extend(existing.task_completions.iter().cloned());
+    normalize_task_history(&mut recovered.task_completions);
     for (key, until) in &existing.reminder_deliveries {
         recovered
             .reminder_deliveries
@@ -1751,6 +1895,7 @@ fn restore_backup(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData,
     let mut recovered = read_state(&path)?;
     recovered.sanitize();
     preserve_reminder_history(&mut recovered, &locked.data);
+    notifications::suppress_completed_task_on_restore(&mut recovered, now_ms());
     calendar_ics::preserve_cancellation_history(&mut recovered, &locked.data)?;
     preserve_note_revisions(&mut recovered, &locked.data)?;
     // Restore is transactional and retains the previous state as state.json.bak.
@@ -2005,6 +2150,7 @@ fn main() {
             add_todo,
             update_todo,
             toggle_todo,
+            snooze_todo,
             remove_todo,
             add_note,
             create_note_from_draft,
@@ -2387,6 +2533,7 @@ mod tests {
             due_at_ms: Some(due),
             recurrence: Some(TaskRecurrence::Daily),
             recurrence_timezone: None,
+            snoozed_until_ms: None,
         };
         let now = u128::from(due + 3 * 86_400_000);
         toggle_task(&mut todo, Some(due), now).unwrap();
@@ -2481,6 +2628,7 @@ mod tests {
                     due_at_ms: None,
                     recurrence: None,
                     recurrence_timezone: None,
+                    snoozed_until_ms: None,
                 });
                 Ok(())
             })
@@ -2537,6 +2685,7 @@ mod tests {
                     due_at_ms: None,
                     recurrence: None,
                     recurrence_timezone: None,
+                    snoozed_until_ms: None,
                 });
                 Ok(())
             })
@@ -2561,6 +2710,7 @@ mod tests {
                 due_at_ms: None,
                 recurrence: None,
                 recurrence_timezone: None,
+                snoozed_until_ms: None,
             });
             Err("simulated failure".into())
         });

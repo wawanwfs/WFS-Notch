@@ -195,6 +195,7 @@ function previewInvoke(command, args = {}) {
   state.settings = { ...defaults().settings, ...state.settings };
   state.focus = { ...defaults().focus, ...state.focus };
   state.events = Array.isArray(state.events) ? state.events : [];
+  state.task_completions = Array.isArray(state.task_completions) ? state.task_completions : [];
   state.calendar_tombstones = Array.isArray(state.calendar_tombstones) ? state.calendar_tombstones : [];
   state.calendar_series = state.calendar_series && typeof state.calendar_series === 'object' && !Array.isArray(state.calendar_series)
     ? state.calendar_series : {};
@@ -220,6 +221,12 @@ function previewInvoke(command, args = {}) {
     if (!backup) throw new Error('Backup not found');
     const restored = JSON.parse(JSON.stringify(backup.snapshot));
     preservePreviewCancellationHistory(restored, state);
+    restored.task_completions = boundedTaskHistory([...(restored.task_completions || []), ...state.task_completions]);
+    for (const todo of restored.todos) {
+      const live = state.todos.find(item => item.id === todo.id);
+      if (live) todo.snoozed_until_ms = !todo.done && !live.done && todo.due_at_ms === live.due_at_ms &&
+        todo.recurrence === live.recurrence ? live.snoozed_until_ms ?? null : null;
+    }
     const currentRevisions = new Map(state.notes.map(note =>
       [note.id, note.revision || 0]));
     for (const note of restored.notes) {
@@ -284,12 +291,14 @@ function previewInvoke(command, args = {}) {
       if (args.dueAtMs != null && (!Number.isSafeInteger(args.dueAtMs) || args.dueAtMs < 946684800000 || args.dueAtMs > 4102444800000)) throw new Error('Invalid task due time');
       const recurrence = validateTaskRepeat(args.recurrence, args.dueAtMs);
       if (todo.done && recurrence) throw new Error('Reopen the completed task before setting it to repeat');
+      if (todo.due_at_ms !== (args.dueAtMs ?? null) || todo.recurrence !== recurrence) todo.snoozed_until_ms = null;
       Object.assign(todo, { title, priority: args.priority, due_at_ms: args.dueAtMs ?? null, recurrence });
       break;
     }
     case 'toggle_todo': {
       const todo = state.todos.find(item => item.id === args.id);
       if (!todo) throw new Error('Task not found');
+      const entry = todo.done ? null : {task_id:todo.id, title:todo.title, due_at_ms:todo.due_at_ms ?? null, completed_at_ms:Date.now()};
       if (todo.recurrence) {
         if (args.expectedDueAtMs == null || args.expectedDueAtMs !== todo.due_at_ms) throw new Error('This task schedule changed. Review the new due date before completing it.');
         const step = todo.recurrence === 'daily' ? 86400000 : 604800000;
@@ -301,6 +310,20 @@ function previewInvoke(command, args = {}) {
         if (args.expectedDueAtMs != null && args.expectedDueAtMs !== todo.due_at_ms) throw new Error('This task schedule changed. Review the new due date before completing it.');
         todo.done = !todo.done;
       }
+      todo.snoozed_until_ms = null;
+      if (entry) state.task_completions = boundedTaskHistory([entry, ...state.task_completions]);
+      break;
+    }
+    case 'snooze_todo': {
+      const todo = state.todos.find(item => item.id === args.id);
+      if (!todo || todo.done || todo.due_at_ms !== args.expectedDueAtMs || (todo.snoozed_until_ms ?? null) !== args.expectedSnoozedUntilMs) {
+        throw new Error('Task schedule changed. Refresh it before snoozing');
+      }
+      const now = Date.now();
+      if (![5,15,60].includes(args.minutes) || now < todo.due_at_ms) throw new Error('Only due tasks can be snoozed for 5, 15, or 60 minutes');
+      const next = now + args.minutes * 60000;
+      if (next > 4102444800000 || next <= (todo.snoozed_until_ms || 0)) throw new Error('Snooze must extend the current reminder and stay within the supported range');
+      todo.snoozed_until_ms = next;
       break;
     }
     case 'remove_todo': {
@@ -686,7 +709,21 @@ function cancelTodoEdit() {
   $('#todo-edit-form').hidden = true;
 }
 
+function boundedTaskHistory(entries) {
+  const seen = new Set();
+  return entries.slice().sort((a, b) => b.completed_at_ms - a.completed_at_ms).filter(entry => {
+    const key = JSON.stringify([entry.task_id, entry.due_at_ms, entry.completed_at_ms]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 200);
+}
+
 function renderTodos() {
+  const history = $('#todo-completion-history');
+  history.replaceChildren(...(data.task_completions || []).map(entry => node('li', '',
+    `${entry.title} · ${new Date(entry.completed_at_ms).toLocaleString()}`)));
+  $('#todo-completion-empty').hidden = history.childElementCount > 0;
   const open = data.todos.filter(item => !item.done).length;
   $('#task-count').textContent = String(open);
   $('#todo-progress').textContent = `${data.todos.length - open} of ${data.todos.length} completed`;
@@ -716,6 +753,7 @@ function renderTodos() {
       (item.recurrence_timezone ? ` · ${item.recurrence === 'daily' ? 'Daily' : 'Weekly'} (${item.recurrence_timezone})`
         : item.recurrence ? (item.recurrence === 'daily' ? ' · Every 24h' : ' · Every 7 days') : ''));
     if (due != null && due < Date.now() && !item.done) meta.classList.add('overdue');
+    if (item.snoozed_until_ms) meta.append(node('span', '', ` · Reminder ${new Date(item.snoozed_until_ms).toLocaleString()}`));
     const edit = node('button', 'text-button todo-edit-button', 'Edit');
     edit.type = 'button';
     edit.setAttribute('aria-label', 'Edit task: ' + item.title);
@@ -742,6 +780,20 @@ function renderTodos() {
       if (await mutation('remove_todo', { id: item.id }) && selectedTodoId === item.id) cancelTodoEdit();
     });
     line.append(check, label, meta, edit, remove);
+    if (!item.done && due != null) {
+      const snooze = node('select', 'todo-snooze');
+      snooze.setAttribute('aria-label', `Snooze reminder for ${item.title}`);
+      snooze.append(new Option('Snooze due reminder', ''), ...[5,15,60].map(n => new Option(`${n} minutes`, n)));
+      snooze.addEventListener('change', async () => {
+        if (!snooze.value) return;
+        snooze.disabled = true;
+        const ok = await mutation('snooze_todo', {id:item.id, expectedDueAtMs:due,
+          expectedSnoozedUntilMs:item.snoozed_until_ms ?? null, minutes:Number(snooze.value)});
+        if (ok) showInfo('Reminder snoozed. The task deadline did not change.');
+        else { snooze.disabled = false; snooze.value = ''; }
+      });
+      line.append(snooze);
+    }
     list.append(line);
   }
 }
