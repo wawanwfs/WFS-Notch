@@ -15,6 +15,8 @@
 .calendar-day.has-event small { font-size: .65rem; background: var(--accent, #d6b77a); color: #121318; padding: 1px 5px; border-radius: 99px; font-weight: 700; }
 .ics-box { border: 1px solid rgba(214,183,122,.24); border-radius: 13px; padding: 9px 12px; margin: 10px 0; }
 .ics-box summary { cursor: pointer; font-weight: 600; }
+#ics-cancellation-preview { max-height: 110px; overflow: auto; margin: 6px 0; padding-inline-start: 22px; color: var(--text); font-size: 12px; overflow-wrap: anywhere; }
+#ics-cancellation-preview li { padding-block: 3px; }
 .ics-box textarea { box-sizing: border-box; display: block; width: 100%; min-height: 85px; resize: vertical; margin: 9px 0; border-radius: 8px; padding: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
 .ics-box small { color: #c8c8d2; display: block; padding: 5px 0; }
 @media (max-width: 560px) { .calendar-day { min-height: 34px; font-size: .77rem; } .calendar-day.has-event small { padding: 0 3px; } .calendar-toolbar { gap: 6px; } .calendar-blank { min-height: 34px; } }

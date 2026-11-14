@@ -1,3 +1,9 @@
+## 0.37.0 — Phase 28B2: reviewed ICS single-occurrence cancellations
+
+- Preview iCalendar imports before writing. The review shows exact source date/time and timezone, additions, saved occurrences to remove, and cancellation markers. Applying stale input or a stale calendar preview fails without partial changes.
+- Support snapshot `STATUS:CANCELLED` with an exact `RECURRENCE-ID` and matching series master in the same file. Protect locally edited occurrences and reject standalone scheduling messages, whole-series/range updates, incompatible schedules and ambiguous times.
+- Store cancellation markers locally to prevent older files from resurrecting removed occurrences. Faithful sources retain their cancellation exception on export. No native Windows interactive parity is claimed.
+
 ## 0.36.0 — Phase 29B: editable countdown presets
 
 - Save three local countdown presets from 1–1440 minutes. Editing presets does not change an active countdown, and applying one asks before replacing a running timer.

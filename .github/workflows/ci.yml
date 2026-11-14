@@ -92,6 +92,8 @@ jobs:
         run: python tests/browser_media_ambiguity.py
       - name: Phase 22 calendar series shift native-only preview regression
         run: python tests/browser_calendar_shift.py
+      - name: Calendar import preview and scoped cancellation confirmation
+        run: python tests/browser_ics_import_preview.py
       - name: Calendar UI JavaScript syntax
         run: node --check src/features/calendar.js
       - name: System details JavaScript syntax
