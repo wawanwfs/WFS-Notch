@@ -96,6 +96,8 @@ jobs:
         run: python tests/browser_calendar_shift.py
       - name: Calendar import preview and scoped cancellation confirmation
         run: python tests/browser_ics_import_preview.py
+      - name: Calendar cancellation history across backup restore
+        run: python tests/browser_calendar_backup_restore.py
       - name: Calendar UI JavaScript syntax
         run: node --check src/features/calendar.js
       - name: System details JavaScript syntax

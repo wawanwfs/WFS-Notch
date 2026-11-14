@@ -124,6 +124,32 @@ function validCountdownPresets(values) {
     values.every(value => Number.isInteger(value) && value >= 1 && value <= 1440);
 }
 
+function preservePreviewCancellationHistory(restored, current) {
+  const previous = restored.calendar_tombstones || [];
+  const sameEpoch = !current.calendar_cancellation_epoch ||
+    current.calendar_cancellation_epoch === restored.calendar_cancellation_epoch;
+  const markers = new Set(sameEpoch ? previous : []);
+  for (const id of current.calendar_tombstones) {
+    if (markers.size >= 4096 && !markers.has(id)) throw new Error('Cancellation ledger full');
+    markers.add(id);
+  }
+  restored.calendar_tombstones = [...markers];
+  restored.calendar_cancellation_epoch = current.calendar_cancellation_epoch || restored.calendar_cancellation_epoch;
+  const sources = restored.calendar_series || {};
+  restored.events = (restored.events || []).filter(event => {
+    const legacy = event.id === event.series_uid || Object.hasOwn(sources, event.id) ||
+      Object.hasOwn(current.calendar_series, event.id);
+    return !markers.has(event.id) && !markers.has(event.series_uid) &&
+      !(legacy && markers.has(`${event.id}:${event.starts_at_ms}`));
+  });
+  for (const [uid, source] of Object.entries(sources)) {
+    if (markers.has(uid)) delete sources[uid];
+    else source.cancellations = (sameEpoch ? source.cancellations || [] : [])
+      .filter(entry => markers.has(entry.occurrence_id));
+  }
+  restored.calendar_series = sources;
+}
+
 function validateTaskRepeat(recurrence, due) {
   if (recurrence == null || recurrence === '') return null;
   if (!['daily', 'weekly'].includes(recurrence)) throw new Error('Unknown task repeat interval');
@@ -193,6 +219,7 @@ function previewInvoke(command, args = {}) {
     const backup = backups.find(item => item.info.id === args.id);
     if (!backup) throw new Error('Backup not found');
     const restored = JSON.parse(JSON.stringify(backup.snapshot));
+    preservePreviewCancellationHistory(restored, state);
     const currentRevisions = new Map(state.notes.map(note =>
       [note.id, note.revision || 0]));
     for (const note of restored.notes) {
@@ -393,7 +420,11 @@ function previewInvoke(command, args = {}) {
       }
       break;
     }
-    case 'clear_calendar_cancellations': state.calendar_tombstones = []; break;
+    case 'clear_calendar_cancellations':
+      state.calendar_cancellation_epoch = nextId();
+      state.calendar_tombstones = [];
+      for (const source of Object.values(state.calendar_series)) source.cancellations = [];
+      break;
     case 'add_habit': {
       const title = String(args.title || '').trim();
       if (!title || title.length > 120) throw new Error('Invalid habit name');
@@ -890,14 +921,17 @@ function renderBackups() {
     restore.type = 'button';
     restore.setAttribute('aria-label', `Restore backup ${backup.id}`);
     restore.addEventListener('click', async () => {
-      if (!window.confirm('Restore this backup? Current tasks, notes, calendar and settings will be replaced. The current state is retained in the automatic .bak file.')) return;
+      if (!window.confirm('Restore this backup? Tasks, notes, calendar and settings will be restored. Active calendar cancellations and reminder history are retained. The previous state is kept in the automatic .bak file.')) return;
       if (!(await flushNote())) return;
-      await writeQueue;
       try {
-        data = await invoke('restore_backup', { id: backup.id });
-        selectedNoteId = null; boundEditorId = null; pendingDraft = null;
-        cancelEventEdit();
-        render();
+        const task = writeQueue.catch(() => {}).then(async () => {
+          data = await invoke('restore_backup', { id: backup.id });
+          selectedNoteId = null; boundEditorId = null; pendingDraft = null;
+          cancelEventEdit();
+          render();
+        });
+        writeQueue = task;
+        await task;
         showInfo('Backup restored successfully.');
       } catch (error) { showError(error); }
     });
