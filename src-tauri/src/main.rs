@@ -74,6 +74,62 @@ struct Todo {
     priority: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     due_at_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recurrence: Option<TaskRecurrence>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum TaskRecurrence {
+    Daily,
+    Weekly,
+}
+
+impl TaskRecurrence {
+    fn next_due(self, due: u64, now: u128) -> Result<u64, String> {
+        let step = match self {
+            Self::Daily => 86_400_000_u128,
+            Self::Weekly => 604_800_000_u128,
+        };
+        let due = u128::from(due);
+        let intervals = (now.saturating_sub(due) / step).saturating_add(1);
+        let next = due.saturating_add(intervals.saturating_mul(step));
+        if next > 4_102_444_800_000 {
+            return Err("Next task due date is outside the supported range. Turn repeat off to complete it.".into());
+        }
+        Ok(next as u64)
+    }
+}
+
+fn validate_task_recurrence(
+    due: Option<u64>,
+    recurrence: Option<TaskRecurrence>,
+) -> Result<(), String> {
+    if recurrence.is_some() && due.is_none() {
+        return Err("Repeating tasks need a due date and time".into());
+    }
+    Ok(())
+}
+
+fn toggle_task(todo: &mut Todo, expected_due_at_ms: Option<u64>, now: u128) -> Result<(), String> {
+    if let Some(recurrence) = todo.recurrence {
+        let due = todo.due_at_ms.ok_or("Repeating task has no due date")?;
+        if expected_due_at_ms != Some(due) {
+            return Err(
+                "This task schedule changed. Review the new due date before completing it.".into(),
+            );
+        }
+        todo.due_at_ms = Some(recurrence.next_due(due, now)?);
+        todo.done = false;
+    } else {
+        if expected_due_at_ms.is_some() && expected_due_at_ms != todo.due_at_ms {
+            return Err(
+                "This task schedule changed. Review the new due date before completing it.".into(),
+            );
+        }
+        todo.done = !todo.done;
+    }
+    Ok(())
 }
 
 fn default_todo_priority() -> String {
@@ -337,6 +393,9 @@ impl AppData {
             {
                 todo.due_at_ms = None;
             }
+            if todo.due_at_ms.is_none() || todo.done {
+                todo.recurrence = None;
+            }
         }
         self.events.retain(|event| {
             !event.title.trim().is_empty()
@@ -580,9 +639,11 @@ fn add_todo(
     title: String,
     priority: Option<String>,
     due_at_ms: Option<u64>,
+    recurrence: Option<TaskRecurrence>,
 ) -> Result<AppData, String> {
     let priority = priority.unwrap_or_else(default_todo_priority);
     validate_todo_fields(&title, &priority, due_at_ms)?;
+    validate_task_recurrence(due_at_ms, recurrence)?;
     with_store(store, |state| {
         state.todos.push(Todo {
             id: new_id(),
@@ -591,6 +652,7 @@ fn add_todo(
             created_ms: now_ms(),
             priority,
             due_at_ms,
+            recurrence,
         });
         Ok(())
     })
@@ -603,31 +665,40 @@ fn update_todo(
     title: String,
     priority: String,
     due_at_ms: Option<u64>,
+    recurrence: Option<TaskRecurrence>,
 ) -> Result<AppData, String> {
     validate_todo_fields(&title, &priority, due_at_ms)?;
+    validate_task_recurrence(due_at_ms, recurrence)?;
     with_store(store, |state| {
         let todo = state
             .todos
             .iter_mut()
             .find(|todo| todo.id == id)
             .ok_or("Task not found")?;
+        if todo.done && recurrence.is_some() {
+            return Err("Reopen the completed task before setting it to repeat".into());
+        }
         todo.title = title.trim().to_owned();
         todo.priority = priority;
         todo.due_at_ms = due_at_ms;
+        todo.recurrence = recurrence;
         Ok(())
     })
 }
 
 #[tauri::command]
-fn toggle_todo(store: State<'_, Mutex<Store>>, id: String) -> Result<AppData, String> {
+fn toggle_todo(
+    store: State<'_, Mutex<Store>>,
+    id: String,
+    expected_due_at_ms: Option<u64>,
+) -> Result<AppData, String> {
     with_store(store, |state| {
         let todo = state
             .todos
             .iter_mut()
             .find(|todo| todo.id == id)
             .ok_or("Task not found")?;
-        todo.done = !todo.done;
-        Ok(())
+        toggle_task(todo, expected_due_at_ms, now_ms())
     })
 }
 
@@ -2149,6 +2220,7 @@ mod tests {
         let todo: Todo = serde_json::from_str(old).unwrap();
         assert_eq!(todo.priority, "normal");
         assert_eq!(todo.due_at_ms, None);
+        assert_eq!(todo.recurrence, None);
         assert!(validate_todo_fields(" Ship release ", "high", Some(1_900_000_000_000)).is_ok());
         assert!(validate_todo_fields("Task", "urgent", None).is_err());
         assert!(validate_todo_fields(" ", "normal", None).is_err());
@@ -2165,6 +2237,40 @@ mod tests {
     }
 
     #[test]
+    fn recurring_task_advances_once_from_its_due_anchor_and_skips_backlog() {
+        let due = 1_900_000_000_000;
+        let mut todo = Todo {
+            id: "repeat".into(),
+            title: "Review".into(),
+            priority: "high".into(),
+            created_ms: 1,
+            done: false,
+            due_at_ms: Some(due),
+            recurrence: Some(TaskRecurrence::Daily),
+        };
+        let now = u128::from(due + 3 * 86_400_000);
+        toggle_task(&mut todo, Some(due), now).unwrap();
+        let next = due + 4 * 86_400_000;
+        assert_eq!(todo.due_at_ms, Some(next));
+        assert!(!todo.done);
+        assert_eq!(todo.id, "repeat");
+        assert_eq!(todo.priority, "high");
+        assert!(toggle_task(&mut todo, Some(due), now).is_err());
+        assert_eq!(todo.due_at_ms, Some(next));
+        let serialized = serde_json::to_string(&todo).unwrap();
+        let restored: Todo = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(restored, todo);
+        assert_eq!(
+            TaskRecurrence::Weekly.next_due(due, 1).unwrap(),
+            due + 604_800_000
+        );
+        assert!(TaskRecurrence::Daily
+            .next_due(4_102_444_800_000, 1)
+            .is_err());
+        assert!(validate_task_recurrence(None, Some(TaskRecurrence::Daily)).is_err());
+    }
+
+    #[test]
     fn task_edit_transaction_preserves_id_completion_and_rollback() {
         let path = temp_file("task-edit");
         let mut store = Store::open(path.clone()).unwrap();
@@ -2177,6 +2283,7 @@ mod tests {
                     created_ms: 123,
                     priority: "normal".into(),
                     due_at_ms: None,
+                    recurrence: None,
                 });
                 Ok(())
             })
@@ -2231,6 +2338,7 @@ mod tests {
                     created_ms: now_ms(),
                     priority: "normal".into(),
                     due_at_ms: None,
+                    recurrence: None,
                 });
                 Ok(())
             })
@@ -2253,6 +2361,7 @@ mod tests {
                 created_ms: now_ms(),
                 priority: "normal".into(),
                 due_at_ms: None,
+                recurrence: None,
             });
             Err("simulated failure".into())
         });

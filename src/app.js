@@ -124,6 +124,13 @@ function validCountdownPresets(values) {
     values.every(value => Number.isInteger(value) && value >= 1 && value <= 1440);
 }
 
+function validateTaskRepeat(recurrence, due) {
+  if (recurrence == null || recurrence === '') return null;
+  if (!['daily', 'weekly'].includes(recurrence)) throw new Error('Unknown task repeat interval');
+  if (due == null) throw new Error('Repeating tasks need a due date and time');
+  return recurrence;
+}
+
 function focusView(focus, current = Date.now()) {
   const remaining = focus.ends_at_ms == null
     ? focus.remaining_seconds
@@ -235,7 +242,8 @@ function previewInvoke(command, args = {}) {
       if (!title || title.length > 200) throw new Error('Task title must contain 1–200 characters');
       if (!['low', 'normal', 'high'].includes(priority)) throw new Error('Invalid task priority');
       if (args.dueAtMs != null && (!Number.isSafeInteger(args.dueAtMs) || args.dueAtMs < 946684800000 || args.dueAtMs > 4102444800000)) throw new Error('Invalid task due time');
-      state.todos.push({ id: nextId(), title, done: false, created_ms: Date.now(), priority, due_at_ms: args.dueAtMs ?? null });
+      const recurrence = validateTaskRepeat(args.recurrence, args.dueAtMs);
+      state.todos.push({ id: nextId(), title, done: false, created_ms: Date.now(), priority, due_at_ms: args.dueAtMs ?? null, recurrence });
       break;
     }
     case 'update_todo': {
@@ -245,13 +253,26 @@ function previewInvoke(command, args = {}) {
       if (!title || title.length > 200 || !['low', 'normal', 'high'].includes(args.priority))
         throw new Error('Invalid task edit');
       if (args.dueAtMs != null && (!Number.isSafeInteger(args.dueAtMs) || args.dueAtMs < 946684800000 || args.dueAtMs > 4102444800000)) throw new Error('Invalid task due time');
-      Object.assign(todo, { title, priority: args.priority, due_at_ms: args.dueAtMs ?? null });
+      const recurrence = validateTaskRepeat(args.recurrence, args.dueAtMs);
+      if (todo.done && recurrence) throw new Error('Reopen the completed task before setting it to repeat');
+      Object.assign(todo, { title, priority: args.priority, due_at_ms: args.dueAtMs ?? null, recurrence });
       break;
     }
     case 'toggle_todo': {
       const todo = state.todos.find(item => item.id === args.id);
       if (!todo) throw new Error('Task not found');
-      todo.done = !todo.done; break;
+      if (todo.recurrence) {
+        if (args.expectedDueAtMs == null || args.expectedDueAtMs !== todo.due_at_ms) throw new Error('This task schedule changed. Review the new due date before completing it.');
+        const step = todo.recurrence === 'daily' ? 86400000 : 604800000;
+        const next = todo.due_at_ms + (Math.floor(Math.max(0, Date.now() - todo.due_at_ms) / step) + 1) * step;
+        if (next > 4102444800000) throw new Error('Next task due date is outside the supported range. Turn repeat off to complete it.');
+        todo.due_at_ms = next;
+        todo.done = false;
+      } else {
+        if (args.expectedDueAtMs != null && args.expectedDueAtMs !== todo.due_at_ms) throw new Error('This task schedule changed. Review the new due date before completing it.');
+        todo.done = !todo.done;
+      }
+      break;
     }
     case 'remove_todo': {
       if (!state.todos.some(item => item.id === args.id)) throw new Error('Task not found');
@@ -618,14 +639,20 @@ function renderTodos() {
     const line = node('div', 'todo-item' + (item.done ? ' done' : ''));
     const check = node('button', 'check', item.done ? '✓' : '');
     check.type = 'button';
-    check.setAttribute('aria-label', `${item.done ? 'Mark incomplete' : 'Complete'}: ${item.title}`);
+    check.setAttribute('aria-label', `${item.recurrence ? 'Complete and reschedule' : item.done ? 'Mark incomplete' : 'Complete'}: ${item.title}`);
     check.setAttribute('aria-pressed', String(item.done));
-    check.addEventListener('click', () => mutation('toggle_todo', { id: item.id }));
+    check.addEventListener('click', async () => {
+      check.disabled = true;
+      const ok = await mutation('toggle_todo', {id: item.id, expectedDueAtMs: item.due_at_ms ?? null});
+      if (!ok) check.disabled = false;
+      else if (item.recurrence) showInfo('Occurrence completed. The next deadline is scheduled.');
+    });
     const label = node('span', 'title', item.title);
     const priority = ['low', 'normal', 'high'].includes(item.priority) ? item.priority : 'normal';
     const due = item.due_at_ms;
     const meta = node('small', 'todo-metadata',
-      priority.toUpperCase() + (due == null ? '' : ' · Due ' + new Date(due).toLocaleString()));
+      priority.toUpperCase() + (due == null ? '' : ' · Due ' + new Date(due).toLocaleString()) +
+      (item.recurrence ? (item.recurrence === 'daily' ? ' · Every 24h' : ' · Every 7 days') : ''));
     if (due != null && due < Date.now() && !item.done) meta.classList.add('overdue');
     const edit = node('button', 'text-button todo-edit-button', 'Edit');
     edit.type = 'button';
@@ -635,6 +662,8 @@ function renderTodos() {
       $('#todo-edit-title').value = item.title;
       $('#todo-edit-priority').value = priority;
       $('#todo-edit-due').value = due == null ? '' : asLocalInput(due);
+      $('#todo-edit-recurrence').value = item.recurrence || '';
+      $('#todo-edit-recurrence').disabled = item.done;
       $('#todo-edit-form').hidden = false;
       $('#todo-edit-title').focus();
     });
@@ -1208,11 +1237,12 @@ function bind() {
     try { dueAtMs = parseTaskDue($('#todo-due').value); }
     catch (error) { showError(error); return; }
     if (title && await mutation('add_todo', {
-      title, priority: $('#todo-priority').value, dueAtMs,
+      title, priority: $('#todo-priority').value, dueAtMs, recurrence: $('#todo-recurrence').value || null,
     })) {
       input.value = '';
       $('#todo-priority').value = 'normal';
       $('#todo-due').value = '';
+      $('#todo-recurrence').value = '';
     }
   });
   $('#todo-edit-form').addEventListener('submit', async event => {
@@ -1223,7 +1253,7 @@ function bind() {
     catch (error) { showError(error); return; }
     if (await mutation('update_todo', {
       id: selectedTodoId, title: $('#todo-edit-title').value,
-      priority: $('#todo-edit-priority').value, dueAtMs,
+      priority: $('#todo-edit-priority').value, dueAtMs, recurrence: $('#todo-edit-recurrence').value || null,
     })) cancelTodoEdit();
   });
   $('#todo-edit-cancel').addEventListener('click', cancelTodoEdit);
