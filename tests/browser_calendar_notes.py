@@ -93,7 +93,8 @@ with sync_playwright() as pw:
     assert page.locator(".calendar-day.has-event").count() >= 1
     assert page.locator(".calendar-day.has-event small").first.inner_text() == "1"
     page.locator(".ics-box summary").click()
-    page.locator("#ics-import-button").click()
+    assert page.locator("#ics-import-button").is_disabled()
+    page.locator("#ics-import-preview").click()
     page.get_by_text("ICS import requires the installed WFS Notch desktop app.").wait_for()
     assert "requires the native Windows" in page.locator("#ics-status").inner_text()
     page.screenshot(path=str(EVIDENCE / "browser-calendar-plus.png"))
