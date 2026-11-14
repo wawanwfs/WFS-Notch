@@ -47,7 +47,21 @@ with sync_playwright() as pw:
     page.get_by_role("button", name="Preview whole-series day shift: Safe UTC series").click()
     assert page.locator("#calendar-series-shift").is_visible()
     assert page.locator("#calendar-shift-apply").is_disabled()
+    page.evaluate("""() => {
+      const stamp = Date.UTC(2027, 5, 14, 9);
+      renderSeriesShiftReview({all_day:false, occurrences:[{
+        old_start_ms:stamp, new_start_ms:stamp+86400000, old_end_ms:stamp+3600000,
+        new_end_ms:stamp+90000000, reminder_minutes:15, conflict_count:1,
+        conflict_titles:['<b>Overlap</b>']
+      }]});
+    }""")
+    review = page.locator("#calendar-shift-occurrences")
+    assert review.is_visible()
+    assert "Reminder 15 min before" in review.inner_text()
+    assert "<b>Overlap</b>" in review.inner_text()
+    assert review.locator("b").count() == 0
     page.locator("#calendar-shift-days").fill("3")
+    assert review.is_hidden()
     page.get_by_role("button", name="Preview changes").click()
     assert "requires native windows" in page.locator("#calendar-shift-status").inner_text().lower()
     assert page.locator("#calendar-shift-apply").is_disabled()

@@ -1510,8 +1510,36 @@ struct SeriesShiftPreview {
     last_new_ms: u64,
     reminders_affected: usize,
     same_start_conflicts: usize,
+    overlap_conflicts: usize,
+    occurrences: Vec<SeriesShiftOccurrence>,
     fingerprint: String,
     all_day: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct SeriesShiftOccurrence {
+    old_start_ms: u64,
+    new_start_ms: u64,
+    old_end_ms: Option<u64>,
+    new_end_ms: Option<u64>,
+    old_date_end: Option<String>,
+    new_date_end: Option<String>,
+    reminder_minutes: Option<u32>,
+    conflict_titles: Vec<String>,
+    conflict_count: usize,
+}
+
+fn event_review_end(event: &CalendarEvent) -> u64 {
+    if let Some(span) = &event.all_day {
+        return all_day::parse_iso_date(&span.end_date_exclusive)
+            .ok()
+            .and_then(|date| date.and_hms_opt(0, 0, 0))
+            .and_then(|date| u64::try_from(date.and_utc().timestamp_millis()).ok())
+            .unwrap_or_else(|| event.starts_at_ms.saturating_add(1));
+    }
+    event
+        .ends_at_ms
+        .unwrap_or_else(|| event.starts_at_ms.saturating_add(1))
 }
 
 fn shifted_calendar_millis(old: u64, days: i64) -> Result<u64, String> {
@@ -1569,18 +1597,20 @@ fn plan_series_shift(
     source.rrule.hash(&mut hasher);
     source.exdates.hash(&mut hasher);
     source.rdates.hash(&mut hasher);
-    // A preview also reports exact-start conflicts with OTHER events.
-    // Include these in the guard: a newly added/removed/re-dated unrelated
-    // event makes the old collision report stale and forces a fresh preview.
+    state.calendar_cancellation_epoch.hash(&mut hasher);
+    // The conflict review depends on other events' times, kinds and titles.
     let mut outsiders = state
         .events
         .iter()
         .filter(|event| event.series_uid.as_deref() != Some(uid.as_str()))
         .collect::<Vec<_>>();
     outsiders.sort_by(|a, b| a.id.cmp(&b.id));
-    for other in outsiders {
+    for other in &outsiders {
         other.id.hash(&mut hasher);
         other.starts_at_ms.hash(&mut hasher);
+        event_review_end(other).hash(&mut hasher);
+        other.all_day.is_some().hash(&mut hasher);
+        other.title.hash(&mut hasher);
     }
     let mut tombstones = state.calendar_tombstones.iter().collect::<Vec<_>>();
     tombstones.sort();
@@ -1588,6 +1618,8 @@ fn plan_series_shift(
         key.hash(&mut hasher);
     }
     let mut moved = Vec::with_capacity(members.len());
+    let mut occurrences = Vec::with_capacity(members.len());
+    let mut overlap_conflicts = 0;
     let mut same_start_conflicts = 0_usize;
     for existing in &members {
         if !seen_ids.insert(existing.id.clone()) || existing.all_day.is_some() != all_day {
@@ -1622,20 +1654,47 @@ fn plan_series_shift(
             next.starts_at_ms,
             next.remind_minutes,
         )?;
-        same_start_conflicts += state
-            .events
-            .iter()
-            .filter(|other| {
-                other.series_uid.as_deref() != Some(uid.as_str())
-                    && other.starts_at_ms == next.starts_at_ms
-            })
-            .count();
+        let mut conflict_titles = Vec::new();
+        let mut conflict_count = 0;
+        let next_end = event_review_end(&next);
+        for other in &outsiders {
+            // Timed instants and date-only civil spans use different domains.
+            if other.all_day.is_some() != all_day {
+                continue;
+            }
+            same_start_conflicts += usize::from(other.starts_at_ms == next.starts_at_ms);
+            if other.starts_at_ms < next_end && next.starts_at_ms < event_review_end(other) {
+                conflict_count += 1;
+                if conflict_titles.len() < 3 {
+                    conflict_titles.push(other.title.clone());
+                }
+            }
+        }
+        overlap_conflicts += conflict_count;
+        occurrences.push(SeriesShiftOccurrence {
+            old_start_ms: existing.starts_at_ms,
+            new_start_ms: next.starts_at_ms,
+            old_end_ms: existing.ends_at_ms,
+            new_end_ms: next.ends_at_ms,
+            old_date_end: existing
+                .all_day
+                .as_ref()
+                .map(|span| span.end_date_exclusive.clone()),
+            new_date_end: next
+                .all_day
+                .as_ref()
+                .map(|span| span.end_date_exclusive.clone()),
+            reminder_minutes: next.remind_minutes,
+            conflict_titles,
+            conflict_count,
+        });
         moved.push(next);
     }
     let first_old = members.iter().min_by_key(|item| item.starts_at_ms).unwrap();
     let last_old = members.iter().max_by_key(|item| item.starts_at_ms).unwrap();
     let first_new = moved.iter().min_by_key(|item| item.starts_at_ms).unwrap();
     let last_new = moved.iter().max_by_key(|item| item.starts_at_ms).unwrap();
+    occurrences.sort_by_key(|item| item.old_start_ms);
     let preview = SeriesShiftPreview {
         occurrence_count: members.len(),
         delta_days: days,
@@ -1648,6 +1707,8 @@ fn plan_series_shift(
             .filter(|item| item.remind_minutes.is_some())
             .count(),
         same_start_conflicts,
+        overlap_conflicts,
+        occurrences,
         fingerprint: format!("{:016x}", hasher.finish()),
         all_day,
     };
@@ -2951,6 +3012,41 @@ mod tests {
             });
         }
         data
+    }
+
+    #[test]
+    fn series_review_lists_overlaps_and_invalidates_changed_end_or_title() {
+        let mut state = utc_shift_fixture();
+        let id = state.events[0].id.clone();
+        let proposed = state.events[0].starts_at_ms + 86_400_000;
+        state.events.push(CalendarEvent {
+            id: "other".into(),
+            title: "Overlap".into(),
+            starts_at_ms: proposed - 60_000,
+            ends_at_ms: Some(proposed + 60_000),
+            remind_minutes: None,
+            description: String::new(),
+            created_ms: 0,
+            all_day: None,
+            series_uid: None,
+        });
+        let plan = plan_series_shift(&state, &id, 1).unwrap().0;
+        assert_eq!(plan.overlap_conflicts, 1);
+        assert_eq!(plan.occurrences[0].conflict_titles, ["Overlap"]);
+        assert_eq!(plan.occurrences[0].new_end_ms, Some(proposed + 3_600_000));
+        assert_eq!(plan.occurrences[0].reminder_minutes, Some(15));
+        state.events.last_mut().unwrap().title = "Renamed".into();
+        assert!(shift_series_after_preview(&mut state, &id, 1, &plan.fingerprint).is_err());
+        let plan = plan_series_shift(&state, &id, 1).unwrap().0;
+        state.events.last_mut().unwrap().ends_at_ms = Some(proposed);
+        assert!(shift_series_after_preview(&mut state, &id, 1, &plan.fingerprint).is_err());
+        assert_eq!(
+            plan_series_shift(&state, &id, 1)
+                .unwrap()
+                .0
+                .overlap_conflicts,
+            0
+        );
     }
 
     #[test]
