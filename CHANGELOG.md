@@ -1,3 +1,8 @@
+## 0.42.0 — Exact calendar series review
+
+- Preview every saved occurrence before moving a UTC or all-day series. Review local times or civil date spans, reminder offsets, and overlaps with other events of the same kind.
+- Changes to conflict titles, intervals, or cancellation history invalidate a stale preview. TZID/floating rescheduling and unsupported ICS ranges still reject.
+
 ## 0.41.0 — Task reminder snooze and local history
 
 - Snooze a due task for 5, 15, or 60 minutes without shifting its recurrence.

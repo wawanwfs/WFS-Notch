@@ -17,6 +17,9 @@
 .ics-box summary { cursor: pointer; font-weight: 600; }
 #ics-cancellation-preview { max-height: 110px; overflow: auto; margin: 6px 0; padding-inline-start: 22px; color: var(--text); font-size: 12px; overflow-wrap: anywhere; }
 #ics-cancellation-preview li { padding-block: 3px; }
+.shift-review { max-height: 10rem; overflow: auto; padding-inline-start: 1.5rem; }
+.shift-review li { padding-block: .25rem; overflow-wrap: anywhere; }
+.shift-review li small { display: block; color: var(--muted); }
 .ics-box textarea { box-sizing: border-box; display: block; width: 100%; min-height: 85px; resize: vertical; margin: 9px 0; border-radius: 8px; padding: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
 .ics-box small { color: #c8c8d2; display: block; padding: 5px 0; }
 @media (max-width: 560px) { .calendar-day { min-height: 34px; font-size: .77rem; } .calendar-day.has-event small { padding: 0 3px; } .calendar-toolbar { gap: 6px; } .calendar-blank { min-height: 34px; } }

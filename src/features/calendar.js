@@ -6,10 +6,19 @@ let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
 let calendarSelectedDay = null;
 let calendarShiftEventId = null;
 let calendarShiftPlan = null;
+let calendarShiftGeneration = 0;
+
+function clearSeriesShiftReview() {
+  calendarShiftGeneration += 1;
+  calendarShiftPlan = null;
+  const list = document.querySelector('#calendar-shift-occurrences');
+  list.replaceChildren();
+  list.hidden = true;
+}
 
 function closeSeriesShift() {
   calendarShiftEventId = null;
-  calendarShiftPlan = null;
+  clearSeriesShiftReview();
   const panel = document.querySelector('#calendar-series-shift');
   if (panel) panel.hidden = true;
   const apply = document.querySelector('#calendar-shift-apply');
@@ -19,7 +28,7 @@ function closeSeriesShift() {
 function openSeriesShift(id) {
   cancelEventEdit();
   calendarShiftEventId = id;
-  calendarShiftPlan = null;
+  clearSeriesShiftReview();
   const panel = document.querySelector('#calendar-series-shift');
   panel.hidden = false;
   document.querySelector('#calendar-shift-days').value = '1';
@@ -39,13 +48,27 @@ function seriesShiftDays() {
 }
 
 function seriesShiftSummary(plan) {
-  const utcDate = ms => new Date(ms).toISOString().slice(0, 10);
-  return plan.occurrence_count + ' saved occurrence(s): first ' +
-    utcDate(plan.first_old_ms) + ' → ' + utcDate(plan.first_new_ms) +
-    ', last ' + utcDate(plan.last_old_ms) + ' → ' + utcDate(plan.last_new_ms) +
-    '. ' + plan.reminders_affected + ' reminder(s), ' +
-    plan.same_start_conflicts + ' exact-start collision(s) with other events. ' +
+  return `${plan.occurrence_count} saved occurrence(s), ${plan.reminders_affected} reminder(s), ` +
+    `${plan.overlap_conflicts} overlap(s) with other events of the same kind. ` +
+    (plan.all_day ? 'All-day dates have no timezone. ' : 'Times below use your device timezone. The shift is exact UTC days, so local hours can change across DST. ') +
     'Existing deletions are not regenerated. Export will flatten shifted occurrences.';
+}
+
+function renderSeriesShiftReview(plan) {
+  const list = document.querySelector('#calendar-shift-occurrences');
+  const local = new Intl.DateTimeFormat(undefined, {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short'});
+  const date = ms => new Date(ms).toISOString().slice(0, 10);
+  const value = (start, end, dateEnd) => plan.all_day
+    ? `${date(start)} to ${dateEnd} (exclusive)`
+    : `${local.format(start)}${end == null ? '' : ` to ${local.format(end)}`}`;
+  list.replaceChildren(...plan.occurrences.map(item => {
+    const row = node('li', '', `${value(item.old_start_ms, item.old_end_ms, item.old_date_end)} → ${value(item.new_start_ms, item.new_end_ms, item.new_date_end)}`);
+    const reminder = item.reminder_minutes == null ? 'No reminder' : item.reminder_minutes === 0 ? 'Reminder at start' : `Reminder ${item.reminder_minutes} min before`;
+    const conflicts = item.conflict_count ? ` · ${item.conflict_count} overlap(s): ${item.conflict_titles.join(', ')}${item.conflict_count > item.conflict_titles.length ? '…' : ''}` : '';
+    row.append(node('small', '', reminder + conflicts));
+    return row;
+  }));
+  list.hidden = false;
 }
 
 function calendarLocalKey(day) {
@@ -154,7 +177,7 @@ function initCalendarPlus() {
   });
   document.querySelector('#note-search').addEventListener('input', () => renderNotes());
   document.querySelector('#calendar-shift-days').addEventListener('input', () => {
-    calendarShiftPlan = null;
+    clearSeriesShiftReview();
     document.querySelector('#calendar-shift-apply').disabled = true;
     document.querySelector('#calendar-shift-status').textContent =
       'Day offset changed. Preview the updated schedule again.';
@@ -171,22 +194,27 @@ function initCalendarPlus() {
     catch (error) { showError(error); return; }
     const id = calendarShiftEventId;
     if (!id) return;
+    clearSeriesShiftReview();
+    document.querySelector('#calendar-shift-apply').disabled = true;
+    const generation = calendarShiftGeneration;
     const button = document.querySelector('#calendar-shift-preview');
     button.disabled = true;
     try {
       if (!(await flushNote())) return;
       await writeQueue;
       const plan = await invoke('preview_event_series_shift', {id, deltaDays});
-      if (calendarShiftEventId !== id ||
+      if (calendarShiftGeneration !== generation || calendarShiftEventId !== id ||
           Number(document.querySelector('#calendar-shift-days').value) !== deltaDays) return;
       if (!plan || typeof plan.fingerprint !== 'string' || !/^[0-9a-f]{16}$/.test(plan.fingerprint)) {
         throw new Error('Preview returned an invalid freshness token');
       }
+      renderSeriesShiftReview(plan);
       calendarShiftPlan = plan;
       document.querySelector('#calendar-shift-apply').disabled = false;
       statusNode.textContent = seriesShiftSummary(plan);
     } catch (error) {
-      calendarShiftPlan = null;
+      if (calendarShiftGeneration !== generation) return;
+      clearSeriesShiftReview();
       document.querySelector('#calendar-shift-apply').disabled = true;
       statusNode.textContent = 'This series cannot be safely moved. No calendar data was changed.';
       showError(error);
@@ -199,7 +227,7 @@ function initCalendarPlus() {
     try { days = seriesShiftDays(); }
     catch (error) { showError(error); return; }
     if (plan.delta_days !== days) {
-      calendarShiftPlan = null;
+      clearSeriesShiftReview();
       document.querySelector('#calendar-shift-apply').disabled = true;
       showError('The day offset changed. Generate a new preview.'); return;
     }
@@ -214,7 +242,7 @@ function initCalendarPlus() {
       closeSeriesShift();
       showInfo('Existing local series occurrences moved. The original recurrence source remains unchanged.');
     } else {
-      calendarShiftPlan = null;
+      clearSeriesShiftReview();
       document.querySelector('#calendar-shift-status').textContent =
         'Move was not applied. Preview the current series schedule again.';
     }
