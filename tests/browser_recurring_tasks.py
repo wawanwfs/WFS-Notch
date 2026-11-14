@@ -36,12 +36,19 @@ with sync_playwright() as pw:
     complete = page.get_by_role("button", name="Complete and reschedule: Check backups")
     expect(complete).to_be_visible()
     original = page.evaluate("data.todos[0].id")
+    page.get_by_role("combobox", name="Snooze reminder for Check backups").select_option("15")
+    expect(page.locator("#toast")).to_contain_text("Reminder snoozed")
+    assert page.evaluate("data.todos[0].snoozed_until_ms - Date.now()") == 900000
+    assert page.evaluate("data.todos[0].due_at_ms") == 1813136400000
     complete.click()
     expect(page.locator("#toast")).to_contain_text("next deadline is scheduled")
     assert page.evaluate("data.todos[0].due_at_ms") == 1813482000000  # 2027-06-20 09:00 UTC
     assert page.evaluate("data.todos[0].id") == original
     assert page.evaluate("data.todos[0].priority") == "high"
     assert not page.evaluate("data.todos[0].done")
+    assert page.evaluate("data.todos[0].snoozed_until_ms") is None
+    page.get_by_text("Recent task completions", exact=True).click()
+    expect(page.locator("#todo-completion-history")).to_contain_text("Check backups")
     page.reload()
     page.get_by_role("button", name="Tasks", exact=True).click()
     expect(complete).to_be_visible()
@@ -54,6 +61,7 @@ with sync_playwright() as pw:
     complete.click()
     page.wait_for_function("new Date(data.todos[0].due_at_ms).toISOString() === '2027-06-27T09:00:00.000Z'")
     assert page.evaluate("new Date(data.todos[0].due_at_ms).toISOString()") == "2027-06-27T09:00:00.000Z"
+    assert page.evaluate("data.task_completions.length") == 2
     assert not errors, errors
     browser.close()
 print("PASS: recurring task validation, deadline catch-up, weekly edit and reload persistence")

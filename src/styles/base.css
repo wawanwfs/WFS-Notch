@@ -148,6 +148,9 @@ body.preview .notch{position:relative;width:720px;height:430px;border-radius:22p
 .todo-item .title { min-width: 125px; flex: 1 1 125px; overflow-wrap: anywhere; }
 .todo-metadata { color: var(--accent); font-size: 10px; letter-spacing: .03em; flex: 0 1 auto; }
 .todo-metadata.overdue { color: #ffc08a; }
+.todo-snooze { max-width: 100%; color: var(--text); background: #24252c; border: 1px solid var(--line); border-radius: 7px; padding: 4px 7px; font-size: 11px; }
+.todo-history { margin-top: 10px; font-size: 11px; color: var(--text); }
+.todo-history ul { max-height: 150px; overflow: auto; padding-left: 22px; overflow-wrap: anywhere; }
 .todo-edit-button { min-height: 30px; }
 .todo-entry :focus-visible, .todo-edit-form :focus-visible, .todo-edit-button:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;

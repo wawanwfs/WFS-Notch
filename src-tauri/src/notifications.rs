@@ -127,12 +127,49 @@ fn due_event_ids(data: &AppData, now: u128) -> Vec<String> {
 /// Local task reminders are independent from calendar alerts and opt-in twice:
 /// WFS-owned system toasts must be enabled AND task due reminders opted in.
 fn task_delivery_key(todo: &Todo) -> Option<String> {
-    todo.due_at_ms
-        .map(|due| format!("task:{}:{}", todo.id, due))
+    todo.due_at_ms.map(|due| match todo.snoozed_until_ms {
+        Some(until) => format!("task:{}:{}:snooze:{}", todo.id, due, until),
+        None => format!("task:{}:{}", todo.id, due),
+    })
+}
+
+fn task_alert_at(todo: &Todo) -> Option<u64> {
+    todo.snoozed_until_ms.or(todo.due_at_ms)
+}
+
+pub(super) fn suppress_completed_task_on_restore(data: &mut AppData, now: u128) {
+    for todo in &data.todos {
+        let Some(due) = todo.due_at_ms else { continue };
+        if todo.done
+            || !data
+                .task_completions
+                .iter()
+                .any(|entry| entry.task_id == todo.id && entry.due_at_ms == Some(due))
+        {
+            continue;
+        }
+        if let (Some(key), Some(alert)) = (task_delivery_key(todo), task_alert_at(todo)) {
+            let expiry = u128::from(alert).saturating_add(LEDGER_RETENTION_MS);
+            if expiry > now {
+                data.reminder_deliveries
+                    .entry(key)
+                    .and_modify(|saved| *saved = (*saved).max(expiry))
+                    .or_insert(expiry);
+            }
+        }
+        let key = format!("task:{}:{}", todo.id, due);
+        let expiry = u128::from(due).saturating_add(LEDGER_RETENTION_MS);
+        if expiry > now {
+            data.reminder_deliveries
+                .entry(key)
+                .and_modify(|saved| *saved = (*saved).max(expiry))
+                .or_insert(expiry);
+        }
+    }
 }
 
 fn task_due(todo: &Todo, now: u128) -> bool {
-    todo.due_at_ms.is_some_and(|due| {
+    task_alert_at(todo).is_some_and(|due| {
         !todo.done && now >= u128::from(due) && now < u128::from(due).saturating_add(EVENT_GRACE_MS)
     })
 }
@@ -368,7 +405,7 @@ where
         return Ok(false);
     }
     let key = task_delivery_key(&todo).ok_or("Task due date was cleared")?;
-    let expires_at = u128::from(todo.due_at_ms.ok_or("Task due date was cleared")?)
+    let expires_at = u128::from(task_alert_at(&todo).ok_or("Task due date was cleared")?)
         .saturating_add(LEDGER_RETENTION_MS);
     reserve_and_send(&mut guard, key, expires_at, now, || {
         sender(&todo, &settings)
@@ -477,7 +514,7 @@ pub fn get_reminder_scheduler_status(
                 .todos
                 .iter()
                 .filter(|todo| {
-                    !todo.done && todo.due_at_ms.is_some_and(|due| u128::from(due) >= now)
+                    !todo.done && task_alert_at(todo).is_some_and(|due| u128::from(due) >= now)
                 })
                 .count()
         } else {
@@ -581,7 +618,37 @@ mod tests {
             due_at_ms: Some(due_at_ms),
             recurrence: None,
             recurrence_timezone: None,
+            snoozed_until_ms: None,
         }
+    }
+
+    #[test]
+    fn snoozed_task_delivers_once_and_old_backup_cannot_replay_completion() {
+        let due = 1_900_000_000_000_u64;
+        let mut data = AppData {
+            todos: vec![task("task-1", due)],
+            ..Default::default()
+        };
+        data.settings.notifications_enabled = true;
+        data.settings.task_due_reminders_enabled = true;
+        let mut backup = data.clone();
+        crate::apply_task_snooze(&mut data.todos[0], due, None, 5, due.into()).unwrap();
+        assert!(crate::apply_task_snooze(&mut data.todos[0], due, None, 15, due.into()).is_err());
+        assert_eq!(data.todos[0].due_at_ms, Some(due));
+        crate::preserve_reminder_history(&mut backup, &data);
+        assert!(due_task_ids(&backup, due.into()).is_empty());
+        let until = u128::from(due) + 300_000;
+        assert_eq!(due_task_ids(&backup, until), vec!["task-1"]);
+        backup.task_completions.push(crate::TaskCompletion {
+            task_id: "task-1".into(),
+            title: "Completed".into(),
+            due_at_ms: Some(due),
+            completed_at_ms: due + 60_000,
+        });
+        suppress_completed_task_on_restore(&mut backup, due.into());
+        assert!(due_task_ids(&backup, until).is_empty());
+        backup.todos[0].snoozed_until_ms = None;
+        assert!(due_task_ids(&backup, due.into()).is_empty());
     }
 
     #[test]

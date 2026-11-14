@@ -1,3 +1,8 @@
+## 0.41.0 — Task reminder snooze and local history
+
+- Snooze a due task for 5, 15, or 60 minutes without shifting its recurrence.
+- Keep up to 200 completion records locally and protect the notification journal when restoring a backup.
+
 ## 0.40.0 — Phase 40: timezone-based task repeats
 
 - Optionally set an IANA timezone on daily and weekly tasks to keep the selected wall-clock time across DST. An invalid initial local time is rejected, future missing times are skipped, and overlaps use the earlier occurrence.
